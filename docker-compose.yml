@@ -1,13 +1,71 @@
+# Production stack for The Rats Den 69 bot:
+#   bot        – Discord bot + MCP server, image published to Docker Hub by GitHub Actions
+#   caddy      – HTTPS reverse proxy with automatic Let's Encrypt certificates for BOT_DOMAIN
+#   watchtower – pulls new bot images from Docker Hub and restarts the bot (only the bot)
+#
+# All settings come from variables: a .env file next to this file for `docker compose up -d`,
+# or the stack's environment variables in Portainer. See .env.example.
+
+name: rats-den-bot
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   bot:
     image: ${DOCKERHUB_IMAGE:?set DOCKERHUB_IMAGE, e.g. yourname/rats-den-warframe-bot}:${BOT_TAG:-latest}
     restart: unless-stopped
-    env_file: .env
-    ports:
-      # MCP + health endpoint. Bound to localhost; put a TLS reverse proxy in front to reach it remotely.
-      - "127.0.0.1:3000:3000"
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:?set DISCORD_GUILD_ID}
+      CLAN_NAME: ${CLAN_NAME:-The Rats Den 69}
+      WARFRAME_PLATFORM: ${WARFRAME_PLATFORM:-pc}
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      ENABLE_WELCOME: ${ENABLE_WELCOME:-false}
+      WORLDSTATE_POLL_SECONDS: ${WORLDSTATE_POLL_SECONDS:-60}
     volumes:
       - bot-data:/app/data
+    ports:
+      # Direct access from the host itself (e.g. Claude Code on the server). Everyone else goes through caddy.
+      - "127.0.0.1:${BOT_LOCAL_PORT:-3000}:3000"
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Proxies https://BOT_DOMAIN/mcp and /health to the bot. The Host header is passed through,
+    # so BOT_DOMAIN must be listed in MCP_ALLOWED_HOSTS when that is set.
+    command: caddy reverse-proxy --from ${BOT_DOMAIN:?set BOT_DOMAIN, a DNS name pointing at this server} --to bot:3000
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - bot
+    logging: *logging
+
+  watchtower:
+    # Maintained fork; the original containrrr/watchtower is archived and fails on current Docker Engine APIs.
+    image: nickfedor/watchtower:1
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-300}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging: *logging
 
 volumes:
   bot-data:
+  caddy-data:
+  caddy-config:

@@ -44,18 +44,39 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 ## 3. Run
 
-### Docker (recommended)
+### Docker stack (recommended)
 
-Images are published to Docker Hub by GitHub Actions (`linux/amd64` and `linux/arm64`, so a Raspberry Pi works).
+`docker-compose.yml` is the full production stack:
 
-```bash
-DOCKERHUB_IMAGE=<dockerhub-user>/rats-den-warframe-bot docker compose up -d
-```
+| Service | Image | Role |
+| --- | --- | --- |
+| `bot` | `$DOCKERHUB_IMAGE:$BOT_TAG` | The bot and MCP server. SQLite database in the `bot-data` volume |
+| `caddy` | `caddy:2-alpine` | Public HTTPS for `https://$BOT_DOMAIN/mcp` with automatic Let's Encrypt certificates |
+| `watchtower` | `nickfedor/watchtower:1` | Checks Docker Hub every `WATCHTOWER_POLL_INTERVAL` seconds and restarts the bot on a new image |
 
-The SQLite database lives in the `bot-data` volume (`/app/data`). The container exposes port 3000 for
-`/health` and `/mcp`; compose binds it to `127.0.0.1` only. Put a TLS reverse proxy (Caddy, Traefik, nginx,
-Cloudflare Tunnel) in front if you want to reach MCP from other machines, and set `MCP_ALLOWED_HOSTS` to
-that hostname.
+The bot image is built by GitHub Actions for `linux/amd64` and `linux/arm64`, so a Raspberry Pi works.
+
+1. Point a DNS record (`BOT_DOMAIN`) at the server and open ports **80** and **443**.
+2. Next to `docker-compose.yml`, copy `.env.example` to `.env` and fill it in. Required: `DISCORD_TOKEN`,
+   `DISCORD_GUILD_ID`, `DOCKERHUB_IMAGE` and `BOT_DOMAIN`. Also set `MCP_AUTH_TOKEN` and
+   `MCP_ALLOWED_HOSTS=<BOT_DOMAIN>,localhost,127.0.0.1`.
+3. Start it:
+
+   ```bash
+   docker compose up -d
+   ```
+
+**Portainer:** create a stack from this repository (compose path `docker-compose.yml`) or paste the file. Then
+enter the same variables under *Environment variables*. Nothing else needs to be on the host.
+
+**Release flow:** merging to `main` publishes `:latest`, and Watchtower rolls it out within a few minutes.
+Set `BOT_TAG` to a version such as `1.2.0` to stay on that release. Watchtower only touches the `bot` container,
+because it is the only one with the `com.centurylinklabs.watchtower.enable` label. If the Docker Hub
+repository is private, mount a `config.json` with registry credentials into Watchtower.
+
+The bot also listens on `127.0.0.1:3000` on the host itself, for health checks and a Claude Code running on the
+server. Watchtower needs the Docker socket, which gives root-level access to the host. Remove the service if
+you'd rather update with `docker compose pull && docker compose up -d`.
 
 ### Locally
 
@@ -77,11 +98,15 @@ npm run dev
 | `create_event`, `cancel_event`, `send_announcement` | Post to Discord |
 | `register_member`, `remove_member` | Edit the clan roster |
 
-**Claude Code** — this repo ships a project `.mcp.json`. Export the token (and the URL, if the bot isn't on
-`localhost:3000`) before starting Claude Code, then approve the `rats-den-bot` server when prompted:
+**Claude Code** — this repo ships a project `.mcp.json`. Export the token before starting Claude Code. With the
+Docker stack, also export the public URL `https://<BOT_DOMAIN>/mcp`, since the default is
+`http://localhost:3000/mcp`. Then approve the `rats-den-bot` server when prompted:
 
 ```bash
 export RATS_DEN_MCP_TOKEN=<your MCP_AUTH_TOKEN>
+```
+
+```bash
 export RATS_DEN_MCP_URL=https://bot.example.com/mcp
 ```
 
