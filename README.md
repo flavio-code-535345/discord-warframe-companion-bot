@@ -94,6 +94,20 @@ npm ci
 npm run dev
 ```
 
+## Web endpoints
+
+The bot's HTTP port (3000 in the container) serves:
+
+| Path | What |
+| --- | --- |
+| `/` | Status page: logo, online status and ping, clan stats, current open-world cycles with live countdowns, upcoming events (titles and RSVP counts only). Refreshes itself |
+| `/status.json` | The same data as JSON |
+| `/health` | `{"status":"ok","discord":true}` once connected to Discord (used by the Docker health check) |
+| `/mcp` | MCP endpoint (below), only when `MCP_AUTH_TOKEN` is set |
+
+The status page shows no member names or Discord IDs. Anyone who can reach the URL can see it, so keep it behind
+Cloudflare Access if your event titles are private.
+
 ## MCP server
 
 `POST /mcp` speaks MCP over Streamable HTTP and requires `Authorization: Bearer <MCP_AUTH_TOKEN>`.

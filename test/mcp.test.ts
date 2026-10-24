@@ -44,6 +44,12 @@ test('health endpoint reports Discord readiness without auth', async () => {
   assert.deepEqual(await res.json(), { status: 'starting', discord: false });
 });
 
+test('logo is served as a PNG', async () => {
+  const res = await fetch(`${baseUrl}/logo.png`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/png');
+});
+
 test('MCP rejects missing or wrong bearer tokens', async () => {
   const res = await fetch(`${baseUrl}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   assert.equal(res.status, 401);
