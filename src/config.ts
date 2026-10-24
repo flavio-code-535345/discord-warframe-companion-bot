@@ -1,0 +1,37 @@
+import { z } from 'zod';
+
+const bool = z
+  .enum(['true', 'false', '1', '0', 'yes', 'no'])
+  .transform((v) => v === 'true' || v === '1' || v === 'yes');
+
+const EnvSchema = z.object({
+  DISCORD_TOKEN: z.string({ error: 'is required (bot token from the Discord Developer Portal)' }),
+  DISCORD_GUILD_ID: z
+    .string({ error: 'is required (ID of the clan Discord server)' })
+    .regex(/^\d+$/, 'must be the numeric ID of the clan Discord server'),
+  CLAN_NAME: z.string().default('The Rats Den 69'),
+  WARFRAME_PLATFORM: z.enum(['pc', 'ps4', 'xbox', 'switch', 'mobile']).default('pc'),
+  DATA_DIR: z.string().default('./data'),
+  WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(30).default(60),
+  ENABLE_WELCOME: bool.default(false),
+  HTTP_HOST: z.string().default('0.0.0.0'),
+  HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  MCP_AUTH_TOKEN: z.string().min(24, 'MCP_AUTH_TOKEN must be at least 24 characters').optional(),
+  MCP_ALLOWED_HOSTS: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',').map((h) => h.trim()).filter(Boolean) : undefined)),
+});
+
+export type Config = z.infer<typeof EnvSchema>;
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  // Treat empty strings (common in .env templates and compose files) as unset.
+  const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''));
+  const parsed = EnvSchema.safeParse(cleaned);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
+    throw new Error(`Invalid configuration:\n${issues}`);
+  }
+  return parsed.data;
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "rats-den-bot": {
+      "type": "http",
+      "url": "${RATS_DEN_MCP_URL:-http://localhost:3000/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${RATS_DEN_MCP_TOKEN}"
+      }
+    }
+  }
+}

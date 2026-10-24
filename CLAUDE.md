@@ -1,0 +1,42 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Discord bot for the Warframe clan "The Rats Den 69" (TypeScript, ESM, Node 24, discord.js v14) that also serves an MCP server over HTTP. Published as a Docker image to Docker Hub by GitHub Actions.
+
+## Commands
+
+```bash
+npm run dev          # tsx watch, loads .env (copy .env.example first)
+npm run typecheck    # tsc --noEmit over src + test
+npm test             # node:test via tsx, all test/**/*.test.ts
+npx tsx --test test/db.test.ts                         # one file
+npx tsx --test --test-name-pattern="markSeen" test/db.test.ts   # one test
+npm run build        # tsc -p tsconfig.build.json → dist/
+npm start            # node dist/index.js
+```
+
+TypeScript is v7 (native `tsc`). Relative imports must use `.js` extensions (NodeNext resolution).
+
+## Architecture
+
+`src/index.ts` builds one `AppContext` (`config`, `store`, discord `client`, see `src/context.ts`) and hands it to three consumers that run in the same process:
+
+1. **Discord interactions** (`src/discord/bot.ts`): routes slash commands (`src/discord/commands/*`, each exporting a `Command`), autocomplete, and buttons (`src/discord/buttons.ts`). Commands are registered **guild-scoped** to `DISCORD_GUILD_ID` on every `ClientReady`; the bot deliberately serves only that one guild. Button custom IDs are `rsvp:<eventId>:<going|maybe|declined>` and `lfg:<postId>:<join|leave|close>`, so they keep working after restarts.
+2. **Notifier** (`src/discord/notifier.ts`): polls the worldstate every `WORLDSTATE_POLL_SECONDS`. `collectAlerts()` is a pure function that returns every currently alert-worthy item with a stable `key`; `Store.markSeen(key)` de-duplicates across restarts. On an empty `seen_worldstate` table it records the current items without posting (no flood on first deploy). It also sends event reminders 15 minutes before start.
+3. **HTTP server** (`src/http.ts`): `/health` (no auth, used by the Docker HEALTHCHECK) and, only when `MCP_AUTH_TOKEN` is set, `POST /mcp`. MCP is **stateless Streamable HTTP**: a new `McpServer` (`src/mcp/server.ts`) and transport are built per request, so `createMcpServer` must not do I/O. Bearer auth runs before body parsing; `MCP_ALLOWED_HOSTS` adds DNS-rebinding Host checks.
+
+**Shared service layer:** `src/services/clan.ts` holds every operation that posts to Discord (events, announcements, LFG rendering, channel resolution). Slash commands and MCP tools both call it, so behaviour stays the same. Throw `UserError` for expected failures: Discord shows it ephemerally, and MCP returns it as an `isError` tool result. Any other error is logged and shown generically. `getSendableChannel` refuses channels outside the clan guild.
+
+**Persistence:** `src/db.ts` uses the built-in `node:sqlite` (`DatabaseSync`, synchronous), so there are no native npm deps. That's also why the Dockerfile can build on `$BUILDPLATFORM` and copy `node_modules` into the arm64 image. The schema is versioned through `PRAGMA user_version` and the append-only `MIGRATIONS` array: never edit a shipped migration, add a new entry. Times are stored as epoch ms. Tests use `new Store(':memory:')`.
+
+**Warframe data** (`src/warframe/`):
+- Worldstate comes from DE's official `api.warframe.com/cdn/worldState.php`, parsed locally with `warframe-worldstate-parser` and cached ~55s. The warframestat.us `/pc` worldstate endpoint was returning 404, so don't switch back to it. The parser needs `import 'reflect-metadata'` to load first. Its models type most dates as `Date | undefined`, so go through `toMs`/`discordTime`/`relative` in `src/time.ts`, which tolerate missing values.
+- warframe.market must use **API v2** (v1 returns 403 "Deprecated"). Its Cloudflare blocks Node's default User-Agent, so every outbound call goes through `apiFetch` in `src/warframe/fetch.ts`.
+- Drop tables come from warframestat.us (`/drops/search/`), which still works.
+
+Discord-facing formatting lives in `src/discord/embeds.ts`. MCP returns plain JSON built by `src/mcp/worldstate-summary.ts`, with no Discord markup and ISO times plus an "in 2h 5m" string.
+
+## Deployment
+
+`.github/workflows/docker-publish.yml` runs typecheck and tests, then buildx builds `linux/amd64,linux/arm64`. It pushes to Docker Hub (except on PRs) using the secrets `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`. The image is `vars.DOCKERHUB_IMAGE`, or `<username>/rats-den-warframe-bot` when that variable is unset. Tags: `latest` on main, semver on `v*.*.*` tags, and `sha-<short>`. Runtime data goes in `/app/data` (a volume). `.mcp.json` points Claude Code at the running bot via `RATS_DEN_MCP_URL`/`RATS_DEN_MCP_TOKEN`.

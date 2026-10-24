@@ -1,0 +1,13 @@
+services:
+  bot:
+    image: ${DOCKERHUB_IMAGE:?set DOCKERHUB_IMAGE, e.g. yourname/rats-den-warframe-bot}:${BOT_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # MCP + health endpoint. Bound to localhost; put a TLS reverse proxy in front to reach it remotely.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - bot-data:/app/data
+
+volumes:
+  bot-data:
