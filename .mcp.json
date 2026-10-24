@@ -2,7 +2,7 @@
   "mcpServers": {
     "cephalon-ordis": {
       "type": "http",
-      "url": "${RATS_DEN_MCP_URL:-http://localhost:3000/mcp}",
+      "url": "${RATS_DEN_MCP_URL:-https://ratsden.chiavino.de/mcp}",
       "headers": {
         "Authorization": "Bearer ${RATS_DEN_MCP_TOKEN}"
       }
