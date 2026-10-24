@@ -124,8 +124,8 @@ claude mcp add --transport http rats-den-bot https://bot.example.com/mcp --heade
 - tag `v1.2.3` → `:1.2.3`, `:1.2` and `:sha-<short>`
 - pull requests → build only, nothing pushed
 
-It uses the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with
-read/write scope). The image name defaults to `<DOCKERHUB_USERNAME>/rats-den-warframe-bot`; set a repository
+It uses the repository secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (preferably a Docker Hub access token with
+read/write scope rather than the account password). The image name defaults to `<DOCKER_USERNAME>/rats-den-warframe-bot`; set a repository
 **variable** `DOCKERHUB_IMAGE` to override it.
 
 ## Data sources
