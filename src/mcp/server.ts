@@ -36,10 +36,10 @@ export function createMcpServer(ctx: AppContext): McpServer {
   const { config, store, client } = ctx;
   const guildId = config.DISCORD_GUILD_ID;
   const server = new McpServer(
-    { name: 'rats-den-warframe-bot', version: '1.0.0' },
+    { name: 'cephalon-ordis', title: config.BOT_NAME, version: '1.0.0' },
     {
       instructions:
-        `Companion bot for the Warframe clan "${config.CLAN_NAME}" and its Discord server. ` +
+        `${config.BOT_NAME}, the companion bot for the Warframe clan "${config.CLAN_NAME}" and its Discord server. ` +
         'Use the get_* tools for live Warframe data and clan info. Tools that post to Discord ' +
         '(send_announcement, create_event) are visible to the whole clan: confirm wording with the user first. ' +
         'Call list_channels_and_roles to find channel and role IDs.',
@@ -118,6 +118,7 @@ export function createMcpServer(ctx: AppContext): McpServer {
       const settings = store.getSettings(guildId);
       return {
         clan: config.CLAN_NAME,
+        bot: config.BOT_NAME,
         discordServer: { id: guild.id, name: guild.name, memberCount: guild.memberCount },
         registeredMembers: store.listMembers(guildId).length,
         channels: {

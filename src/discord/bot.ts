@@ -1,6 +1,7 @@
 import {
   type ChatInputCommandInteraction,
   Client,
+  EmbedBuilder,
   Events,
   GatewayIntentBits,
   type Interaction,
@@ -10,6 +11,8 @@ import {
 import type { AppContext } from '../context.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
 import { handleButton } from './buttons.js';
+import { COLORS } from './embeds.js';
+import { brandIcon, syncIdentity } from './identity.js';
 import type { Command } from './command.js';
 import { clan } from './commands/clan.js';
 import { event } from './commands/event.js';
@@ -45,6 +48,7 @@ export function attachHandlers(ctx: AppContext): void {
 
   client.once(Events.ClientReady, async (ready) => {
     console.log(`[discord] logged in as ${ready.user.tag}`);
+    await syncIdentity(ctx);
     const guild = await ready.guilds.fetch(config.DISCORD_GUILD_ID).catch(() => null);
     if (!guild) {
       console.error(`[discord] the bot is not in guild ${config.DISCORD_GUILD_ID}; invite it with the applications.commands and bot scopes.`);
@@ -100,12 +104,17 @@ export function attachHandlers(ctx: AppContext): void {
       if (!channelId) return;
       try {
         const channel = await getSendableChannel(ctx, channelId);
-        await channel.send({
-          content:
-            `🐀 Welcome to **${config.CLAN_NAME}**, ${member}! ` +
-            'Link your Warframe name with `/clan register`, check `/event list` for clan runs, and use `/lfg` to find a squad.',
-          allowedMentions: { users: [member.id] },
-        });
+        const embed = new EmbedBuilder()
+          .setColor(COLORS.brand)
+          .setTitle(`Welcome to ${config.CLAN_NAME}, Operator!`)
+          .setDescription(
+            `${config.BOT_NAME} is pleased to have you aboard.\n\n` +
+              '• Link your Warframe name with `/clan register`\n' +
+              '• See upcoming clan runs with `/event list`\n' +
+              '• Find a squad with `/lfg`',
+          )
+          .setThumbnail(brandIcon(ctx) ?? null);
+        await channel.send({ content: `${member}`, embeds: [embed], allowedMentions: { users: [member.id] } });
       } catch (err) {
         console.error('[discord] welcome message failed:', err);
       }

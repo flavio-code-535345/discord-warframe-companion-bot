@@ -109,6 +109,12 @@ const MIGRATIONS: string[] = [
     seen_at INTEGER NOT NULL
   );
   `,
+  `
+  CREATE TABLE bot_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -351,6 +357,19 @@ export class Store {
   lfgMembers(id: number): string[] {
     const rows = this.db.prepare('SELECT user_id FROM lfg_members WHERE post_id = ? ORDER BY rowid').all(id) as Row[];
     return rows.map((r) => String(r.user_id));
+  }
+
+  // --- bot-wide key/value state ---
+
+  getMeta(key: string): string | null {
+    const r = this.db.prepare('SELECT value FROM bot_meta WHERE key = ?').get(key) as Row | undefined;
+    return str(r?.value);
+  }
+
+  setMeta(key: string, value: string): void {
+    this.db
+      .prepare('INSERT INTO bot_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value')
+      .run(key, value);
   }
 
   // --- worldstate notification de-duplication ---

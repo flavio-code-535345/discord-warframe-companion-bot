@@ -2,6 +2,7 @@ import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { UserError } from '../../services/clan.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';
+import { brandIcon } from '../identity.js';
 
 export const PLATFORMS = ['PC', 'PlayStation', 'Xbox', 'Switch', 'Mobile'] as const;
 
@@ -43,7 +44,7 @@ export const clan: Command = {
       const embed = new EmbedBuilder()
         .setColor(COLORS.brand)
         .setTitle(`🐀 ${ctx.config.CLAN_NAME}`)
-        .setThumbnail(guild.iconURL())
+        .setThumbnail(brandIcon(ctx) ?? guild.iconURL())
         .addFields(
           { name: 'Discord members', value: String(guild.memberCount), inline: true },
           { name: 'Registered Tenno', value: String(ctx.store.listMembers(guildId).length), inline: true },

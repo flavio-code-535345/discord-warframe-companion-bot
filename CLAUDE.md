@@ -2,7 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Discord bot for the Warframe clan "The Rats Den 69" (TypeScript, ESM, Node 24, discord.js v14) that also serves an MCP server over HTTP. Published as a Docker image to Docker Hub by GitHub Actions.
+"Cephalon Ordis", the Discord bot for the Warframe clan "The Rats Den 69" (TypeScript, ESM, Node 24, discord.js v14). It also serves an MCP server over HTTP and is published as a Docker image (`flavio11113/rats-den-warframe-bot`) to Docker Hub by GitHub Actions.
+
+**Identity:** `src/discord/identity.ts` syncs the bot's Discord username (`BOT_NAME`) and avatar (`assets/clan-logo.png`, which the Dockerfile copies into the image) on every `ClientReady`. It only calls the API when something differs, because Discord rate-limits both; the avatar hash is kept in the `bot_meta` table. Embeds use `brandIcon(ctx)` (the bot's avatar URL) for icons, and `COLORS.brand` is the crystal blue sampled from the logo.
 
 ## Commands
 

@@ -10,6 +10,7 @@ const EnvSchema = z.object({
     .string({ error: 'is required (ID of the clan Discord server)' })
     .regex(/^\d+$/, 'must be the numeric ID of the clan Discord server'),
   CLAN_NAME: z.string().default('The Rats Den 69'),
+  BOT_NAME: z.string().min(2).max(32).default('Cephalon Ordis'),
   WARFRAME_PLATFORM: z.enum(['pc', 'ps4', 'xbox', 'switch', 'mobile']).default('pc'),
   DATA_DIR: z.string().default('./data'),
   WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(30).default(60),

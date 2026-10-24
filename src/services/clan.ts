@@ -9,6 +9,7 @@ import {
 import type { AppContext } from '../context.js';
 import type { ClanEvent, LfgPost } from '../db.js';
 import { COLORS } from '../discord/embeds.js';
+import { brandIcon } from '../discord/identity.js';
 import { discordTime } from '../time.js';
 
 /**
@@ -51,7 +52,7 @@ export function renderEvent(ctx: AppContext, event: ClanEvent): Pick<MessageCrea
       { name: `${RSVP_LABELS.maybe} (${rsvps.maybe.length})`, value: list(rsvps.maybe), inline: true },
       { name: `${RSVP_LABELS.declined} (${rsvps.declined.length})`, value: list(rsvps.declined), inline: true },
     )
-    .setFooter({ text: `${ctx.config.CLAN_NAME} · event #${event.id}` });
+    .setFooter({ text: `${ctx.config.CLAN_NAME} · event #${event.id}`, iconURL: brandIcon(ctx) });
   if (event.cancelled || event.startsAt < Date.now() - 3_600_000) return { embeds: [embed], components: [] };
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`rsvp:${event.id}:going`).setLabel('Going').setEmoji('✅').setStyle(ButtonStyle.Success),
@@ -115,7 +116,8 @@ export async function postAnnouncement(ctx: AppContext, input: AnnouncementInput
   const channel = await resolveAnnouncementChannel(ctx, input.channelId);
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)
-    .setTitle(input.title?.slice(0, 256) || `📣 ${ctx.config.CLAN_NAME}`)
+    .setAuthor({ name: `${ctx.config.BOT_NAME} · ${ctx.config.CLAN_NAME}`, iconURL: brandIcon(ctx) })
+    .setTitle(input.title?.slice(0, 256) || '📣 Clan announcement')
     .setDescription(input.message.slice(0, 4000))
     .setTimestamp();
   return channel.send({
@@ -141,7 +143,7 @@ export function renderLfg(ctx: AppContext, post: LfgPost): Pick<MessageCreateOpt
       { name: 'Host', value: `<@${post.hostId}>`, inline: true },
       { name: 'Posted', value: discordTime(post.createdAt), inline: true },
     )
-    .setFooter({ text: `${ctx.config.CLAN_NAME} · LFG #${post.id}` });
+    .setFooter({ text: `${ctx.config.CLAN_NAME} · LFG #${post.id}`, iconURL: brandIcon(ctx) });
   if (post.closed) return { embeds: [embed], components: [] };
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`lfg:${post.id}:join`).setLabel('Join').setStyle(ButtonStyle.Success).setDisabled(full),

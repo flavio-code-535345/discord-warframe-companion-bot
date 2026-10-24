@@ -5,7 +5,8 @@ import { type Fissure, type WorldState, isBaroHere, rewardText } from '../warfra
 import { discordTime } from '../time.js';
 
 export const COLORS = {
-  brand: 0x8b5a2b,
+  /** Crystal blue sampled from the clan logo's glow. */
+  brand: 0x3b9ac7,
   info: 0x3b82f6,
   success: 0x22c55e,
   warn: 0xf59e0b,

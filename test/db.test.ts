@@ -64,6 +64,14 @@ test('settings: partial updates keep other fields', () => {
   });
 });
 
+test('bot meta values round-trip and overwrite', () => {
+  const store = new Store(':memory:');
+  assert.equal(store.getMeta('avatar_sha256'), null);
+  store.setMeta('avatar_sha256', 'a');
+  store.setMeta('avatar_sha256', 'b');
+  assert.equal(store.getMeta('avatar_sha256'), 'b');
+});
+
 test('markSeen returns true only the first time', () => {
   const store = new Store(':memory:');
   assert.equal(store.seenCount(), 0);

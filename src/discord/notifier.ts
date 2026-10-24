@@ -4,6 +4,7 @@ import { getSendableChannel } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { type WorldState, getWorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, baroEmbed, sortieEmbed, steelPathEmbed } from './embeds.js';
+import { brandIcon } from './identity.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
 const SEEN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -97,6 +98,8 @@ export class Notifier {
     const bootstrap = store.seenCount() === 0;
     const fresh = collectAlerts(ws).filter((a) => store.markSeen(a.key));
     if (bootstrap || fresh.length === 0) return;
+    const footer = { text: `${this.ctx.config.BOT_NAME} · ${this.ctx.config.CLAN_NAME}`, iconURL: brandIcon(this.ctx) };
+    for (const a of fresh) a.embed.setFooter(footer);
 
     for (const settings of store.allSettings()) {
       if (!settings.alertsChannelId) continue;

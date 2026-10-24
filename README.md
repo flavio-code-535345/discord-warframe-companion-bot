@@ -1,6 +1,8 @@
-# 🐀 The Rats Den 69 — Warframe clan bot
+<p align="center"><img src="assets/clan-logo.png" width="128" alt="Cephalon Ordis logo"></p>
 
-Discord companion bot for the Warframe clan **The Rats Den 69**: live world state, market prices, drop tables,
+# Cephalon Ordis — The Rats Den 69 clan bot
+
+**Cephalon Ordis** is the Discord companion bot for the Warframe clan **The Rats Den 69**: live world state, market prices, drop tables,
 a clan roster, events with RSVPs, LFG squads, automatic alerts, and an **MCP server** so AI assistants
 (Claude Code, Claude Desktop, …) can read Warframe data and manage the clan.
 
@@ -32,6 +34,11 @@ Exilus Adapters or Wraith/Vandal parts. Each alert is posted once (tracked in th
 4. Copy the server ID (Discord settings → Advanced → Developer Mode, then right-click the server) into `DISCORD_GUILD_ID`.
 
 Slash commands are registered to that server automatically on startup. Then run `/setup alerts` and `/setup announcements`.
+
+**Name and avatar:** on startup the bot renames itself to `BOT_NAME` (default `Cephalon Ordis`) and uploads
+`assets/clan-logo.png` as its avatar. It only sends a change when something differs, because Discord allows just
+a couple of changes per hour. To change the logo, replace that file and ship a new image. The application name in
+the Developer Portal (General Information → Name) is separate: set it to `Cephalon Ordis` there too.
 
 ## 2. Configure
 
@@ -100,7 +107,7 @@ npm run dev
 
 **Claude Code** — this repo ships a project `.mcp.json`. Export the token before starting Claude Code. With the
 Docker stack, also export the public URL `https://<BOT_DOMAIN>/mcp`, since the default is
-`http://localhost:3000/mcp`. Then approve the `rats-den-bot` server when prompted:
+`http://localhost:3000/mcp`. Then approve the `cephalon-ordis` server when prompted:
 
 ```bash
 export RATS_DEN_MCP_TOKEN=<your MCP_AUTH_TOKEN>
@@ -113,7 +120,7 @@ export RATS_DEN_MCP_URL=https://bot.example.com/mcp
 Or add it to any project/user scope by hand:
 
 ```bash
-claude mcp add --transport http rats-den-bot https://bot.example.com/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http cephalon-ordis https://bot.example.com/mcp --header "Authorization: Bearer <token>"
 ```
 
 ## CI/CD
