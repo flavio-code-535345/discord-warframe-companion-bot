@@ -62,7 +62,8 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
       signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) {
-      console.error(`[answers] free AI returned HTTP ${res.status}`);
+      const detail = (await res.text().catch(() => '')).replace(/s+/g, ' ').slice(0, 200);
+      console.error(`[answers] free AI returned HTTP ${res.status} from ${new URL(config.FREE_AI_URL).host}${new URL(config.FREE_AI_URL).pathname} (model ${config.FREE_AI_MODEL}): ${detail}`);
       return null;
     }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
