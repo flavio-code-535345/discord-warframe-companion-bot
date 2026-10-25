@@ -24,8 +24,9 @@ works out what you're asking and answers from live data. No AI model or API key 
 | anything else ("how do Archon Shards work?") | the best-matching wiki article |
 | "help" | examples of what to ask |
 
-Optionally, `/setup chat` names a channel where Ordis answers every message ending in `?` (needs the Message Content
-intent; see *Optional: Claude-powered chat* below).
+`/setup chat` names a channel where Ordis answers without a mention, slash command or DM: every message ending in `?`, plus
+plain lookups like "price of arcane energize" or "baro". Ordinary chatter is ignored, and so is anything Ordis can't answer
+(needs the Message Content intent: enable it in the Developer Portal first, then set `ENABLE_MESSAGE_CONTENT=true`).
 
 ### Commands
 

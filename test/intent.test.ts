@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanQuestion, detectIntent } from '../src/answers/intent.js';
+import { cleanQuestion, detectIntent, isChannelQuestion } from '../src/answers/intent.js';
 import { titleCandidates } from '../src/warframe/wiki.js';
 
 const cases: [string, ReturnType<typeof detectIntent>][] = [
@@ -43,6 +43,15 @@ const cases: [string, ReturnType<typeof detectIntent>][] = [
 for (const [question, expected] of cases) {
   test(`detectIntent: "${question}"`, () => assert.deepEqual(detectIntent(question), expected));
 }
+
+test('isChannelQuestion picks up questions and lookups but not chatter', () => {
+  for (const q of ['how do archon shards work?', 'price of arcane energize', 'where does neo n16 drop', 'what is baro selling', 'any fissures up']) {
+    assert.equal(isChannelQuestion(q), true, q);
+  }
+  for (const q of ['good night all', 'lol that was close', 'gg everyone', '']) {
+    assert.equal(isChannelQuestion(q), false, q);
+  }
+});
 
 test('cleanQuestion drops filler words', () => {
   assert.equal(cleanQuestion('what is the best way to level my mastery rank'), 'level mastery rank');

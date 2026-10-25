@@ -1,6 +1,7 @@
 import { type Message, type SendableChannels } from 'discord.js';
 import type { ChatTurn } from '../ai/ordis.js';
 import { splitForDiscord } from '../ai/ordis.js';
+import { isChannelQuestion } from '../answers/intent.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
@@ -61,7 +62,7 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   const reply = (content: string) => message.reply({ content, allowedMentions: { parse: [], repliedUser: true } });
   const question = stripMention(message.content, botId);
   // In the chat channel Ordis only picks up actual questions, so ordinary chatter ("good night all") is left alone.
-  if (inChatChannel && !mentioned && !question.endsWith('?')) return;
+  if (inChatChannel && !mentioned && !isChannelQuestion(question)) return;
 
   // Ordis is the clan's bot: DMs are for clan members only.
   if (isDM) {
