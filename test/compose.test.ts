@@ -34,3 +34,14 @@ test('stops calling the model once the daily allowance is used', async () => {
   await composeAnswer(tight, 'q', passages, f);
   assert.ok(calls <= 1);
 });
+
+test('falls back to the backup model when the main one is overloaded', async () => {
+  const models: string[] = [];
+  const out = await composeAnswer({ ...config, FREE_AI_FALLBACK_MODEL: 'backup' }, 'q', passages, async (_url, init) => {
+    const model = JSON.parse(String(init.body)).model as string;
+    models.push(model);
+    return model === 'backup' ? reply('Answer from the backup.')() : new Response('busy', { status: 503 });
+  });
+  assert.deepEqual(models, ['m', 'backup']);
+  assert.equal(out, 'Answer from the backup.');
+});

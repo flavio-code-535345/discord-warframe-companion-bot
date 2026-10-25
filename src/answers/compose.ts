@@ -10,6 +10,7 @@ export interface ComposeConfig {
   FREE_AI_KEY?: string | undefined;
   FREE_AI_URL: string;
   FREE_AI_MODEL: string;
+  FREE_AI_FALLBACK_MODEL?: string | undefined;
   FREE_AI_DAILY_LIMIT: number;
 }
 
@@ -21,6 +22,9 @@ const SYSTEM = [
   'Lead with the answer, not with "according to the wiki". Do not mention the excerpts or the wiki. Light Ordis flavour is fine, but stay brief and accurate.',
   'If the excerpts do not contain the answer, reply with exactly: NOT_COVERED',
 ].join(' ');
+
+/** Statuses that mean "try again later" rather than "this request is wrong". */
+const TEMPORARY = new Set([408, 429, 500, 502, 503, 504]);
 
 let day = '';
 let used = 0;
@@ -46,34 +50,41 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
     .slice(0, 3)
     .map((p, i) => `[${i + 1}] ${p.title}\n${p.extract.slice(0, 1500)}`)
     .join('\n\n');
-  try {
-    const res = await fetcher(`${config.FREE_AI_URL.replace(/\/+$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.FREE_AI_KEY}` },
-      body: JSON.stringify({
-        model: config.FREE_AI_MODEL,
-        temperature: 0.2,
-        // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
-        max_tokens: 1200,
-        ...(/gpt-oss|gemini/.test(config.FREE_AI_MODEL) ? { reasoning_effort: 'low' } : {}),
-        messages: [
-          { role: 'system', content: SYSTEM },
-          { role: 'user', content: `Question: ${question}\n\nExcerpts:\n${excerpts}` },
-        ],
-      }),
-      signal: AbortSignal.timeout(12_000),
-    });
-    if (!res.ok) {
-      const detail = (await res.text().catch(() => '')).replace(/s+/g, ' ').slice(0, 200);
-      console.error(`[answers] free AI returned HTTP ${res.status} from ${new URL(config.FREE_AI_URL).host}${new URL(config.FREE_AI_URL).pathname} (model ${config.FREE_AI_MODEL}): ${detail}`);
-      return null;
+  const url = `${config.FREE_AI_URL.replace(/\/+$/, '')}/chat/completions`;
+  const where = `${new URL(config.FREE_AI_URL).host}${new URL(config.FREE_AI_URL).pathname}`;
+  // A busy or throttled model (503/429...) is usually temporary, so the backup model gets a go before giving up.
+  const models = [config.FREE_AI_MODEL, config.FREE_AI_FALLBACK_MODEL].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);
+  for (const model of models) {
+    try {
+      const res = await fetcher(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.FREE_AI_KEY}` },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
+          max_tokens: 1200,
+          ...(/gpt-oss|gemini/.test(model) ? { reasoning_effort: 'low' } : {}),
+          messages: [
+            { role: 'system', content: SYSTEM },
+            { role: 'user', content: `Question: ${question}\n\nExcerpts:\n${excerpts}` },
+          ],
+        }),
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
+        console.error(`[answers] free AI returned HTTP ${res.status} from ${where} (model ${model}): ${detail}`);
+        if (TEMPORARY.has(res.status)) continue;
+        return null;
+      }
+      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      const text = data.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      if (!text || /NOT_COVERED/i.test(text)) return null;
+      return text.length > 1500 ? `${text.slice(0, 1497)}…` : text;
+    } catch (err) {
+      console.error(`[answers] free AI failed (model ${model}):`, err instanceof Error ? err.message : err);
     }
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = data.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    if (!text || /NOT_COVERED/i.test(text)) return null;
-    return text.length > 1500 ? `${text.slice(0, 1497)}…` : text;
-  } catch (err) {
-    console.error('[answers] free AI failed:', err instanceof Error ? err.message : err);
-    return null;
   }
+  return null;
 }

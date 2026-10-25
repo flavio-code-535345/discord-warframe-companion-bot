@@ -39,6 +39,7 @@ services:
       FREE_AI_KEY: ${FREE_AI_KEY:-}
       FREE_AI_URL: ${FREE_AI_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
       FREE_AI_MODEL: ${FREE_AI_MODEL:-gemini-flash-latest}
+      FREE_AI_FALLBACK_MODEL: ${FREE_AI_FALLBACK_MODEL:-gemini-3.5-flash-lite}
       FREE_AI_DAILY_LIMIT: ${FREE_AI_DAILY_LIMIT:-150}
       WATCHTOWER_URL: ${WATCHTOWER_URL:-}
       WATCHTOWER_TOKEN: ${WATCHTOWER_TOKEN:-}
