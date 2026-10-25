@@ -41,7 +41,8 @@ plain lookups like "price of arcane energize" or "baro". Ordinary chatter is ign
 | `/track reward · fissure · cycle · baro · list · remove` | Personal DM alerts: a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), fissures matching tier/mission/Steel Path, a cycle starting (e.g. Cetus night), Baro arriving |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
-| `/lfg activity [details] [size]` | Squad post with Join / Leave / Close buttons; pings everyone when full |
+| `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; pings everyone when full. With squad voice on, it also gets its own voice channel |
+| `/activity set · clear · list` | (Manage Server) a picture, ping role and fixed channel for each LFG activity |
 | `/setup alerts · announcements · welcome · chat · modlog · honeypot · verification · off · show` | (Manage Server) choose channels and the alert ping role |
 
 ### Moderation
@@ -59,6 +60,22 @@ plain lookups like "price of arcane energize" or "baro". Ordinary chatter is ign
 Commands are hidden from members without the permission. Nobody can act on themselves, the owner, Ordis, or anyone
 whose top role is at or above theirs or Ordis's. Every action is posted to the `/setup modlog` channel and recorded
 in Discord's audit log with the moderator's name.
+
+### LFG squads: voice channels and pictures
+
+`/setup lfgvoice category [grace_minutes]` gives every `/lfg` squad its own temporary voice channel in that category. Everyone
+can see it, but only the host and squad members can connect: pressing **Join** unlocks it, **Leave** locks it again, and the
+size of the squad is the channel's user limit. The squad ends (and its post is closed) when the host has not been in the voice
+channel for the grace period (default 5 minutes, counted from creation, so a host who never joins doesn't leave an empty
+channel behind), when `expires` runs out (like `30m`, `2h`, `1d`), or when someone presses Close or the host leaves. A closed
+squad's voice channel is deleted as soon as it is empty, so nobody is kicked mid-conversation. Each host can have one open
+squad with voice at a time. The upkeep runs once a minute and survives restarts. `/setup off feature:Squad voice channels`
+turns it off.
+
+`/activity set name [image] [role] [channel]` gives an activity (any name, the suggestions in `/lfg` are only hints) a
+**picture** shown on its squad posts, a **role** pinged when the squad is posted, and a **fixed channel** to post in. Use a
+direct `https` link to an image. `/activity clear` removes a setting, and `/activity list` shows everything. The same
+settings are in the admin panel (Settings page) and the `set_activity`, `list_activities` and `remove_activity` MCP tools.
 
 ### Honeypot
 

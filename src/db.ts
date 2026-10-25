@@ -22,6 +22,10 @@ export interface GuildSettings {
   /** Honeypot: anyone without moderator powers who posts here is removed. Action is 'ban', 'softban' or 'kick'. */
   honeypotChannelId: string | null;
   honeypotAction: string | null;
+  /** Category for auto-created squad voice channels (/lfg); null leaves squads without voice. */
+  lfgVoiceCategoryId: string | null;
+  /** Minutes a squad waits for its host to be in voice before closing (default 5). */
+  lfgVoiceGraceMinutes: number | null;
 }
 
 /** GuildSettings field → guild_settings column. Adding a setting means a migration plus one line here. */
@@ -38,8 +42,10 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['verifyMinAccountAgeDays', 'verify_min_account_age_days'],
   ['honeypotChannelId', 'honeypot_channel_id'],
   ['honeypotAction', 'honeypot_action'],
+  ['lfgVoiceCategoryId', 'lfg_voice_category_id'],
+  ['lfgVoiceGraceMinutes', 'lfg_voice_grace_minutes'],
 ];
-const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays']);
+const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes']);
 
 export interface Warning {
   id: number;
@@ -120,6 +126,20 @@ export interface LfgPost {
   size: number;
   closed: boolean;
   createdAt: number;
+  /** The squad's auto-created voice channel, until it is deleted. */
+  voiceChannelId: string | null;
+  /** When the squad ends by itself (epoch ms), or null for no limit. */
+  expiresAt: number | null;
+  /** Since when the host has been out of the squad's voice channel; null while they are in it. */
+  hostAbsentSince: number | null;
+}
+
+/** An activity people can run; carries the picture on its LFG posts and optional pings/channel. */
+export interface Activity {
+  name: string;
+  imageUrl: string | null;
+  roleId: string | null;
+  channelId: string | null;
 }
 
 type Row = Record<string, unknown>;
@@ -258,6 +278,19 @@ const MIGRATIONS: string[] = [
   ALTER TABLE guild_settings ADD COLUMN honeypot_channel_id TEXT;
   ALTER TABLE guild_settings ADD COLUMN honeypot_action TEXT;
   `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN lfg_voice_category_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN lfg_voice_grace_minutes INTEGER;
+  ALTER TABLE lfg_posts ADD COLUMN voice_channel_id TEXT;
+  ALTER TABLE lfg_posts ADD COLUMN expires_at INTEGER;
+  ALTER TABLE lfg_posts ADD COLUMN host_absent_since INTEGER;
+  CREATE TABLE activities (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    image_url TEXT,
+    role_id TEXT,
+    channel_id TEXT
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -300,7 +333,14 @@ function toLfg(r: Row): LfgPost {
     size: Number(r.size),
     closed: Boolean(r.closed),
     createdAt: Number(r.created_at),
+    voiceChannelId: str(r.voice_channel_id),
+    expiresAt: r.expires_at === null || r.expires_at === undefined ? null : Number(r.expires_at),
+    hostAbsentSince: r.host_absent_since === null || r.host_absent_since === undefined ? null : Number(r.host_absent_since),
   };
+}
+
+function toActivity(r: Row): Activity {
+  return { name: String(r.name), imageUrl: str(r.image_url), roleId: str(r.role_id), channelId: str(r.channel_id) };
 }
 
 export class Store {
@@ -478,6 +518,59 @@ export class Store {
 
   setLfgMessage(id: number, messageId: string): void {
     this.db.prepare('UPDATE lfg_posts SET message_id = ? WHERE id = ?').run(messageId, id);
+  }
+
+  /** Squads that may need voice upkeep: open ones with a voice channel or expiry, and closed ones whose voice channel still exists. */
+  lfgForSweep(): LfgPost[] {
+    const rows = this.db
+      .prepare('SELECT * FROM lfg_posts WHERE voice_channel_id IS NOT NULL OR (closed = 0 AND expires_at IS NOT NULL)')
+      .all() as Row[];
+    return rows.map(toLfg);
+  }
+
+  /** The host's open squad that has a voice channel, if any. */
+  openVoiceLfgByHost(guildId: string, hostId: string): LfgPost | null {
+    const r = this.db
+      .prepare('SELECT * FROM lfg_posts WHERE guild_id = ? AND host_id = ? AND closed = 0 AND voice_channel_id IS NOT NULL')
+      .get(guildId, hostId) as Row | undefined;
+    return r ? toLfg(r) : null;
+  }
+
+  setLfgVoice(id: number, voiceChannelId: string | null, hostAbsentSince: number | null = null): void {
+    this.db.prepare('UPDATE lfg_posts SET voice_channel_id = ?, host_absent_since = ? WHERE id = ?').run(voiceChannelId, hostAbsentSince, id);
+  }
+
+  setLfgHostAbsent(id: number, since: number | null): void {
+    this.db.prepare('UPDATE lfg_posts SET host_absent_since = ? WHERE id = ?').run(since, id);
+  }
+
+  setLfgExpiry(id: number, expiresAt: number | null): void {
+    this.db.prepare('UPDATE lfg_posts SET expires_at = ? WHERE id = ?').run(expiresAt, id);
+  }
+
+  // --- activities ---
+
+  listActivities(): Activity[] {
+    return (this.db.prepare('SELECT * FROM activities ORDER BY name COLLATE NOCASE').all() as Row[]).map(toActivity);
+  }
+
+  getActivity(name: string): Activity | null {
+    const r = this.db.prepare('SELECT * FROM activities WHERE name = ?').get(name) as Row | undefined;
+    return r ? toActivity(r) : null;
+  }
+
+  /** Creates or replaces an activity (names are case-insensitive); `replacesName` renames an existing one. */
+  saveActivity(a: Activity, replacesName?: string): void {
+    if (replacesName && replacesName.toLowerCase() !== a.name.toLowerCase()) this.removeActivity(replacesName);
+    this.db
+      .prepare(
+        'INSERT INTO activities (name, image_url, role_id, channel_id) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, role_id = excluded.role_id, channel_id = excluded.channel_id',
+      )
+      .run(a.name, a.imageUrl, a.roleId, a.channelId);
+  }
+
+  removeActivity(name: string): boolean {
+    return Number(this.db.prepare('DELETE FROM activities WHERE name = ?').run(name).changes) > 0;
   }
 
   closeLfg(id: number): void {

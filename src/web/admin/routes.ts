@@ -5,6 +5,7 @@ import { summaryOf, takeBackup } from '../../backup/service.js';
 import type { AppContext } from '../../context.js';
 import type { GuildSettings, PanelSession } from '../../db.js';
 import { disableVerification, setupVerification } from '../../discord/verification.js';
+import { validImageUrl } from '../../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { modLog } from '../../moderation/service.js';
 import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
@@ -47,7 +48,7 @@ export function adminRouter(ctx: AppContext): Router {
     const nonce = randomBytes(16).toString('base64');
     res.locals.nonce = nonce;
     res.set({
-      'Content-Security-Policy': `default-src 'none'; img-src 'self' https://cdn.discordapp.com; style-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      'Content-Security-Policy': `default-src 'none'; img-src 'self' https:; style-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'same-origin',
@@ -158,6 +159,13 @@ export function adminRouter(ctx: AppContext): Router {
       .sort((a, b) => (a!.parent?.rawPosition ?? -1) - (b!.parent?.rawPosition ?? -1) || a!.rawPosition - b!.rawPosition)
       .map((c) => ({ value: c!.id, label: `#${c!.name}${c!.parent ? ` (${c!.parent.name})` : ''}` }));
   }
+  async function categoryOptions(g: Guild): Promise<Option[]> {
+    const channels = await g.channels.fetch();
+    return [...channels.values()]
+      .filter((c) => c?.type === ChannelType.GuildCategory)
+      .sort((a, b) => a!.rawPosition - b!.rawPosition)
+      .map((c) => ({ value: c!.id, label: c!.name }));
+  }
   async function roleOptions(g: Guild): Promise<Option[]> {
     const roles = await g.roles.fetch();
     return [...roles.values()]
@@ -198,9 +206,11 @@ export function adminRouter(ctx: AppContext): Router {
 
   router.get('/settings', async (req, res) => {
     const g = await guild();
-    const [channels, roles] = await Promise.all([channelOptions(g), roleOptions(g)]);
+    const [channels, roles, categories] = await Promise.all([channelOptions(g), roleOptions(g), categoryOptions(g)]);
     const s = store.getSettings(guildId);
     const p = pc(res, 'settings', req);
+    const activities = store.listActivities();
+    const nameOfId = (cid: string | null, list: Option[]) => (cid ? e(list.find((o) => o.value === cid)?.label ?? cid) : '—');
     const field = (label: string, name: keyof GuildSettings, opts: Option[]) => `<label>${label}${select(name, opts, s[name] as string | null)}</label>`;
     const body = `<h1>Settings</h1>
 <div class="card"><form class="stack" method="post" action="/admin/settings">${csrfField(p.session)}
@@ -212,6 +222,34 @@ ${field('Moderation log channel', 'modLogChannelId', channels)}
 ${field('Welcome channel', 'welcomeChannelId', channels)}
 ${field('Ordis chat channel', 'chatChannelId', channels)}
 </div><div><button>Save</button></div></form></div>
+<h2>Squad voice channels</h2>
+<div class="card"><form class="stack" method="post" action="/admin/settings/lfgvoice">${csrfField(p.session)}
+<p class="muted">Every /lfg squad gets its own temporary voice channel in this category. Joining the squad unlocks it, and it is deleted when the squad ends and the channel is empty.</p>
+<div class="row">
+<label>Category${select('category', categories, s.lfgVoiceCategoryId, '— pick a category —')}</label>
+<label>Host grace (minutes)<input type="number" name="grace" min="1" max="60" value="${s.lfgVoiceGraceMinutes ?? 5}"></label>
+</div><div><button>${s.lfgVoiceCategoryId ? 'Update squad voice' : 'Turn on squad voice'}</button></div></form>
+${s.lfgVoiceCategoryId ? `<p>${actionButton(p.session, '/admin/settings/lfgvoice/off', 'Turn squad voice off', { danger: true, confirm: true })}</p>` : ''}</div>
+<h2>LFG activities</h2>
+<div class="card">
+${
+  activities.length
+    ? `<table><tr><th>Activity</th><th>Picture</th><th>Ping role</th><th>Channel</th><th></th></tr>${activities
+        .map(
+          (a) =>
+            `<tr><td>${e(a.name)}</td><td>${a.imageUrl ? `<img src="${e(a.imageUrl)}" alt="" width="40" height="40" class="thumb">` : '—'}</td><td>${nameOfId(a.roleId, roles)}</td><td>${nameOfId(a.channelId, channels)}</td><td>${actionButton(p.session, `/admin/settings/activity/remove?name=${encodeURIComponent(a.name)}`, 'Remove', { danger: true, confirm: true })}</td></tr>`,
+        )
+        .join('')}</table>`
+    : '<p class="muted">No activity has a picture, role or channel yet.</p>'
+}
+<form class="stack" method="post" action="/admin/settings/activity">${csrfField(p.session)}
+<p class="muted">Add an activity or update one by using its name again. Empty fields keep what is already set. The picture must be a direct https image link.</p>
+<div class="row">
+<label>Activity name<input name="name" maxlength="100" required placeholder="Eidolon hunt"></label>
+<label>Picture URL<input name="image" maxlength="1000" placeholder="https://…/image.png"></label>
+<label>Ping role${select('role', roles, null, '— unchanged —')}</label>
+<label>Fixed channel${select('channel', channels, null, '— unchanged —')}</label>
+</div><div><button>Save activity</button></div></form></div>
 <h2>Honeypot</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings/honeypot">${csrfField(p.session)}
 <p class="muted">Anyone without moderator powers who posts in this channel is removed. Pick a channel nobody should write in; a "do not post" notice is posted there.</p>
@@ -253,6 +291,64 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
       });
       await audit(session, 'Changed bot channel settings');
       return 'Settings saved.';
+    }),
+  );
+
+  router.post(
+    '/settings/lfgvoice',
+    action('settings', async (req, session) => {
+      const category = id(req.body.category);
+      if (!category) throw new UserError('Pick a category for the squad voice channels.');
+      const g = await guild();
+      const found = await g.channels.fetch(category).catch(() => null);
+      if (found?.type !== ChannelType.GuildCategory) throw new UserError('That category no longer exists.');
+      const grace = Math.max(1, Math.min(60, Number(req.body.grace) || 5));
+      store.updateSettings(guildId, { lfgVoiceCategoryId: category, lfgVoiceGraceMinutes: grace });
+      await audit(session, 'Turned on squad voice', [{ name: 'Category', value: found.name }]);
+      return 'Squad voice is on.';
+    }),
+  );
+
+  router.post(
+    '/settings/lfgvoice/off',
+    action('settings', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      store.updateSettings(guildId, { lfgVoiceCategoryId: null, lfgVoiceGraceMinutes: null });
+      await audit(session, 'Turned squad voice off');
+      return 'Squad voice is off. Existing squad channels are cleaned up as usual.';
+    }),
+  );
+
+  router.post(
+    '/settings/activity',
+    action('settings', async (req, session) => {
+      const name = typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 100) : '';
+      if (!name) throw new UserError('Give the activity a name.');
+      const g = await guild();
+      await Promise.all([g.channels.fetch(), g.roles.fetch()]);
+      const existing = store.getActivity(name);
+      const imageText = typeof req.body.image === 'string' ? req.body.image.trim() : '';
+      const imageUrl = imageText ? validImageUrl(imageText) : (existing?.imageUrl ?? null);
+      if (imageText && !imageUrl) throw new UserError('The picture must be a direct https link to an image, without spaces.');
+      const role = id(req.body.role) ?? existing?.roleId ?? null;
+      const channel = id(req.body.channel) ?? existing?.channelId ?? null;
+      if (role && !g.roles.cache.has(role)) throw new UserError('That role no longer exists.');
+      if (channel && !g.channels.cache.has(channel)) throw new UserError('That channel no longer exists.');
+      if (!imageUrl && !role && !channel) throw new UserError('Set a picture, a role or a channel.');
+      store.saveActivity({ name: existing?.name ?? name, imageUrl, roleId: role, channelId: channel });
+      await audit(session, existing ? 'Updated an LFG activity' : 'Added an LFG activity', [{ name: 'Activity', value: name }]);
+      return `Saved "${name}".`;
+    }),
+  );
+
+  router.post(
+    '/settings/activity/remove',
+    action('settings', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      const name = typeof req.query.name === 'string' ? req.query.name : '';
+      if (!store.removeActivity(name)) throw new UserError('That activity has no settings.');
+      await audit(session, 'Removed an LFG activity', [{ name: 'Activity', value: name }]);
+      return `Removed "${name}".`;
     }),
   );
 

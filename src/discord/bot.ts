@@ -20,6 +20,7 @@ import { postWelcome } from './welcome.js';
 import { syncIdentity } from './identity.js';
 import type { Command } from './command.js';
 import { ask } from './commands/ask.js';
+import { activity } from './commands/activity.js';
 import { backup } from './commands/backup.js';
 import { clan } from './commands/clan.js';
 import { event } from './commands/event.js';
@@ -30,12 +31,13 @@ import { setup } from './commands/setup.js';
 import { track } from './commands/track.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, activity, setup, ...MODERATION_COMMANDS, backup];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
   // text of messages that mention it and of DMs, which is all mention-based chat needs.
-  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages];
+  // GuildVoiceStates is also unprivileged: squad voice upkeep needs to see who is in a channel.
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates];
   // These two are privileged: they must also be switched on in the Developer Portal, or login fails.
   if (config.ENABLE_WELCOME) intents.push(GatewayIntentBits.GuildMembers);
   if (config.ENABLE_MESSAGE_CONTENT) intents.push(GatewayIntentBits.MessageContent);

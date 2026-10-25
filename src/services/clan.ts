@@ -130,20 +130,27 @@ export async function postAnnouncement(ctx: AppContext, input: AnnouncementInput
 
 // --- LFG ---
 
-export function renderLfg(ctx: AppContext, post: LfgPost): Pick<MessageCreateOptions, 'embeds' | 'components'> {
+export function renderLfg(ctx: AppContext, post: LfgPost, note: string | null = null): Pick<MessageCreateOptions, 'embeds' | 'components'> {
   const members = ctx.store.lfgMembers(post.id);
   const full = members.length >= post.size;
   const slots = [...members.map((id) => `<@${id}>`), ...Array(Math.max(post.size - members.length, 0)).fill('*open*')];
+  const image = ctx.store.getActivity(post.activity)?.imageUrl;
+  const description = [note, post.details].filter(Boolean).join('\n\n');
   const embed = new EmbedBuilder()
     .setColor(post.closed ? 0x6b7280 : full ? COLORS.success : COLORS.info)
     .setTitle(`${post.closed ? '🔒 ' : '🐀 '}LFG: ${post.activity}`)
-    .setDescription(post.details || null)
+    .setDescription(description || null)
     .addFields(
       { name: `Squad (${members.length}/${post.size})`, value: slots.map((s, i) => `${i + 1}. ${s}`).join('\n') },
       { name: 'Host', value: `<@${post.hostId}>`, inline: true },
       { name: 'Posted', value: discordTime(post.createdAt), inline: true },
+      ...(!post.closed && post.expiresAt ? [{ name: 'Ends', value: discordTime(post.expiresAt), inline: true }] : []),
+      ...(!post.closed && post.voiceChannelId
+        ? [{ name: 'Voice', value: `<#${post.voiceChannelId}>\nJoin the squad to get in. The host must be in voice or the squad ends.`, inline: false }]
+        : []),
     )
     .setFooter({ text: `${ctx.config.CLAN_NAME} · LFG #${post.id}`, iconURL: brandIcon(ctx) });
+  if (image) embed.setThumbnail(image);
   if (post.closed) return { embeds: [embed], components: [] };
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`lfg:${post.id}:join`).setLabel('Join').setStyle(ButtonStyle.Success).setDisabled(full),

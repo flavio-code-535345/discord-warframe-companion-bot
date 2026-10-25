@@ -46,6 +46,8 @@ function sampleBackup(): ServerBackup {
       verifyMinAccountAgeDays: 3,
       honeypotChannelId: null,
       honeypotAction: null,
+      lfgVoiceCategoryId: null,
+      lfgVoiceGraceMinutes: null,
     },
     includesMessages: true,
   };

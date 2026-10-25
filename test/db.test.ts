@@ -69,6 +69,8 @@ test('settings: partial updates keep other fields', () => {
     verifyMinAccountAgeDays: null,
     honeypotChannelId: null,
     honeypotAction: null,
+    lfgVoiceCategoryId: null,
+    lfgVoiceGraceMinutes: null,
   });
   store.updateSettings(G, { verifyMinAccountAgeDays: 7 });
   assert.equal(store.getSettings(G).verifyMinAccountAgeDays, 7);

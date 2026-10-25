@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { join } from 'node:path';
 import { AskLimiter } from './ai/limits.js';
 import { BackupScheduler } from './backup/service.js';
+import { LfgVoiceSweeper } from './lfg/voice.js';
 import { OrdisBrain } from './ai/ordis.js';
 import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
@@ -23,9 +24,11 @@ const ctx: AppContext = { config, store, client, ai };
 attachHandlers(ctx);
 const notifier = new Notifier(ctx);
 const backups = new BackupScheduler(ctx);
+const squadVoice = new LfgVoiceSweeper(ctx);
 client.once('clientReady', () => {
   notifier.start();
   backups.start();
+  squadVoice.start();
 });
 
 const http = startHttpServer(ctx);
@@ -46,6 +49,7 @@ async function shutdown(signal: string): Promise<void> {
   console.log(`[app] ${signal} received, shutting down`);
   notifier.stop();
   backups.stop();
+  squadVoice.stop();
   http.close();
   await client.destroy();
   store.close();

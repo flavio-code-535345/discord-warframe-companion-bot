@@ -1,6 +1,7 @@
 import { type ButtonInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import type { AppContext } from '../context.js';
 import type { RsvpStatus } from '../db.js';
+import { closeSquad, setSquadVoiceAccess } from '../lfg/voice.js';
 import { UserError, renderEvent, renderLfg } from '../services/clan.js';
 import { handleBackupButton } from './commands/backup.js';
 import { handlePurgeButton } from './commands/moderation.js';
@@ -41,6 +42,7 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
     const members = ctx.store.lfgMembers(id);
     const isHost = interaction.user.id === post.hostId;
 
+    let closedNote: string | null = null;
     if (action === 'join') {
       if (members.includes(interaction.user.id)) throw new UserError("You're already in this squad.");
       if (members.length >= post.size) throw new UserError('This squad is full.');
@@ -48,18 +50,28 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
     } else if (action === 'leave') {
       if (!members.includes(interaction.user.id)) throw new UserError("You're not in this squad.");
       // A squad without its host is closed rather than left orphaned.
-      if (isHost) ctx.store.closeLfg(id);
-      else ctx.store.leaveLfg(id, interaction.user.id);
+      if (isHost) {
+        ctx.store.closeLfg(id);
+        closedNote = 'Squad ended: the host left.';
+      } else {
+        ctx.store.leaveLfg(id, interaction.user.id);
+      }
     } else if (action === 'close') {
       const canManage = interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) ?? false;
       if (!isHost && !canManage) throw new UserError('Only the host can close this squad.');
       ctx.store.closeLfg(id);
+      closedNote = 'Squad closed.';
     } else {
       throw new UserError('Unknown squad action.');
     }
 
     const updated = ctx.store.getLfg(id)!;
-    await interaction.update(renderLfg(ctx, updated));
+    await interaction.update(renderLfg(ctx, updated, closedNote));
+
+    // Voice upkeep runs after the reply so the click answers within Discord's 3 seconds.
+    if (updated.closed) await closeSquad(ctx, id, closedNote);
+    else if (action === 'join') await setSquadVoiceAccess(ctx, updated, interaction.user.id, true);
+    else if (action === 'leave') await setSquadVoiceAccess(ctx, updated, interaction.user.id, false);
 
     const now = ctx.store.lfgMembers(id);
     if (action === 'join' && now.length >= updated.size) {

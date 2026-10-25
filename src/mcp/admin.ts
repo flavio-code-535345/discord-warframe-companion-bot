@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { summaryOf, takeBackup } from '../backup/service.js';
 import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
+import { validImageUrl } from '../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -500,6 +501,68 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
   );
 
   server.registerTool(
+    'list_activities',
+    {
+      title: 'List LFG activities',
+      description: 'Lists the /lfg activities that have settings: their picture URL, ping role and fixed channel.',
+      inputSchema: {},
+      annotations: READ_ONLY,
+    },
+    tool(async () => ctx.store.listActivities()),
+  );
+
+  server.registerTool(
+    'set_activity',
+    {
+      title: 'Set an LFG activity',
+      description:
+        'Adds or updates an /lfg activity: its picture (https image URL shown on the squad post), an optional role to ping and an optional fixed channel. Only the fields you pass change; null clears one.',
+      inputSchema: {
+        name: z.string().min(1).max(100),
+        image_url: z.string().max(1000).nullable().optional(),
+        role_id: snowflake.nullable().optional(),
+        channel_id: snowflake.nullable().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    tool(async (args) => {
+      const { guild } = await guildFor(ctx);
+      const existing = ctx.store.getActivity(args.name);
+      let imageUrl = existing?.imageUrl ?? null;
+      if (args.image_url !== undefined) {
+        imageUrl = args.image_url === null ? null : validImageUrl(args.image_url);
+        if (args.image_url !== null && !imageUrl) throw new UserError('image_url must be a direct https link to an image, without spaces.');
+      }
+      if (args.role_id && !guild.roles.cache.has(args.role_id)) throw new UserError(`role_id ${args.role_id} not found in the server.`);
+      if (args.channel_id && !guild.channels.cache.has(args.channel_id)) throw new UserError(`channel_id ${args.channel_id} not found in the server.`);
+      const saved = {
+        name: existing?.name ?? args.name,
+        imageUrl,
+        roleId: args.role_id !== undefined ? args.role_id : (existing?.roleId ?? null),
+        channelId: args.channel_id !== undefined ? args.channel_id : (existing?.channelId ?? null),
+      };
+      ctx.store.saveActivity(saved);
+      log(`activity: ${JSON.stringify(saved)}`);
+      return saved;
+    }),
+  );
+
+  server.registerTool(
+    'remove_activity',
+    {
+      title: 'Remove an LFG activity setting',
+      description: "Removes an activity's picture, role and channel settings. The activity still works in /lfg, just plain.",
+      inputSchema: { name: z.string().min(1).max(100) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    tool(async ({ name }) => {
+      if (!ctx.store.removeActivity(name)) throw new UserError(`"${name}" has no settings.`);
+      log(`activity removed: ${name}`);
+      return { removed: name };
+    }),
+  );
+
+  server.registerTool(
     'update_bot_settings',
     {
       title: "Set the bot's channels",
@@ -513,13 +576,15 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         mod_log_channel_id: snowflake.nullable().optional(),
         honeypot_channel_id: snowflake.nullable().optional().describe('Trap channel: anyone without moderator powers who posts there is removed. Posts a "do not post" notice in it.'),
         honeypot_action: z.enum(HONEYPOT_ACTIONS).optional().describe('softban (default: remove + clear the last hour of messages, can rejoin), ban or kick'),
+        lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
+        lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     tool(async (args) => {
       const { guild } = await guildFor(ctx);
       for (const [key, id] of Object.entries(args)) {
-        if (!id || key === 'honeypot_action') continue;
+        if (typeof id !== 'string' || !id || key === 'honeypot_action') continue;
         if (key === 'alerts_role_id' ? !guild.roles.cache.has(id) : !guild.channels.cache.has(id)) throw new UserError(`${key}: ${id} not found in the server.`);
       }
       const patch = {
@@ -529,6 +594,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.welcome_channel_id !== undefined ? { welcomeChannelId: args.welcome_channel_id } : {}),
         ...(args.chat_channel_id !== undefined ? { chatChannelId: args.chat_channel_id } : {}),
         ...(args.mod_log_channel_id !== undefined ? { modLogChannelId: args.mod_log_channel_id } : {}),
+        ...(args.lfg_voice_category_id !== undefined ? { lfgVoiceCategoryId: args.lfg_voice_category_id } : {}),
+        ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
       const saved = ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);

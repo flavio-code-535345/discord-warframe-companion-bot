@@ -27,6 +27,10 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
       },
       { name: 'Moderation log', value: ch(s.modLogChannelId) },
+      {
+        name: 'Squad voice',
+        value: s.lfgVoiceCategoryId ? `category <#${s.lfgVoiceCategoryId}> · host grace ${s.lfgVoiceGraceMinutes ?? 5} min` : '*off* (squads post without a voice channel)',
+      },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Verification',
@@ -98,6 +102,13 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('lfgvoice')
+        .setDescription('Give every /lfg squad its own voice channel in a category (made and removed automatically)')
+        .addChannelOption((o) => o.setName('category').setDescription('Category for the squad voice channels').setRequired(true).addChannelTypes(ChannelType.GuildCategory))
+        .addIntegerOption((o) => o.setName('grace_minutes').setDescription('Minutes the host may be out of voice before the squad ends (default 5)').setMinValue(1).setMaxValue(60)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('chat')
         .setDescription('Channel where Ordis answers every message, not only mentions')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -119,6 +130,7 @@ export const setup: Command = {
               { name: 'Moderation log', value: 'modlog' },
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
+              { name: 'Squad voice channels', value: 'lfgvoice' },
             ),
         ),
     )
@@ -128,7 +140,7 @@ export const setup: Command = {
   async execute(interaction, ctx) {
     const guildId = ctx.config.DISCORD_GUILD_ID;
     const sub = interaction.options.getSubcommand();
-    const channelId = () => interaction.options.getChannel('channel', true).id;
+    const channelId = (option = 'channel') => interaction.options.getChannel(option, true).id;
 
     let settings: GuildSettings;
     switch (sub) {
@@ -161,6 +173,12 @@ export const setup: Command = {
         await interaction.editReply({ content: `🛡️ Verification panel posted: ${url}`, embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
         return;
       }
+      case 'lfgvoice':
+        settings = ctx.store.updateSettings(guildId, {
+          lfgVoiceCategoryId: channelId('category'),
+          lfgVoiceGraceMinutes: interaction.options.getInteger('grace_minutes'),
+        });
+        break;
       case 'honeypot': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await setupHoneypot(ctx, channelId(), honeypotAction(interaction.options.getString('action')));
@@ -172,6 +190,10 @@ export const setup: Command = {
         if (feature === 'verification') {
           await disableVerification(ctx);
           settings = ctx.store.getSettings(guildId);
+          break;
+        }
+        if (feature === 'lfgvoice') {
+          settings = ctx.store.updateSettings(guildId, { lfgVoiceCategoryId: null, lfgVoiceGraceMinutes: null });
           break;
         }
         if (feature === 'honeypot') {

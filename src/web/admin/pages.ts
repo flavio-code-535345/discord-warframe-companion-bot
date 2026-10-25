@@ -60,6 +60,7 @@ button.danger{background:var(--bad);color:#fff}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
 th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.thumb{object-fit:cover;border-radius:6px}
 .check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .check input{width:auto}
 .center{max-width:420px;margin:12vh auto;text-align:center}

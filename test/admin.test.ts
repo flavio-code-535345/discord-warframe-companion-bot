@@ -29,6 +29,7 @@ before(async () => {
     user: { id: 'bot' },
     users: { fetch: async (id: string) => ({ id, username: `user${id.slice(-3)}`, bot: false }) },
     channels: { cache: new Map() },
+    guilds: { fetch: async () => ({ id: GUILD, channels: { fetch: async () => new Map(), cache: new Map() }, roles: { fetch: async () => new Map(), cache: new Map() } }) },
   } as unknown as Client;
   const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client, ai: null };
   const server = startHttpServer(ctx);
@@ -104,6 +105,32 @@ test('owners can use the panel; forms need the CSRF token; owners cannot be remo
   const removed = await post('/admin/admins/222222222222222222/remove', { confirm: 'yes', _csrf: 'csrf-token' }, cookie);
   assert.match(removed.headers.get('location') ?? '', /ok=/);
   assert.equal(store.isPanelAdmin('222222222222222222'), false);
+});
+
+test('LFG activities: a picture is saved, bad pictures are refused, and removal needs confirmation', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const errOf = (res: Response) => new URL(res.headers.get('location') ?? '', baseUrl).searchParams.get('err') ?? '';
+
+  const bad = await post('/admin/settings/activity', { name: 'Eidolon hunt', image: 'http://insecure.example/e.png', _csrf: 'csrf-token' }, cookie);
+  assert.match(errOf(bad), /direct https link/);
+  assert.equal(store.getActivity('Eidolon hunt'), null);
+
+  const empty = await post('/admin/settings/activity', { name: 'Eidolon hunt', _csrf: 'csrf-token' }, cookie);
+  assert.match(errOf(empty), /picture, a role or a channel/);
+
+  const saved = await post('/admin/settings/activity', { name: 'Eidolon hunt', image: 'https://example.com/e.png', _csrf: 'csrf-token' }, cookie);
+  assert.match(saved.headers.get('location') ?? '', /ok=/);
+  assert.equal(store.getActivity('eidolon hunt')?.imageUrl, 'https://example.com/e.png');
+
+  const page = await get('/admin/settings', cookie);
+  assert.match(await page.text(), /https:\/\/example\.com\/e\.png/);
+
+  const unconfirmed = await post('/admin/settings/activity/remove?name=Eidolon%20hunt', { _csrf: 'csrf-token' }, cookie);
+  assert.match(errOf(unconfirmed), /confirm/);
+  assert.ok(store.getActivity('Eidolon hunt'));
+  const removed = await post('/admin/settings/activity/remove?name=Eidolon%20hunt', { confirm: 'yes', _csrf: 'csrf-token' }, cookie);
+  assert.match(removed.headers.get('location') ?? '', /ok=/);
+  assert.equal(store.getActivity('Eidolon hunt'), null);
 });
 
 test('logout ends the session', async () => {
