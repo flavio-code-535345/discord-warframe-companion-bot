@@ -64,10 +64,15 @@ export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string,
   const pixels = decodeImage(bytes, mime);
   if (pixels) {
     try {
-      const parsed = await ocr.recognize(bytes).then(parseCard);
-      if (parsed.complete && parsed.clanLine) {
+      const lines = await ocr.recognize(bytes);
+      const parsed = parseCard(lines);
+      if (!parsed.complete || !parsed.clanLine) {
+        const r = parsed.reading;
+        console.log(`[ssroles] OCR incomplete (${pixels.width}x${pixels.height}, ${lines.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name}`);
+      } else {
         const box = findEmblem(pixels, parsed.clanLine);
         const emblem = box ? fingerprint(pixels, box) : null;
+        if (!emblem) console.log(`[ssroles] emblem not found above the clan line at ${JSON.stringify(parsed.clanLine)} in ${pixels.width}x${pixels.height}`);
         // Without an emblem to compare, a stored reference can't be honoured: let the fallback reader look.
         if (emblem || !reference) return { reading: withReference(parsed.reading, reference, emblem), reader: 'ocr', emblem };
       }

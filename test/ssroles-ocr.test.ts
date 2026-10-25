@@ -63,7 +63,7 @@ test('an unrelated screenshot is not a complete card', () => {
 });
 
 /** A dark panel with a patterned square emblem drawn at the given centre and size. */
-function panel(size: number, seed: number): { img: Pixels; name: OcrLine } {
+function panel(size: number, seed: number, withHeading = false): { img: Pixels; name: OcrLine } {
   const width = 400;
   const height = 400;
   const data = new Uint8Array(width * height * 4);
@@ -78,8 +78,20 @@ function panel(size: number, seed: number): { img: Pixels; name: OcrLine } {
       data.set([55 + v, 60 + (v * 2) % 150, 80 + (v * 3) % 120, 255], ((top + y) * width + left + x) * 4);
     }
   }
+  if (withHeading) {
+    // the CLAN heading: some text-like pixels and a full-width rule, a little above the emblem
+    for (let x = left; x < left + size; x += 3) for (let y = top - 22; y < top - 8; y++) data.set([230, 230, 230, 255], (y * width + x) * 4);
+    for (let x = 0; x < width; x++) data.set([200, 200, 200, 255], ((top - 16) * width + x) * 4);
+  }
   return { img: { width, height, data }, name: { text: 'x', x0: 120, x1: 280, y0: top + size + 12, y1: top + size + 12 + Math.round(size / 4), confidence: 90 } };
 }
+
+test('a heading and rule just above the emblem do not enlarge it', () => {
+  const p = panel(96, 3, true);
+  const box = findEmblem(p.img, p.name)!;
+  assert.ok(box, 'emblem found');
+  assert.ok(Math.abs(box.y0 - 100) <= 2 && Math.abs(box.x1 - box.x0 - 96) <= 3 && Math.abs(box.y1 - box.y0 - 96) <= 3, JSON.stringify(box));
+});
 
 test('the emblem is found above the name and compares equal at another size, different from another picture', () => {
   const big = panel(96, 3);

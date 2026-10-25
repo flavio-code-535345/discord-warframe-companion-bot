@@ -73,24 +73,36 @@ export function findEmblem(img: Pixels, clanLine: Box): Box | null {
 
   const w = band.x1 - band.x0;
   const h = band.y1 - band.y0;
-  const cols = new Array<number>(w).fill(0);
-  const rows = new Array<number>(h).fill(0);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (differs(band.x0 + x, band.y0 + y)) {
-        cols[x]!++;
-        rows[y]!++;
+  // The emblem is the longest unbroken stretch of rows (then columns) that differ from the panel. The CLAN heading
+  // and its rule above are short separate runs, so they are ignored. Small gaps inside a run are bridged.
+  const longestRun = (counts: number[], min: number, gap = 3): [number, number] | null => {
+    let best: [number, number] | null = null;
+    let start = -1;
+    let lastActive = -1;
+    const close = () => {
+      if (start >= 0 && (!best || lastActive - start > best[1] - best[0])) best = [start, lastActive];
+    };
+    counts.forEach((v, i) => {
+      if (v < min) return;
+      if (start >= 0 && i - lastActive > gap) {
+        close();
+        start = -1;
       }
-    }
-  }
-  const first = (arr: number[], min: number) => arr.findIndex((v) => v >= min);
-  const last = (arr: number[], min: number) => arr.length - 1 - [...arr].reverse().findIndex((v) => v >= min);
-  const x0 = first(cols, h * 0.2);
-  const x1 = last(cols, h * 0.2);
-  const y0 = first(rows, w * 0.1);
-  const y1 = last(rows, w * 0.1);
-  if (x0 < 0 || y0 < 0 || x1 <= x0 || y1 <= y0) return null;
-  const box = { x0: band.x0 + x0, y0: band.y0 + y0, x1: band.x0 + x1 + 1, y1: band.y0 + y1 + 1 };
+      if (start < 0) start = i;
+      lastActive = i;
+    });
+    close();
+    return best;
+  };
+  const rows = new Array<number>(h).fill(0);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (differs(band.x0 + x, band.y0 + y)) rows[y]!++;
+  const ry = longestRun(rows, w * 0.1);
+  if (!ry) return null;
+  const cols = new Array<number>(w).fill(0);
+  for (let y = ry[0]; y <= ry[1]; y++) for (let x = 0; x < w; x++) if (differs(band.x0 + x, band.y0 + y)) cols[x]!++;
+  const rx = longestRun(cols, (ry[1] - ry[0] + 1) * 0.2);
+  if (!rx) return null;
+  const box = { x0: band.x0 + rx[0], y0: band.y0 + ry[0], x1: band.x0 + rx[1] + 1, y1: band.y0 + ry[1] + 1 };
   const bw = box.x1 - box.x0;
   const bh = box.y1 - box.y0;
   // An emblem is a roughly square picture, a good fraction of the line height tall.
