@@ -39,7 +39,10 @@ export interface ClanCheck {
   problems: string[];
 }
 
-/** Whether the card proves clan membership: the name must match, and with a reference card the emblem and text must too. */
+/**
+ * Whether the card proves clan membership: the name must match, and with a stored reference the clan text must match
+ * and the emblem must not differ. An emblem of null means it could not be compared (the fallback reader), which passes.
+ */
 export function checkClan(r: CardReading, clanName: string, hasReference: boolean): ClanCheck {
   const problems: string[] = [];
   if (!r.is_profile_card) problems.push("This doesn't look like a Warframe profile card.");
@@ -48,7 +51,7 @@ export function checkClan(r: CardReading, clanName: string, hasReference: boolea
   else if (norm(r.clan_name) !== norm(clanName)) problems.push(`The card says the clan is "${r.clan_name}", not ${clanName}.`);
   if (hasReference) {
     if (r.clan_text_matches_reference !== true) problems.push("The clan name and number don't match our clan.");
-    if (r.emblem_matches_reference !== true) problems.push("The clan emblem doesn't match ours.");
+    if (r.emblem_matches_reference === false) problems.push("The clan emblem doesn't match ours.");
   }
   return { ok: problems.length === 0, problems };
 }

@@ -92,7 +92,7 @@ export const setup: Command = {
         .setName('ssroles')
         .setDescription('Channel where members post a profile screenshot to get their rank and clan roles')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel for screenshots').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addAttachmentOption((o) => o.setName('reference').setDescription('A genuine clan profile screenshot, used to check the clan emblem')),
+        .addAttachmentOption((o) => o.setName('reference').setDescription('A clan profile screenshot (PNG/JPG) to learn the emblem from; not saved')),
     )
     .addSubcommand((s) =>
       s
@@ -204,8 +204,11 @@ export const setup: Command = {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const file = interaction.options.getAttachment('reference');
         const reference = file ? { mime: (file.contentType ?? 'image/png').split(';')[0]!, data: new Uint8Array(await (await fetch(file.url)).arrayBuffer()) } : undefined;
-        await setupSsRoles(ctx, channelId(), reference);
-        await interaction.editReply({ embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
+        const learned = await setupSsRoles(ctx, channelId(), reference);
+        await interaction.editReply({
+          content: learned ? `Learned the clan card of **${learned}**: its emblem and name are kept as a tiny fingerprint, the screenshot itself is not saved.` : 'No reference card given, so only the clan name is checked, not the emblem.',
+          embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)],
+        });
         return;
       }
       case 'honeypot': {

@@ -5,8 +5,16 @@ import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { modLog } from '../moderation/service.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
+import { MATCH_THRESHOLD, decodeImage, findEmblem, fingerprint, similarity } from './emblem.js';
+import { ocr } from './ocr.js';
+import { parseCard } from './parse.js';
 import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, norm, planRoles } from './roles.js';
-import { type ImageData, readProfileCard } from './vision.js';
+import { readProfileCard } from './vision.js';
+
+/**
+ * Screenshots are processed in memory only: nothing is written to disk or the database (just a hash and the
+ * in-game name, to stop a card being shared), and the member's message is deleted once it has been read.
+ */
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -32,13 +40,53 @@ const roleInfos = (guild: Guild): RoleInfo[] =>
     .filter((r) => r.id !== guild.id)
     .map((r) => ({ id: r.id, name: r.name, position: r.position, managed: r.managed, dangerous: r.permissions.any(DANGEROUS) }));
 
-/** An image attachment of a usable size and type, or null. */
-const firstImage = (message: Message) => message.attachments.find((a) => IMAGE_TYPES.has((a.contentType ?? '').split(';')[0]!) && a.size <= MAX_IMAGE_BYTES) ?? null;
+const mimeOf = (contentType: string | null) => (contentType ?? '').split(';')[0]!.trim();
 
 async function download(url: string): Promise<Uint8Array> {
   const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new UserError("I couldn't download that image.");
   return new Uint8Array(await res.arrayBuffer());
+}
+
+type Reference = { fingerprint: Uint8Array; clanText: string };
+
+export interface CardRead {
+  reading: CardReading;
+  /** Which reader produced it, for the log. */
+  reader: 'ocr' | 'gemini';
+  /** The emblem as a fingerprint, when the OCR reader found it. */
+  emblem: Uint8Array | null;
+}
+
+/** OCR first; Gemini only when OCR can't make sense of the image (unsupported format, unusual layout, unreadable). */
+export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string, reference: Reference | null): Promise<CardRead> {
+  const pixels = decodeImage(bytes, mime);
+  if (pixels) {
+    try {
+      const parsed = await ocr.recognize(bytes).then(parseCard);
+      if (parsed.complete && parsed.clanLine) {
+        const box = findEmblem(pixels, parsed.clanLine);
+        const emblem = box ? fingerprint(pixels, box) : null;
+        // Without an emblem to compare, a stored reference can't be honoured: let the fallback reader look.
+        if (emblem || !reference) return { reading: withReference(parsed.reading, reference, emblem), reader: 'ocr', emblem };
+      }
+    } catch (err) {
+      console.error('[ssroles] OCR failed, using the fallback reader:', err instanceof Error ? err.message : err);
+    }
+  }
+  const reading = await readProfileCard(ctx.config, { mime, data: bytes });
+  return { reading: withReference(reading, reference, null), reader: 'gemini', emblem: null };
+}
+
+/** Fills in the clan text and emblem verdicts by comparing with the stored reference. */
+function withReference(r: CardReading, reference: Reference | null, emblem: Uint8Array | null): CardReading {
+  if (!reference) return r;
+  const text = r.clan_name && r.clan_tag ? norm(`${r.clan_name}${r.clan_tag}`) === norm(reference.clanText) : false;
+  return {
+    ...r,
+    clan_text_matches_reference: text,
+    emblem_matches_reference: emblem ? similarity(emblem, reference.fingerprint) >= MATCH_THRESHOLD : null,
+  };
 }
 
 function resultEmbed(ctx: AppContext, r: CardReading, mr: number | null, ok: boolean, lines: string[]): EmbedBuilder {
@@ -52,6 +100,7 @@ function resultEmbed(ctx: AppContext, r: CardReading, mr: number | null, ok: boo
   if (r.next_rank) embed.addFields({ name: 'Next Rank', value: `${r.next_rank}${r.points_to_next_rank ? ` in ${r.points_to_next_rank}` : ''}`, inline: true });
   if (r.clan_name) embed.addFields({ name: 'Clan', value: `${r.clan_name}${r.clan_tag ? `#${r.clan_tag}` : ''}${r.clan_tier_rank ? ` · ${r.clan_tier_rank}` : ''}`, inline: true });
   embed.addFields({ name: 'Clan member', value: ok ? 'yes' : 'no', inline: true });
+  embed.setFooter({ text: 'Your screenshot was deleted after reading. Ordis keeps no copy.' });
   embed.setDescription(lines.join('\n').slice(0, 2000) || null);
   return embed;
 }
@@ -63,28 +112,38 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   const settings = store.getSettings(config.DISCORD_GUILD_ID);
   if (!settings.ssRolesChannelId || message.channelId !== settings.ssRolesChannelId) return false;
 
-  const image = firstImage(message);
+  const channel = message.channel;
+  const say = (payload: Parameters<typeof channel.send>[0]) => channel.send(payload).catch(() => {});
+  const mention = { users: [message.author.id] };
+
+  const image = message.attachments.find((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES) ?? null;
   if (!image) {
-    if (message.attachments.size) await message.reply({ content: 'Please post a PNG, JPG or WebP screenshot under 8 MB.', allowedMentions: { repliedUser: false } }).catch(() => {});
+    if (message.attachments.size) {
+      await message.delete().catch(() => {});
+      await say({ content: `<@${message.author.id}> please post a PNG, JPG or WebP screenshot under 8 MB.`, allowedMentions: mention });
+    }
     return true;
   }
   const wait = (lastTry.get(message.author.id) ?? 0) + COOLDOWN_MS - Date.now();
   if (wait > 0) {
-    await message.reply({ content: `One screenshot at a time, Operator. Try again in ${Math.ceil(wait / 1000)}s.`, allowedMentions: { repliedUser: false } }).catch(() => {});
+    await message.delete().catch(() => {});
+    await say({ content: `<@${message.author.id}> one screenshot at a time, Operator. Try again in ${Math.ceil(wait / 1000)}s.`, allowedMentions: mention });
     return true;
   }
   lastTry.set(message.author.id, Date.now());
-  await message.react('⏳').catch(() => {});
 
   try {
     const guild = message.guild;
     const [member, me] = await Promise.all([message.member ?? guild.members.fetch(message.author.id), guild.members.fetchMe()]);
     const bytes = await download(image.url);
-    const submission: ImageData = { mime: (image.contentType ?? 'image/png').split(';')[0]!, data: bytes };
-    const stored = store.getSsReference(guild.id);
-    const reading = await readProfileCard(config, config.CLAN_NAME, submission, stored ? { mime: stored.mime, data: stored.image } : null);
+    // The screenshot is in memory now; take it off Discord straight away, whatever happens next.
+    await message.delete().catch(() => {});
+
+    const reference = store.getSsReference(guild.id);
+    const read = await readCard(ctx, bytes, mimeOf(image.contentType), reference);
+    const reading = read.reading;
     const mr = masteryRank(reading);
-    const clan = checkClan(reading, config.CLAN_NAME, stored !== null);
+    const clan = checkClan(reading, config.CLAN_NAME, reference !== null);
 
     const problems = [...clan.problems];
     if (clan.ok) {
@@ -96,13 +155,13 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     }
 
     if (problems.length) {
-      await message.reply({ embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))], allowedMentions: { repliedUser: false } });
+      await say({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))], allowedMentions: mention });
       await modLog(ctx, {
         action: 'Screenshot rejected',
         moderator: ctx.client.user!,
         target: message.author,
         reason: problems.join(' '),
-        fields: [{ name: 'Message', value: message.url }],
+        fields: [{ name: 'Reader', value: read.reader }],
       });
       return true;
     }
@@ -112,9 +171,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     const reason = 'Screenshot roles: verified profile card';
     const failed: string[] = [];
     const apply = async (m: GuildMember, ids: string[], add: boolean) => {
-      for (const id of ids) {
-        await (add ? m.roles.add(id, reason) : m.roles.remove(id, reason)).catch(() => failed.push(id));
-      }
+      for (const id of ids) await (add ? m.roles.add(id, reason) : m.roles.remove(id, reason)).catch(() => failed.push(id));
     };
     await apply(member, plan.add.map((r) => r.id), true);
     await apply(member, plan.remove.map((r) => r.id), false);
@@ -123,9 +180,9 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       plan.add.length ? `**Roles added:** ${plan.add.filter((r) => !failed.includes(r.id)).map((r) => `<@&${r.id}>`).join(' ') || '—'}` : 'No new roles to add: you already have everything this card earns.',
       ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
       ...(plan.skipped.length ? [`Skipped: ${plan.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}`] : []),
-      ...(failed.length ? ['Some roles could not be changed. A moderator needs to check Ordis\'s role position.'] : []),
+      ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
     ];
-    await message.reply({ embeds: [resultEmbed(ctx, reading, mr, true, lines)], allowedMentions: { repliedUser: false } });
+    await say({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)], allowedMentions: mention });
     await modLog(ctx, {
       action: 'Screenshot roles',
       moderator: ctx.client.user!,
@@ -133,33 +190,44 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       reason: `${reading.mastery_rank_title ?? 'rank unknown'} · ${reading.in_game_name ?? 'name not shown'}`,
       fields: [
         { name: 'Added', value: plan.add.map((r) => r.name).join(', ') || '—' },
-        { name: 'Message', value: message.url },
+        { name: 'Reader', value: read.reader === 'ocr' ? 'OCR' : 'Gemini (OCR could not read it; emblem not compared)' },
       ],
     });
   } catch (err) {
-    if (err instanceof UserError) await message.reply({ content: err.message, allowedMentions: { repliedUser: false } }).catch(() => {});
+    await message.delete().catch(() => {});
+    if (err instanceof UserError) await say({ content: `<@${message.author.id}> ${err.message}`, allowedMentions: mention });
     else {
       console.error('[ssroles] failed:', err);
-      await message.reply({ content: 'Something went wrong reading that screenshot. Try again later.', allowedMentions: { repliedUser: false } }).catch(() => {});
+      await say({ content: `<@${message.author.id}> something went wrong reading that screenshot. Try again later.`, allowedMentions: mention });
     }
-  } finally {
-    await message.reactions.cache.get('⏳')?.users.remove(ctx.client.user!.id).catch(() => {});
   }
   return true;
 }
 
-/** Points screenshot roles at a channel, optionally replaces the reference card, and posts the instructions there. */
-export async function setupSsRoles(ctx: AppContext, channelId: string, reference?: { mime: string; data: Uint8Array }): Promise<void> {
+/** Learns what a genuine clan card looks like from one screenshot, keeping only a fingerprint of the emblem and the clan's name line. */
+export async function learnReference(ctx: AppContext, bytes: Uint8Array, mime: string): Promise<string> {
+  const pixels = decodeImage(bytes, mime);
+  if (!pixels) throw new UserError('The reference must be a PNG or JPG screenshot (not WebP).');
+  const parsed = await ocr.recognize(bytes).then(parseCard);
+  const { reading } = parsed;
+  if (!parsed.complete || !parsed.clanLine || !reading.clan_name || !reading.clan_tag) throw new UserError("I couldn't read a clan name on that screenshot. It must show the Clan panel clearly.");
+  if (norm(reading.clan_name) !== norm(ctx.config.CLAN_NAME)) throw new UserError(`That card says the clan is "${reading.clan_name}", not ${ctx.config.CLAN_NAME}.`);
+  const box = findEmblem(pixels, parsed.clanLine);
+  if (!box) throw new UserError("I couldn't find the clan emblem above the clan name. Use an uncropped screenshot of the Clan panel.");
+  const clanText = `${reading.clan_name}#${reading.clan_tag}`;
+  ctx.store.setSsReference(ctx.config.DISCORD_GUILD_ID, fingerprint(pixels, box), clanText);
+  return clanText;
+}
+
+/** Points screenshot roles at a channel, optionally learns the reference card, and posts the instructions there. */
+export async function setupSsRoles(ctx: AppContext, channelId: string, reference?: { mime: string; data: Uint8Array }): Promise<string | null> {
   const channel = await getSendableChannel(ctx, channelId);
   const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
   if ([settings.chatChannelId, settings.honeypotChannelId, settings.verifyChannelId].includes(channelId)) {
     throw new UserError('That channel is used for something else. Pick a channel just for screenshots.');
   }
-  if (reference) {
-    if (!IMAGE_TYPES.has(reference.mime)) throw new UserError('The reference must be a PNG, JPG or WebP screenshot.');
-    if (reference.data.length > MAX_IMAGE_BYTES) throw new UserError('The reference image is over 8 MB.');
-    ctx.store.setSsReference(ctx.config.DISCORD_GUILD_ID, reference.mime, reference.data);
-  }
+  if (reference && reference.data.length > MAX_IMAGE_BYTES) throw new UserError('The reference image is over 8 MB.');
+  const learned = reference ? await learnReference(ctx, reference.data, reference.mime) : null;
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)
@@ -167,12 +235,13 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     .setTitle('🖼️ Get your roles from a screenshot')
     .setDescription(
       [
-        `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem.`,
+        `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
         'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. This channel is for clan members only, and edited screenshots are rejected.',
-        'Post a new screenshot after you rank up and your rank role is updated.',
+        'Your screenshot is deleted right after it is read and is never saved. Post a new one after you rank up and your rank role is updated.',
       ].join('\n\n'),
     );
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  return learned;
 }
 
 export function disableSsRoles(ctx: AppContext): void {

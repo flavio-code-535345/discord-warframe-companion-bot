@@ -330,6 +330,12 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (guild_id, kind, key)
   );
   `,
+  `
+  -- Screenshots are never stored: the reference is a 256-byte thumbnail fingerprint of the clan emblem plus the clan's name line.
+  DELETE FROM ss_reference;
+  ALTER TABLE ss_reference ADD COLUMN fingerprint BLOB;
+  ALTER TABLE ss_reference ADD COLUMN clan_text TEXT;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -595,15 +601,16 @@ export class Store {
 
   // --- screenshot roles ---
 
-  setSsReference(guildId: string, mime: string, image: Uint8Array): void {
+  /** What a genuine clan card looks like: the emblem as a tiny grayscale fingerprint and the clan name line ("Name#043"). No image is kept. */
+  setSsReference(guildId: string, fingerprint: Uint8Array, clanText: string): void {
     this.db
-      .prepare('INSERT INTO ss_reference (guild_id, mime, image, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (guild_id) DO UPDATE SET mime = excluded.mime, image = excluded.image, updated_at = excluded.updated_at')
-      .run(guildId, mime, image, Date.now());
+      .prepare("INSERT INTO ss_reference (guild_id, mime, image, updated_at, fingerprint, clan_text) VALUES (?, '', x'', ?, ?, ?) ON CONFLICT (guild_id) DO UPDATE SET fingerprint = excluded.fingerprint, clan_text = excluded.clan_text, updated_at = excluded.updated_at")
+      .run(guildId, Date.now(), fingerprint, clanText);
   }
 
-  getSsReference(guildId: string): { mime: string; image: Buffer } | null {
-    const r = this.db.prepare('SELECT mime, image FROM ss_reference WHERE guild_id = ?').get(guildId) as Row | undefined;
-    return r ? { mime: String(r.mime), image: Buffer.from(r.image as Uint8Array) } : null;
+  getSsReference(guildId: string): { fingerprint: Uint8Array; clanText: string } | null {
+    const r = this.db.prepare('SELECT fingerprint, clan_text FROM ss_reference WHERE guild_id = ?').get(guildId) as Row | undefined;
+    return r?.fingerprint && r.clan_text ? { fingerprint: new Uint8Array(r.fingerprint as Uint8Array), clanText: String(r.clan_text) } : null;
   }
 
   /**

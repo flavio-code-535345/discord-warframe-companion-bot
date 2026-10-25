@@ -42,6 +42,8 @@ test('clan check: the clan name must match, ignoring punctuation and case', () =
 test('clan check: with a reference card the emblem and text must match, and edits are refused', () => {
   assert.equal(checkClan(card({ emblem_matches_reference: false }), 'The Rats Den 69', true).ok, false);
   assert.equal(checkClan(card({ clan_text_matches_reference: null }), 'The Rats Den 69', true).ok, false);
+  // The fallback reader can't compare the emblem (null), which is allowed.
+  assert.equal(checkClan(card({ emblem_matches_reference: null }), 'The Rats Den 69', true).ok, true);
   assert.equal(checkClan(card({ looks_edited_or_fake: true }), 'The Rats Den 69', true).ok, false);
   assert.equal(checkClan(card({ is_profile_card: false }), 'The Rats Den 69', false).ok, false);
   assert.equal(checkClan(card({ emblem_matches_reference: null }), 'The Rats Den 69', false).ok, true);
@@ -80,23 +82,20 @@ test('reading parses fenced JSON and tolerates junk', () => {
   assert.equal(parseReading('no json here'), null);
 });
 
-test('vision call sends the reference first and the submission second', async () => {
+test('vision call sends the submission as the only image', async () => {
   let content: any[] = [];
   const config = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1', FREE_AI_MODEL: 'm' };
   const out = await readProfileCard(
     config,
-    'The Rats Den 69',
     { mime: 'image/png', data: new Uint8Array([2]) },
-    { mime: 'image/png', data: new Uint8Array([1]) },
     async (_url, init) => {
       content = JSON.parse(String(init.body)).messages[0].content;
       return new Response(JSON.stringify({ choices: [{ message: { content: '{"is_profile_card": true}' } }] }));
     },
   );
   assert.equal(out.is_profile_card, true);
-  assert.equal(content.length, 3);
-  assert.equal(content[1].image_url.url, 'data:image/png;base64,AQ==');
-  assert.equal(content[2].image_url.url, 'data:image/png;base64,Ag==');
+  assert.equal(content.length, 2);
+  assert.equal(content[1].image_url.url, 'data:image/png;base64,Ag==');
 });
 
 test('a screenshot or in-game name belongs to the first member who used it', () => {
@@ -104,6 +103,7 @@ test('a screenshot or in-game name belongs to the first member who used it', () 
   assert.equal(store.claimSs('g', 'ign', 'flavio11113108', 'u1'), null);
   assert.equal(store.claimSs('g', 'ign', 'flavio11113108', 'u1'), null);
   assert.equal(store.claimSs('g', 'ign', 'flavio11113108', 'u2'), 'u1');
-  store.setSsReference('g', 'image/png', new Uint8Array([1, 2, 3]));
-  assert.deepEqual([...store.getSsReference('g')!.image], [1, 2, 3]);
+  store.setSsReference('g', new Uint8Array([1, 2, 3]), 'The Rats Den 69#043');
+  assert.deepEqual([...store.getSsReference('g')!.fingerprint], [1, 2, 3]);
+  assert.equal(store.getSsReference('g')!.clanText, 'The Rats Den 69#043');
 });
