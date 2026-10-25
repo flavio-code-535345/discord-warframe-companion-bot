@@ -33,8 +33,8 @@ const EnvSchema = z.object({
   /** Optional free-tier LLM (any OpenAI-compatible API) that words wiki answers. Off without a key. */
   FREE_AI_KEY: z.string().min(8).optional(),
   FREE_AI_URL: z.string().url().default('https://api.groq.com/openai/v1'),
-  FREE_AI_MODEL: z.string().default('llama-3.3-70b-versatile'),
-  FREE_AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(500),
+  FREE_AI_MODEL: z.string().default('openai/gpt-oss-120b'),
+  FREE_AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(150),
   WATCHTOWER_URL: z.string().url().optional(),
   WATCHTOWER_TOKEN: z.string().min(8).optional(),
   // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.

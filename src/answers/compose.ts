@@ -53,7 +53,9 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
       body: JSON.stringify({
         model: config.FREE_AI_MODEL,
         temperature: 0.2,
-        max_tokens: 350,
+        // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
+        max_tokens: 1200,
+        ...(/gpt-oss/.test(config.FREE_AI_MODEL) ? { reasoning_effort: 'low' } : {}),
         messages: [
           { role: 'system', content: SYSTEM },
           { role: 'user', content: `Question: ${question}\n\nExcerpts:\n${excerpts}` },
@@ -67,7 +69,7 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
       return null;
     }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = data.choices?.[0]?.message?.content?.trim();
+    const text = data.choices?.[0]?.message?.content?.replace(/<think>[sS]*?</think>/g, '').trim();
     if (!text || /NOT_COVERED/i.test(text)) return null;
     return text.length > 1500 ? `${text.slice(0, 1497)}…` : text;
   } catch (err) {

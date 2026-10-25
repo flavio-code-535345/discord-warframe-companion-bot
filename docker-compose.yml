@@ -38,8 +38,8 @@ services:
       WIKI_INDEX: ${WIKI_INDEX:-true}
       FREE_AI_KEY: ${FREE_AI_KEY:-}
       FREE_AI_URL: ${FREE_AI_URL:-https://api.groq.com/openai/v1}
-      FREE_AI_MODEL: ${FREE_AI_MODEL:-llama-3.3-70b-versatile}
-      FREE_AI_DAILY_LIMIT: ${FREE_AI_DAILY_LIMIT:-500}
+      FREE_AI_MODEL: ${FREE_AI_MODEL:-openai/gpt-oss-120b}
+      FREE_AI_DAILY_LIMIT: ${FREE_AI_DAILY_LIMIT:-150}
       WATCHTOWER_URL: ${WATCHTOWER_URL:-}
       WATCHTOWER_TOKEN: ${WATCHTOWER_TOKEN:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
