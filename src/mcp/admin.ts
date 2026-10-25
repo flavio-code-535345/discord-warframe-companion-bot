@@ -404,7 +404,11 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       }
       const before = { name: role.name, color: role.hexColor, position: role.position };
       const edited = await role.edit({ name, color: hexColor(color), hoist, mentionable, permissions, reason: reasonFor(reason) });
-      if (position !== undefined) await edited.setPosition(position, { reason: reasonFor(reason) });
+      if (position !== undefined) {
+        if (position >= me.roles.highest.position) throw new UserError("A role can't be moved to or above the bot's own highest role.");
+        // Only this role is sent: Role#setPosition renumbers every role in the server, including ones above the bot, which Discord refuses.
+        await guild.roles.setPositions([{ role: edited.id, position }]);
+      }
       log(`edited role ${before.name} -> ${edited.name}`);
       return { id: edited.id, before, after: { name: edited.name, color: edited.hexColor, position: edited.position } };
     }),
