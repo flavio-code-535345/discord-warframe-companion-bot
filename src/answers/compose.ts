@@ -55,7 +55,7 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
         temperature: 0.2,
         // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
         max_tokens: 1200,
-        ...(/gpt-oss/.test(config.FREE_AI_MODEL) ? { reasoning_effort: 'low' } : {}),
+        ...(/gpt-oss|gemini/.test(config.FREE_AI_MODEL) ? { reasoning_effort: 'low' } : {}),
         messages: [
           { role: 'system', content: SYSTEM },
           { role: 'user', content: `Question: ${question}\n\nExcerpts:\n${excerpts}` },
