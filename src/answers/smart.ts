@@ -46,7 +46,7 @@ const LINES: Record<string, string[]> = {
   world: ['Ordis has checked the Origin System, Operator.', 'Current readings, Operator.', 'Ordis is happy to report -- EVERYTHING IS FINE -- the following.'],
   item: ['Ordis has pulled the Codex entry, Operator.', 'Arsenal data, Operator.'],
   build: ['Ordis cannot mod for you, Operator, but here is what you are working with.'],
-  wiki: ['Ordis found this in the archives, Operator.', 'The wiki says, Operator:'],
+  wiki: ['Ordis knows this one, Operator:', 'Ordis consulted the archives, Operator:'],
   clan: ['Clan schedule, Operator.'],
 };
 

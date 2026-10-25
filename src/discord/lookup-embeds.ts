@@ -1,4 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
+import { answerFrom } from '../wiki/answer.js';
 import {
   FRAME_CATEGORIES,
   type LookupResult,
@@ -150,13 +151,15 @@ export function lookupEmbed(result: LookupResult, drops?: DropLocation[]): Embed
 }
 
 export function wikiEmbed(query: string, results: WikiResult[]): EmbedBuilder {
-  const [top, ...rest] = results;
+  const direct = answerFrom(query, results);
+  const ordered = direct ? [direct.source, ...results.filter((r) => r !== direct.source)] : results;
+  const [top, ...rest] = ordered;
   if (!top) return new EmbedBuilder().setColor(COLORS.warn).setTitle('Wiki').setDescription(`Nothing on the wiki matches "${query}".`);
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
     .setTitle(top.title)
     .setURL(top.url)
-    .setDescription(top.extract.length > 1500 ? `${top.extract.slice(0, 1500)}…` : top.extract)
+    .setDescription(direct ? direct.text : top.extract.length > 1500 ? `${top.extract.slice(0, 1500)}…` : top.extract)
     .setFooter({ text: 'wiki.warframe.com · CC BY-SA' });
   if (rest.length) embed.addFields({ name: 'Also see', value: rest.map((r) => `[${r.title}](${r.url})`).join(' · ') });
   return embed;
