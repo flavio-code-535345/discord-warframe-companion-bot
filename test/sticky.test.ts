@@ -124,3 +124,26 @@ test('clean mode deletes what other members post, but not staff, and never repos
   assert.deepEqual(log, []);
   assert.equal(store.getSticky(CHANNEL)!.deleteOthers, true);
 });
+
+test('constant chat cannot starve the sticky: it is reposted at least every max-wait', async () => {
+  const store = new Store(':memory:');
+  const { channel, log } = fakeChannel(store);
+  const client = { user: { id: 'bot' }, channels: { fetch: async () => channel } };
+  const keeper = new StickyKeeper({ client, store, config: { DISCORD_GUILD_ID: GUILD } } as never, 60, 120);
+  store.setSticky({ channelId: CHANNEL, guildId: GUILD, title: null, content: 'Rules', createdBy: 'u', deleteOthers: false, imageUrl: null });
+  const say = (id: string) => ({ id, channelId: CHANNEL, guildId: GUILD, inGuild: () => true, author: { id: 'someone' } }) as unknown as Message;
+  // a message every 30 ms for 400 ms: the 60 ms debounce never gets a quiet gap, so only the max-wait can post it
+  for (let i = 0; i < 13; i++) {
+    channel.lastMessageId = `m${i}`; // someone talked, so the sticky is no longer last
+    keeper.onMessage(say(`m${i}`));
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  assert.ok(log.filter((l) => l.startsWith('send')).length >= 2, log.join(' | '));
+  keeper.stop();
+});
+
+test('the sticky embed carries the picture and a pinned footer', () => {
+  const e = renderSticky({ title: 'Rules', content: 'Be nice', imageUrl: 'https://example.com/a.png' }).data;
+  assert.equal(e.image?.url, 'https://example.com/a.png');
+  assert.match(e.footer?.text ?? '', /Pinned/);
+});

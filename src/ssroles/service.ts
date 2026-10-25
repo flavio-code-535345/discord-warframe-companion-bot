@@ -10,7 +10,7 @@ import { ocr } from './ocr.js';
 import { parseCard } from './parse.js';
 import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, norm, planRoles } from './roles.js';
 import { readProfileCard } from './vision.js';
-import { setSticky } from '../sticky/service.js';
+import { saveSticky } from '../sticky/service.js';
 
 /**
  * Screenshots are processed in memory only: nothing is written to disk or the database (just a hash and the
@@ -261,19 +261,17 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
   ctx.store.claimSs(ctx.config.DISCORD_GUILD_ID, 'points', EXAMPLE_POINTS, ctx.client.user!.id);
   const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png` : null;
   // The instructions are the channel's sticky message: always the last thing posted, so new members see them.
-  await setSticky(
-    ctx,
+  await saveSticky(ctx, {
     channelId,
-    [
+    userId: ctx.client.user!.id,
+    title: '🖼️ Get your roles from a screenshot',
+    imageUrl: exampleUrl,
+    content: [
       `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
       'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. This channel is for clan members only, and edited screenshots are rejected.',
       'Your screenshot is deleted right after it is read and is never saved. Post a new one after you rank up and your rank role is updated.',
     ].join('\n\n'),
-    '🖼️ Get your roles from a screenshot',
-    ctx.client.user!.id,
-    false,
-    exampleUrl,
-  );
+  });
   return learned;
 }
 

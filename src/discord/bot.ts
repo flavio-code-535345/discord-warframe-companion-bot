@@ -31,7 +31,7 @@ import { lfg } from './commands/lfg.js';
 import { MODERATION_COMMANDS } from './commands/moderation.js';
 import { item, wiki } from './commands/lookup.js';
 import { setup } from './commands/setup.js';
-import { sticky } from './commands/sticky.js';
+import { handleStickyModal, isStickyModal, sticky } from './commands/sticky.js';
 import { track } from './commands/track.js';
 import { vc } from './commands/vc.js';
 import { drops, price, wf } from './commands/warframe.js';
@@ -122,6 +122,15 @@ export function attachHandlers(ctx: AppContext): void {
     if (interaction.isButton()) {
       try {
         await handleButton(interaction, ctx);
+      } catch (err) {
+        await replyError(interaction, err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && isStickyModal(interaction.customId)) {
+      try {
+        await handleStickyModal(interaction, ctx);
       } catch (err) {
         await replyError(interaction, err);
       }
