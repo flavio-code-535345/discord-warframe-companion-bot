@@ -125,6 +125,8 @@ export class WikiCrawler {
       // A truncated listing must never wipe a healthy index.
       if (local.size >= 50 && remote.size < local.size * 0.5) throw new Error(`Archive listing looks incomplete (${remote.size} of ${local.size} pages), keeping the index.`);
 
+      this.index.setMeta('total', String(remote.size));
+      this.index.setMeta('syncing', '1');
       const stale = [...remote].filter(([title, revid]) => local.get(title) !== revid).map(([title]) => title);
       console.log(`[archive] ${remote.size} articles, ${stale.length} to download`);
       let done = 0;
@@ -151,10 +153,12 @@ export class WikiCrawler {
       }
       this.index.replaceAliases(aliases);
       this.index.setMeta('refreshed_at', String(Date.now()));
+      this.index.setMeta('syncing', '0');
       console.log(`[archive] index up to date: ${remote.size} pages (${done} updated, ${removed} removed) in ${Math.round((Date.now() - started) / 1000)}s`);
       return { total: remote.size, changed: done, removed };
     } finally {
       this.running = false;
+      this.index.setMeta('syncing', '0');
     }
   }
 }

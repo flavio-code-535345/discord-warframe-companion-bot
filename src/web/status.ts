@@ -1,4 +1,5 @@
 import type { AppContext } from '../context.js';
+import { getWikiIndex } from '../wiki/index.js';
 import { formatDuration, relative, toMs } from '../time.js';
 import {
   FISSURE_TIERS,
@@ -42,6 +43,8 @@ export interface StatusData {
   uptimeSeconds: number;
   server: { name: string; memberCount: number } | null;
   registeredMembers: number;
+  /** The knowledge archive Ordis answers questions from; null when it is switched off. */
+  archive: { pages: number; total: number | null; syncing: boolean } | null;
   upcomingEvents: { id: number; title: string; startsAt: string; going: number; maybe: number }[];
   /** null when the worldstate could not be loaded. */
   cycles: CycleStatus[] | null;
@@ -178,6 +181,13 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
 }
 
 /** Collects everything the public status page shows. Uses only cached Discord data, so page views cost no API calls. */
+function archiveProgress(): StatusData['archive'] {
+  const index = getWikiIndex();
+  if (!index) return null;
+  const total = Number(index.getMeta('total') ?? 0);
+  return { pages: index.stats().pages, total: total || null, syncing: index.getMeta('syncing') === '1' };
+}
+
 export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise<WorldState> = getWorldState): Promise<StatusData> {
   const { client, config, store } = ctx;
   const online = client.isReady();
@@ -202,6 +212,7 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
     uptimeSeconds: Math.floor(process.uptime()),
     server: guild ? { name: guild.name, memberCount: guild.memberCount } : null,
     registeredMembers: store.listMembers(config.DISCORD_GUILD_ID).length,
+    archive: archiveProgress(),
     // Titles and counts only: who RSVP'd stays inside Discord.
     upcomingEvents: store
       .upcomingEvents(config.DISCORD_GUILD_ID)
@@ -288,6 +299,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
     `<span class="pill">up <b>${e(formatDuration(s.uptimeSeconds * 1000))}</b></span>`,
     `<span class="pill"><b>${e(String(s.server?.memberCount ?? '—'))}</b> members</span>`,
     `<span class="pill"><b>${s.registeredMembers}</b> registered</span>`,
+    s.archive ? `<span class="pill">archive <b>${s.archive.pages.toLocaleString('en-US')}${s.archive.syncing && s.archive.total ? ` / ${s.archive.total.toLocaleString('en-US')}` : ''}</b>${s.archive.syncing ? ' · syncing' : ''}</span>` : '',
   ].join('');
 
   const clan = tile(
@@ -401,6 +413,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#010c18">
+${s.archive?.syncing ? '<meta http-equiv="refresh" content="15">' : ''}
 <title>${e(s.botName)} · ${e(s.clanName)}</title>
 <link rel="icon" href="/logo.png">
 <style nonce="${nonce}">${STYLE}</style>
