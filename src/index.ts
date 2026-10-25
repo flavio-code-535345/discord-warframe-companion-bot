@@ -64,5 +64,8 @@ async function shutdown(signal: string): Promise<void> {
   wikiIndex?.close();
   process.exit(0);
 }
+// A stray failure in a background task (an OCR worker, a Discord call) must not take the whole bot down.
+process.on('unhandledRejection', (reason) => console.error('[process] unhandled rejection:', reason));
+process.on('uncaughtException', (err) => console.error('[process] uncaught exception:', err));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));

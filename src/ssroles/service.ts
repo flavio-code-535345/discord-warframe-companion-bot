@@ -134,7 +134,13 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   }
   lastTry.set(message.author.id, Date.now());
 
-  try {
+  // Answer at once so the member always sees something, then turn that message into the result (or the error).
+  const progress = await channel.send({ content: `<@${message.author.id}> 🔎 Reading your screenshot…`, allowedMentions: mention }).catch(() => null);
+  const finish = async (payload: { content: string; embeds?: EmbedBuilder[] }) => {
+    if (progress && (await progress.edit({ content: payload.content, embeds: payload.embeds ?? [], allowedMentions: mention }).then(() => true, () => false))) return;
+    await say({ ...payload, allowedMentions: mention });
+  };
+  const work = async () => {
     const guild = message.guild;
     const [member, me] = await Promise.all([message.member ?? guild.members.fetch(message.author.id), guild.members.fetchMe()]);
     const bytes = await download(image.url);
@@ -148,6 +154,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     const clan = checkClan(reading, config.CLAN_NAME, reference !== null);
 
     const problems = [...clan.problems];
+    console.log(`[ssroles] ${message.author.username}: read by ${read.reader}, ${reading.mastery_rank_title ?? 'no rank'}, clan ${reading.clan_name ?? 'none'}, ${problems.length ? `rejected (${problems.length})` : 'accepted'}`);
     if (clan.ok) {
       // The same card, or the same in-game name, can't be used by two Discord accounts.
       const hash = createHash('sha256').update(bytes).digest('hex');
@@ -157,7 +164,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     }
 
     if (problems.length) {
-      await say({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))], allowedMentions: mention });
+      await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))] });
       await modLog(ctx, {
         action: 'Screenshot rejected',
         moderator: ctx.client.user!,
@@ -184,7 +191,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       ...(plan.skipped.length ? [`Skipped: ${plan.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}`] : []),
       ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
     ];
-    await say({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)], allowedMentions: mention });
+    await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)] });
     await modLog(ctx, {
       action: 'Screenshot roles',
       moderator: ctx.client.user!,
@@ -195,13 +202,13 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
         { name: 'Reader', value: read.reader === 'ocr' ? 'OCR' : 'Gemini (OCR could not read it; emblem not compared)' },
       ],
     });
+  };
+  try {
+    await Promise.race([work(), new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("that took too long, so I gave up. Try again in a minute.")), 90_000).unref())]);
   } catch (err) {
+    console.error('[ssroles] failed:', err instanceof Error ? err.message : err);
     await message.delete().catch(() => {});
-    if (err instanceof UserError) await say({ content: `<@${message.author.id}> ${err.message}`, allowedMentions: mention });
-    else {
-      console.error('[ssroles] failed:', err);
-      await say({ content: `<@${message.author.id}> something went wrong reading that screenshot. Try again later.`, allowedMentions: mention });
-    }
+    await finish({ content: `<@${message.author.id}> ${err instanceof UserError ? err.message : 'something went wrong reading that screenshot. Try again later.'}` });
   }
   return true;
 }
