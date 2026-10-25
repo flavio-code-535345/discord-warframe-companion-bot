@@ -32,6 +32,18 @@ export interface GuildSettings {
   ssRolesChannelId: string | null;
 }
 
+/** A message Ordis keeps at the bottom of a channel by deleting and reposting it after anyone else talks. */
+export interface Sticky {
+  channelId: string;
+  guildId: string;
+  title: string | null;
+  content: string;
+  /** The bot's current copy, so it can be deleted when the next one is posted. */
+  messageId: string | null;
+  createdBy: string;
+  updatedAt: number;
+}
+
 export interface TempVoice {
   channelId: string;
   guildId: string;
@@ -336,9 +348,32 @@ const MIGRATIONS: string[] = [
   ALTER TABLE ss_reference ADD COLUMN fingerprint BLOB;
   ALTER TABLE ss_reference ADD COLUMN clan_text TEXT;
   `,
+  `
+  CREATE TABLE stickies (
+    channel_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    title TEXT,
+    content TEXT NOT NULL,
+    message_id TEXT,
+    created_by TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+function toSticky(r: Row): Sticky {
+  return {
+    channelId: String(r.channel_id),
+    guildId: String(r.guild_id),
+    title: str(r.title),
+    content: String(r.content),
+    messageId: str(r.message_id),
+    createdBy: String(r.created_by),
+    updatedAt: Number(r.updated_at),
+  };
+}
 
 function toEvent(r: Row): ClanEvent {
   return {
@@ -598,6 +633,34 @@ export class Store {
   }
 
   // --- join-to-create voice rooms ---
+
+  // --- sticky messages ---
+
+  setSticky(s: Omit<Sticky, 'messageId' | 'updatedAt'>): void {
+    this.db
+      .prepare(
+        `INSERT INTO stickies (channel_id, guild_id, title, content, message_id, created_by, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)
+         ON CONFLICT (channel_id) DO UPDATE SET title = excluded.title, content = excluded.content, created_by = excluded.created_by, updated_at = excluded.updated_at`,
+      )
+      .run(s.channelId, s.guildId, s.title, s.content, s.createdBy, Date.now());
+  }
+
+  getSticky(channelId: string): Sticky | null {
+    const r = this.db.prepare('SELECT * FROM stickies WHERE channel_id = ?').get(channelId) as Row | undefined;
+    return r ? toSticky(r) : null;
+  }
+
+  listStickies(guildId: string): Sticky[] {
+    return (this.db.prepare('SELECT * FROM stickies WHERE guild_id = ? ORDER BY updated_at').all(guildId) as Row[]).map(toSticky);
+  }
+
+  setStickyMessage(channelId: string, messageId: string | null): void {
+    this.db.prepare('UPDATE stickies SET message_id = ? WHERE channel_id = ?').run(messageId, channelId);
+  }
+
+  removeSticky(channelId: string): boolean {
+    return Number(this.db.prepare('DELETE FROM stickies WHERE channel_id = ?').run(channelId).changes) > 0;
+  }
 
   // --- screenshot roles ---
 
