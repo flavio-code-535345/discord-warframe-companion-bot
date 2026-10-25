@@ -27,6 +27,8 @@ const EnvSchema = z.object({
   AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(300),
   /** Lets Ordis read every message in the /setup chat channel; needs the privileged Message Content intent. */
   ENABLE_MESSAGE_CONTENT: bool.default(false),
+  /** Keep a local searchable copy of the Warframe wiki so Ordis can answer most questions from it. */
+  WIKI_INDEX: bool.default(true),
   // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.
   DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
   PUBLIC_URL: z

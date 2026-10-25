@@ -157,7 +157,7 @@ export function wikiEmbed(query: string, results: WikiResult[]): EmbedBuilder {
     .setTitle(top.title)
     .setURL(top.url)
     .setDescription(top.extract.length > 1500 ? `${top.extract.slice(0, 1500)}…` : top.extract)
-    .setFooter({ text: 'wiki.warframe.com' });
+    .setFooter({ text: 'wiki.warframe.com · CC BY-SA' });
   if (rest.length) embed.addFields({ name: 'Also see', value: rest.map((r) => `[${r.title}](${r.url})`).join(' · ') });
   return embed;
 }

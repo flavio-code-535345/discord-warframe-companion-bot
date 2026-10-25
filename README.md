@@ -77,6 +77,17 @@ turns it off.
 direct `https` link to an image. `/activity clear` removes a setting, and `/activity list` shows everything. The same
 settings are in the admin panel (Settings page) and the `set_activity`, `list_activities` and `remove_activity` MCP tools.
 
+### The wiki index
+
+Ordis keeps a local, searchable copy of the whole Warframe wiki (about 11,000 articles) in `wiki.db` in the data volume.
+Questions that aren't about prices, drops, items or live game data ("how do Archon Shards work?", "what does Iron Skin do?",
+"how do I get a Kuva Lich?") are answered from the passage that matches best, with a link to the article, instead of just the
+article's introduction. It is also used by `/wiki`, the `search_wiki` and `read_wiki_page` MCP tools, and the optional Claude
+chat. The first build starts about 90 seconds after startup and takes roughly 8 minutes (one request every 1.5 seconds, so it
+is gentle on the wiki). Until then, and for anything the index can't answer, the live wiki is used. After that it refreshes
+once a day and only downloads pages whose revision changed. The index is rebuildable, is not part of backups, and takes
+about 50 MB. Set `WIKI_INDEX=false` to turn it off. Wiki text is available under CC BY-SA.
+
 ### Join-to-create voice rooms
 
 `/setup autovc lobby` marks a voice channel as the lobby. Whoever joins it gets their own room (`🎧 Name's room`) created

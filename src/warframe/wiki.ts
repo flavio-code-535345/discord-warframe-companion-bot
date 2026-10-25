@@ -1,3 +1,5 @@
+import { getWikiIndex } from '../wiki/index.js';
+import { titleCandidates } from '../wiki/terms.js';
 import { apiFetch } from './fetch.js';
 
 // The official community wiki (MediaWiki, with the TextExtracts extension for plain-text summaries).
@@ -53,24 +55,7 @@ interface TitlesResponse {
   };
 }
 
-const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
-
-/** Word runs of the query, longest first: "archon shards work" → "Archon Shards Work", "Archon Shards", … */
-export function titleCandidates(query: string, maxWords = 4): string[] {
-  const words = query.trim().split(/\s+/).filter(Boolean);
-  const out: string[] = [];
-  for (let n = Math.min(maxWords, words.length); n >= 1; n--) {
-    for (let i = 0; i + n <= words.length; i++) {
-      const phrase = titleCase(words.slice(i, i + n).join(' '));
-      if (n === 1 && phrase.length < 4) continue;
-      if (!out.includes(phrase)) out.push(phrase);
-      // Wiki pages are mostly singular ("Archon Shard"), with no redirect from every plural.
-      const singular = phrase.replace(/s$/, '');
-      if (singular !== phrase && singular.length >= 4 && !out.includes(singular)) out.push(singular);
-    }
-  }
-  return out.slice(0, 50);
-}
+export { titleCandidates };
 
 /** The longest phrase of the query that is itself a wiki page title (following redirects), if any. */
 async function exactTitle(query: string): Promise<string | null> {
@@ -96,6 +81,13 @@ async function exactTitle(query: string): Promise<string | null> {
  * work" → Archon Shard), then MediaWiki's full-text hits, which alone rank loosely matching pages too high.
  */
 export async function searchWiki(query: string, limit = 3): Promise<WikiResult[]> {
+  // The local copy of the whole wiki answers first: it is instant and returns the passage that matches the
+  // question, not just the article's introduction. The live wiki covers a missing index and the gaps.
+  const local = getWikiIndex();
+  if (local?.ready()) {
+    const hits = local.search(query, limit);
+    if (hits.length) return hits;
+  }
   const [title, data] = await Promise.all([
     exactTitle(query).catch(() => null),
     api<SearchResponse>({ action: 'query', list: 'search', srsearch: query, srlimit: String(limit), srnamespace: '0' }),
@@ -107,5 +99,10 @@ export async function searchWiki(query: string, limit = 3): Promise<WikiResult[]
 
 /** One article as plain text, cut to `maxChars` (the wiki's long pages would otherwise flood a model's context). */
 export async function readWikiPage(title: string, maxChars = 8000): Promise<WikiResult | null> {
+  const local = getWikiIndex();
+  if (local?.ready()) {
+    const page = local.readPage(title, maxChars);
+    if (page) return page;
+  }
   return (await extracts([title], false, maxChars))[0] ?? null;
 }
