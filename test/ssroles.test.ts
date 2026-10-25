@@ -114,3 +114,11 @@ test('an exact mastery total can only be claimed by one member', () => {
   assert.equal(store.claimSs('g', 'points', '2692721', 'someone'), 'bot');
   assert.equal(store.claimSs('g', 'points', '2637138', 'someone'), null);
 });
+
+test('roles: LR roles match Legendary ranks and replace MR 30 and older LR roles', () => {
+  const roles = [role('1', 'MR 30', 5), role('2', 'LR 2', 5), role('3', 'LR 3', 5), role('4', 'MR 29', 5)];
+  const r = card({ mastery_rank_title: 'Legendary 3' });
+  const plan = planRoles(roles, earnedNames(r, masteryRank(r), 'The Rats Den 69'), new Set(['1', '2']), 36);
+  assert.deepEqual(plan.add.map((x) => x.name), ['LR 3']);
+  assert.deepEqual(plan.remove.map((x) => x.name).sort(), ['LR 2', 'MR 30']);
+});

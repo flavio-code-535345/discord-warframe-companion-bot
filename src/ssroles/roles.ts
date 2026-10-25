@@ -65,7 +65,8 @@ export interface RoleInfo {
   dangerous: boolean;
 }
 
-const MASTERY_ROLE = /^(mr|masteryrank|mastery)\d{1,2}$|^legendary\d{1,2}$/;
+// MR 1-30, and LR 1-6 (also written Legendary 1-6) for the Legendary ranks above MR 30.
+const MASTERY_ROLE = /^(mr|masteryrank|mastery)\d{1,2}$|^(lr|legendaryrank|legendary)\d{1,2}$/;
 export const isMasteryRoleName = (name: string): boolean => MASTERY_ROLE.test(norm(name));
 
 /** Every normalized role name a verified card earns. */
@@ -75,7 +76,11 @@ export function earnedNames(r: CardReading, mr: number | null, clanName: string)
     names.add(`mr${mr}`);
     names.add(`masteryrank${mr}`);
     names.add(`mastery${mr}`);
-    if (mr > 30) names.add(`legendary${mr - 30}`);
+    if (mr > 30) {
+      names.add(`legendary${mr - 30}`);
+      names.add(`lr${mr - 30}`);
+      names.add(`legendaryrank${mr - 30}`);
+    }
   }
   for (const a of r.accolades) if (norm(a)) names.add(norm(a));
   return names;
