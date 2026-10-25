@@ -21,7 +21,7 @@ export const activity: Command = {
         .setName('set')
         .setDescription('Add an activity, or change an existing one (only the options you give are changed)')
         .addStringOption((o) => o.setName('name').setDescription('Activity name, as people pick it in /lfg').setRequired(true).setMaxLength(100).setAutocomplete(true))
-        .addStringOption((o) => o.setName('image').setDescription(`Picture shown on its LFG posts: ${IMAGE_HELP}`).setMaxLength(1000))
+        .addStringOption((o) => o.setName('image').setDescription('Picture for its LFG posts: a direct https link to an image').setMaxLength(1000))
         .addRoleOption((o) => o.setName('role').setDescription('Role pinged when someone posts this activity'))
         .addChannelOption((o) =>
           o.setName('channel').setDescription('Post this activity in a fixed channel instead of where /lfg ran').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
