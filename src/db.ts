@@ -40,6 +40,8 @@ export interface Sticky {
   content: string;
   /** The bot's current copy, so it can be deleted when the next one is posted. */
   messageId: string | null;
+  /** Clean mode: everything other members post here is deleted, so the sticky is all that is ever in the channel. */
+  deleteOthers: boolean;
   createdBy: string;
   updatedAt: number;
 }
@@ -359,6 +361,9 @@ const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  `
+  ALTER TABLE stickies ADD COLUMN delete_others INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -370,6 +375,7 @@ function toSticky(r: Row): Sticky {
     title: str(r.title),
     content: String(r.content),
     messageId: str(r.message_id),
+    deleteOthers: Number(r.delete_others) === 1,
     createdBy: String(r.created_by),
     updatedAt: Number(r.updated_at),
   };
@@ -639,10 +645,10 @@ export class Store {
   setSticky(s: Omit<Sticky, 'messageId' | 'updatedAt'>): void {
     this.db
       .prepare(
-        `INSERT INTO stickies (channel_id, guild_id, title, content, message_id, created_by, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)
-         ON CONFLICT (channel_id) DO UPDATE SET title = excluded.title, content = excluded.content, created_by = excluded.created_by, updated_at = excluded.updated_at`,
+        `INSERT INTO stickies (channel_id, guild_id, title, content, message_id, created_by, updated_at, delete_others) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+         ON CONFLICT (channel_id) DO UPDATE SET title = excluded.title, content = excluded.content, created_by = excluded.created_by, updated_at = excluded.updated_at, delete_others = excluded.delete_others`,
       )
-      .run(s.channelId, s.guildId, s.title, s.content, s.createdBy, Date.now());
+      .run(s.channelId, s.guildId, s.title, s.content, s.createdBy, Date.now(), s.deleteOthers ? 1 : 0);
   }
 
   getSticky(channelId: string): Sticky | null {

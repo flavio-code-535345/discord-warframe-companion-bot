@@ -116,12 +116,13 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   const say = (payload: Parameters<typeof channel.send>[0]) => channel.send(payload).catch(() => {});
   const mention = { users: [message.author.id] };
 
+  // Only screenshots belong here: anything else is removed, and the member is told why for a moment.
   const image = message.attachments.find((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES) ?? null;
   if (!image) {
-    if (message.attachments.size) {
-      await message.delete().catch(() => {});
-      await say({ content: `<@${message.author.id}> please post a PNG, JPG or WebP screenshot under 8 MB.`, allowedMentions: mention });
-    }
+    if (message.member?.permissions.has(PermissionFlagsBits.ManageMessages)) return true;
+    await message.delete().catch(() => {});
+    const notice = await channel.send({ content: `<@${message.author.id}> this channel is only for profile screenshots (PNG, JPG or WebP under 8 MB).`, allowedMentions: mention }).catch(() => null);
+    if (notice) setTimeout(() => void notice.delete().catch(() => {}), 8000).unref();
     return true;
   }
   const wait = (lastTry.get(message.author.id) ?? 0) + COOLDOWN_MS - Date.now();
