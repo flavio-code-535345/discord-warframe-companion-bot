@@ -62,6 +62,7 @@ test('settings: partial updates keep other fields', () => {
     announcementsChannelId: 'b',
     welcomeChannelId: null,
     chatChannelId: null,
+    modLogChannelId: null,
   });
 });
 
@@ -90,4 +91,24 @@ test('trackers: create, list per user, delete only own', () => {
   assert.equal(store.deleteTracker(G, 'u2', a.id), false);
   assert.equal(store.deleteTracker(G, 'u1', a.id), true);
   assert.equal(store.listTrackers(G, 'u1').length, 0);
+});
+
+test('warnings: add, list per user, clear', () => {
+  const store = new Store(':memory:');
+  store.addWarning({ guildId: G, userId: 'u1', moderatorId: 'm', reason: 'spam' });
+  store.addWarning({ guildId: G, userId: 'u1', moderatorId: 'm', reason: 'again' });
+  store.addWarning({ guildId: G, userId: 'u2', moderatorId: 'm', reason: 'other' });
+  assert.deepEqual(store.listWarnings(G, 'u1').map((w) => w.reason), ['spam', 'again']);
+  assert.equal(store.clearWarnings(G, 'u1'), 2);
+  assert.equal(store.listWarnings(G, 'u1').length, 0);
+  assert.equal(store.listWarnings(G, 'u2').length, 1);
+});
+
+test('channel locks round-trip once', () => {
+  const store = new Store(':memory:');
+  store.saveLock('c1', { everyone: 'neutral', verified: 'allow' });
+  assert.equal(store.isLocked('c1'), true);
+  assert.deepEqual(store.takeLock('c1'), { everyone: 'neutral', verified: 'allow' });
+  assert.equal(store.isLocked('c1'), false);
+  assert.deepEqual(store.takeLock('c1'), {});
 });

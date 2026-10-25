@@ -456,13 +456,14 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, and the Ordis chat channel. null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel and the moderation log. null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
         announcements_channel_id: snowflake.nullable().optional(),
         welcome_channel_id: snowflake.nullable().optional(),
         chat_channel_id: snowflake.nullable().optional(),
+        mod_log_channel_id: snowflake.nullable().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -478,6 +479,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.announcements_channel_id !== undefined ? { announcementsChannelId: args.announcements_channel_id } : {}),
         ...(args.welcome_channel_id !== undefined ? { welcomeChannelId: args.welcome_channel_id } : {}),
         ...(args.chat_channel_id !== undefined ? { chatChannelId: args.chat_channel_id } : {}),
+        ...(args.mod_log_channel_id !== undefined ? { modLogChannelId: args.mod_log_channel_id } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
       return ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);

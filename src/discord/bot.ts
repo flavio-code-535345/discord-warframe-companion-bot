@@ -21,12 +21,13 @@ import { ask } from './commands/ask.js';
 import { clan } from './commands/clan.js';
 import { event } from './commands/event.js';
 import { lfg } from './commands/lfg.js';
+import { MODERATION_COMMANDS } from './commands/moderation.js';
 import { item, wiki } from './commands/lookup.js';
 import { setup } from './commands/setup.js';
 import { track } from './commands/track.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, setup];
+export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, setup, ...MODERATION_COMMANDS];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the

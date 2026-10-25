@@ -2,13 +2,19 @@ import { type ButtonInteraction, MessageFlags, PermissionFlagsBits } from 'disco
 import type { AppContext } from '../context.js';
 import type { RsvpStatus } from '../db.js';
 import { UserError, renderEvent, renderLfg } from '../services/clan.js';
+import { handlePurgeButton } from './commands/moderation.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
-/** Handles button custom IDs of the form `rsvp:<eventId>:<status>` and `lfg:<postId>:<action>`. */
+/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>` and `purge:<token>:<confirm|cancel>`. */
 export async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
   const [kind, rawId, action] = interaction.customId.split(':');
   const id = Number(rawId);
+
+  if (kind === 'purge') {
+    await handlePurgeButton(interaction, ctx, rawId ?? '', action ?? '');
+    return;
+  }
 
   if (kind === 'rsvp') {
     const event = ctx.store.getEvent(id);

@@ -23,6 +23,16 @@ export function parseWhen(input: string, now = Date.now()): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+/** "10m", "1h30m", "2d", "1w", "30s" → milliseconds; null when it isn't a duration. */
+export function parseDuration(input: string): number | null {
+  const s = input.trim().toLowerCase();
+  if (!/^(\d+\s*[wdhms]\s*)+$/.test(s)) return null;
+  const units: Record<string, number> = { ...UNIT_MS, s: 1000 };
+  let total = 0;
+  for (const [, n, unit] of s.matchAll(/(\d+)\s*([wdhms])/g)) total += Number(n) * units[unit!]!;
+  return total > 0 ? total : null;
+}
+
 /** Compact human duration like "3d 4h", "2h 5m" or "45m". */
 export function formatDuration(ms: number): string {
   if (ms <= 0) return 'now';

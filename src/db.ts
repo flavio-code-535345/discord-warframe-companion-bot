@@ -12,7 +12,21 @@ export interface GuildSettings {
   welcomeChannelId: string | null;
   /** Channel where Ordis answers every message (needs the Message Content intent). */
   chatChannelId: string | null;
+  /** Channel where moderation actions are logged. */
+  modLogChannelId: string | null;
 }
+
+export interface Warning {
+  id: number;
+  guildId: string;
+  userId: string;
+  moderatorId: string;
+  reason: string;
+  createdAt: number;
+}
+
+/** What a channel's overwrite for one target said about sending before /lock, so /unlock can put it back. */
+export type LockPrevious = 'allow' | 'deny' | 'neutral';
 
 export interface Tracker {
   id: number;
@@ -136,6 +150,24 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX trackers_user ON trackers (guild_id, user_id);
   `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN mod_log_channel_id TEXT;
+  CREATE TABLE warnings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    moderator_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX warnings_user ON warnings (guild_id, user_id);
+  CREATE TABLE channel_locks (
+    channel_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    previous TEXT NOT NULL CHECK (previous IN ('allow', 'deny', 'neutral')),
+    PRIMARY KEY (channel_id, target_id)
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -222,6 +254,7 @@ export class Store {
       announcementsChannelId: str(r?.announcements_channel_id),
       welcomeChannelId: str(r?.welcome_channel_id),
       chatChannelId: str(r?.chat_channel_id),
+      modLogChannelId: str(r?.mod_log_channel_id),
     };
   }
 
@@ -229,16 +262,25 @@ export class Store {
     const next = { ...this.getSettings(guildId), ...patch };
     this.db
       .prepare(
-        `INSERT INTO guild_settings (guild_id, alerts_channel_id, alerts_role_id, announcements_channel_id, welcome_channel_id, chat_channel_id)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO guild_settings (guild_id, alerts_channel_id, alerts_role_id, announcements_channel_id, welcome_channel_id, chat_channel_id, mod_log_channel_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (guild_id) DO UPDATE SET
            alerts_channel_id = excluded.alerts_channel_id,
            alerts_role_id = excluded.alerts_role_id,
            announcements_channel_id = excluded.announcements_channel_id,
            welcome_channel_id = excluded.welcome_channel_id,
-           chat_channel_id = excluded.chat_channel_id`,
+           chat_channel_id = excluded.chat_channel_id,
+           mod_log_channel_id = excluded.mod_log_channel_id`,
       )
-      .run(guildId, next.alertsChannelId, next.alertsRoleId, next.announcementsChannelId, next.welcomeChannelId, next.chatChannelId);
+      .run(
+        guildId,
+        next.alertsChannelId,
+        next.alertsRoleId,
+        next.announcementsChannelId,
+        next.welcomeChannelId,
+        next.chatChannelId,
+        next.modLogChannelId,
+      );
     return next;
   }
 
@@ -409,6 +451,47 @@ export class Store {
   /** Deletes one of the user's own trackers. */
   deleteTracker(guildId: string, userId: string, id: number): boolean {
     return this.db.prepare('DELETE FROM trackers WHERE guild_id = ? AND user_id = ? AND id = ?').run(guildId, userId, id).changes > 0;
+  }
+
+  // --- moderation ---
+
+  addWarning(w: Omit<Warning, 'id' | 'createdAt'>): Warning {
+    const res = this.db
+      .prepare('INSERT INTO warnings (guild_id, user_id, moderator_id, reason, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(w.guildId, w.userId, w.moderatorId, w.reason, Date.now());
+    return this.listWarnings(w.guildId, w.userId).find((x) => x.id === Number(res.lastInsertRowid))!;
+  }
+
+  listWarnings(guildId: string, userId: string): Warning[] {
+    const rows = this.db.prepare('SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY id').all(guildId, userId) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      guildId: String(r.guild_id),
+      userId: String(r.user_id),
+      moderatorId: String(r.moderator_id),
+      reason: String(r.reason),
+      createdAt: Number(r.created_at),
+    }));
+  }
+
+  clearWarnings(guildId: string, userId: string): number {
+    return Number(this.db.prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes);
+  }
+
+  saveLock(channelId: string, previous: Record<string, LockPrevious>): void {
+    const insert = this.db.prepare('INSERT OR REPLACE INTO channel_locks (channel_id, target_id, previous) VALUES (?, ?, ?)');
+    for (const [targetId, state] of Object.entries(previous)) insert.run(channelId, targetId, state);
+  }
+
+  /** The saved pre-lock states for a channel, removed from storage; empty when the channel isn't locked. */
+  takeLock(channelId: string): Record<string, LockPrevious> {
+    const rows = this.db.prepare('SELECT target_id, previous FROM channel_locks WHERE channel_id = ?').all(channelId) as Row[];
+    this.db.prepare('DELETE FROM channel_locks WHERE channel_id = ?').run(channelId);
+    return Object.fromEntries(rows.map((r) => [String(r.target_id), r.previous as LockPrevious]));
+  }
+
+  isLocked(channelId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM channel_locks WHERE channel_id = ? LIMIT 1').get(channelId));
   }
 
   // --- bot-wide key/value state ---

@@ -41,7 +41,23 @@ intent; see *Optional: Claude-powered chat* below).
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
 | `/lfg activity [details] [size]` | Squad post with Join / Leave / Close buttons; pings everyone when full |
-| `/setup alerts · announcements · welcome · chat · off · show` | (Manage Server) choose channels and the alert ping role |
+| `/setup alerts · announcements · welcome · chat · modlog · off · show` | (Manage Server) choose channels and the alert ping role |
+
+### Moderation
+
+| Command | Who can use it | What it does |
+| --- | --- | --- |
+| `/purge amount [user] [bots_only] [include_pinned]` | Manage Messages | Deletes the last 1–1000 messages, or `all`, in the current channel. Pinned messages are kept unless asked. More than 100, or `all`, asks for confirmation first. Messages older than 14 days can't be bulk-deleted by Discord, so they're removed one by one (up to 300 per run) |
+| `/warn user reason` · `/warnings user [clear]` | Timeout Members | Recorded warnings, DMed to the member |
+| `/timeout user duration [reason]` · `/untimeout user` | Timeout Members | Discord timeout, e.g. `10m`, `1h`, `1d` (max 28 days) |
+| `/kick user [reason]` | Kick Members | Removes the member (DMed first) |
+| `/ban user [reason] [delete_messages]` · `/unban user` | Ban Members | Bans by user (even if they've left); unban picks from the ban list |
+| `/slowmode interval [channel]` | Manage Channels | `off` or e.g. `10s`, `2m` (max 6h) |
+| `/lock [channel] [reason]` · `/unlock [channel]` | Manage Channels | Members can't post; roles with Manage Messages still can. Unlock restores the exact previous permissions |
+
+Commands are hidden from members without the permission. Nobody can act on themselves, the owner, Ordis, or anyone
+whose top role is at or above theirs or Ordis's. Every action is posted to the `/setup modlog` channel and recorded
+in Discord's audit log with the moderator's name.
 
 **Automatic alerts** (in the `/setup alerts` channel): new daily sortie, weekly Archon Hunt, Baro Ki'Teer's arrival
 with inventory, Steel Path reward rotation, in-game alerts, and invasions offering Orokin Catalysts/Reactors, Forma,

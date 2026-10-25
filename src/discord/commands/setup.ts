@@ -24,6 +24,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         name: 'Welcome messages',
         value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
       },
+      { name: 'Moderation log', value: ch(s.modLogChannelId) },
       {
         name: 'Ordis chat channel',
         value: `${ch(s.chatChannelId)} · mentions, replies, /ask and DMs always work${chatWarnings.length ? `
@@ -58,6 +59,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('modlog')
+        .setDescription('Channel where purges, warnings, timeouts, kicks and bans are logged')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('chat')
         .setDescription('Channel where Ordis answers every message, not only mentions')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -76,6 +83,7 @@ export const setup: Command = {
               { name: 'Announcements channel', value: 'announcements' },
               { name: 'Welcome messages', value: 'welcome' },
               { name: 'Ordis chat channel', value: 'chat' },
+              { name: 'Moderation log', value: 'modlog' },
             ),
         ),
     )
@@ -104,6 +112,9 @@ export const setup: Command = {
       case 'chat':
         settings = ctx.store.updateSettings(guildId, { chatChannelId: channelId() });
         break;
+      case 'modlog':
+        settings = ctx.store.updateSettings(guildId, { modLogChannelId: channelId() });
+        break;
       case 'off': {
         const feature = interaction.options.getString('feature', true);
         settings = ctx.store.updateSettings(
@@ -114,7 +125,9 @@ export const setup: Command = {
               ? { announcementsChannelId: null }
               : feature === 'chat'
                 ? { chatChannelId: null }
-                : { welcomeChannelId: null },
+                : feature === 'modlog'
+                  ? { modLogChannelId: null }
+                  : { welcomeChannelId: null },
         );
         break;
       }
