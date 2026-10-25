@@ -69,7 +69,7 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
       return null;
     }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = data.choices?.[0]?.message?.content?.replace(/<think>[sS]*?</think>/g, '').trim();
+    const text = data.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
     if (!text || /NOT_COVERED/i.test(text)) return null;
     return text.length > 1500 ? `${text.slice(0, 1497)}…` : text;
   } catch (err) {
