@@ -42,6 +42,8 @@ export interface Sticky {
   messageId: string | null;
   /** Clean mode: everything other members post here is deleted, so the sticky is all that is ever in the channel. */
   deleteOthers: boolean;
+  /** A picture shown under the text (an https URL). */
+  imageUrl: string | null;
   createdBy: string;
   updatedAt: number;
 }
@@ -364,6 +366,9 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE stickies ADD COLUMN delete_others INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  ALTER TABLE stickies ADD COLUMN image_url TEXT;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -376,6 +381,7 @@ function toSticky(r: Row): Sticky {
     content: String(r.content),
     messageId: str(r.message_id),
     deleteOthers: Number(r.delete_others) === 1,
+    imageUrl: str(r.image_url),
     createdBy: String(r.created_by),
     updatedAt: Number(r.updated_at),
   };
@@ -645,10 +651,10 @@ export class Store {
   setSticky(s: Omit<Sticky, 'messageId' | 'updatedAt'>): void {
     this.db
       .prepare(
-        `INSERT INTO stickies (channel_id, guild_id, title, content, message_id, created_by, updated_at, delete_others) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-         ON CONFLICT (channel_id) DO UPDATE SET title = excluded.title, content = excluded.content, created_by = excluded.created_by, updated_at = excluded.updated_at, delete_others = excluded.delete_others`,
+        `INSERT INTO stickies (channel_id, guild_id, title, content, message_id, created_by, updated_at, delete_others, image_url) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+         ON CONFLICT (channel_id) DO UPDATE SET title = excluded.title, content = excluded.content, created_by = excluded.created_by, updated_at = excluded.updated_at, delete_others = excluded.delete_others, image_url = excluded.image_url`,
       )
-      .run(s.channelId, s.guildId, s.title, s.content, s.createdBy, Date.now(), s.deleteOthers ? 1 : 0);
+      .run(s.channelId, s.guildId, s.title, s.content, s.createdBy, Date.now(), s.deleteOthers ? 1 : 0, s.imageUrl);
   }
 
   getSticky(channelId: string): Sticky | null {
@@ -686,7 +692,7 @@ export class Store {
    * Binds something a screenshot proves (its in-game name, or the image itself) to the member who used it first.
    * Returns the other member's id when it already belongs to someone else, otherwise null (and keeps the claim).
    */
-  claimSs(guildId: string, kind: 'ign' | 'image', key: string, userId: string): string | null {
+  claimSs(guildId: string, kind: 'ign' | 'image' | 'points', key: string, userId: string): string | null {
     const r = this.db.prepare('SELECT user_id FROM ss_claims WHERE guild_id = ? AND kind = ? AND key = ?').get(guildId, kind, key) as Row | undefined;
     if (r) return String(r.user_id) === userId ? null : String(r.user_id);
     this.db.prepare('INSERT INTO ss_claims (guild_id, kind, key, user_id, claimed_at) VALUES (?, ?, ?, ?, ?)').run(guildId, kind, key, userId, Date.now());

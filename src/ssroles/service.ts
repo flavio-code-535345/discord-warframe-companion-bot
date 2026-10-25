@@ -20,6 +20,8 @@ import { setSticky } from '../sticky/service.js';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const COOLDOWN_MS = 30_000;
+/** Mastery points on the example card in assets/ss-roles-example.png (normalized, no separators). */
+const EXAMPLE_POINTS = '2692721';
 
 const DANGEROUS = [
   PermissionFlagsBits.Administrator,
@@ -141,9 +143,11 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
 
   // Answer at once so the member always sees something, then turn that message into the result (or the error).
   const progress = await channel.send({ content: `<@${message.author.id}> 🔎 Reading your screenshot…`, allowedMentions: mention }).catch(() => null);
-  const finish = async (payload: { content: string; embeds?: EmbedBuilder[] }) => {
-    if (progress && (await progress.edit({ content: payload.content, embeds: payload.embeds ?? [], allowedMentions: mention }).then(() => true, () => false))) return;
-    await say({ ...payload, allowedMentions: mention });
+  // The reply only has to be seen for a moment: the full record goes to the mod log, so the channel stays clean.
+  const finish = async (payload: { content: string; embeds?: EmbedBuilder[] }, ttlMs = 30_000) => {
+    const edited = progress ? await progress.edit({ content: payload.content, embeds: payload.embeds ?? [], allowedMentions: mention }).then(() => progress, () => null) : null;
+    const shown = edited ?? (await channel.send({ ...payload, allowedMentions: mention }).catch(() => null));
+    if (shown) setTimeout(() => void shown.delete().catch(() => {}), ttlMs).unref();
   };
   const work = async () => {
     const guild = message.guild;
@@ -164,12 +168,17 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       // The same card, or the same in-game name, can't be used by two Discord accounts.
       const hash = createHash('sha256').update(bytes).digest('hex');
       const ign = reading.in_game_name ? norm(reading.in_game_name) : null;
-      const takenBy = store.claimSs(guild.id, 'image', hash, message.author.id) ?? (ign ? store.claimSs(guild.id, 'ign', ign, message.author.id) : null);
-      if (takenBy) problems.push('This screenshot or in-game name was already used by another member. If that is a mistake, ask a moderator.');
+      // An exact mastery point total belongs to one account, so a card copied from someone else is refused.
+      const points = reading.mastery_points ? norm(reading.mastery_points) : null;
+      const takenBy =
+        store.claimSs(guild.id, 'image', hash, message.author.id) ??
+        (ign ? store.claimSs(guild.id, 'ign', ign, message.author.id) : null) ??
+        (points ? store.claimSs(guild.id, 'points', points, message.author.id) : null);
+      if (takenBy) problems.push('This screenshot, in-game name or exact mastery total was already used by another member. If that is a mistake, ask a moderator.');
     }
 
     if (problems.length) {
-      await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))] });
+      await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))] }, 60_000);
       await modLog(ctx, {
         action: 'Screenshot rejected',
         moderator: ctx.client.user!,
@@ -196,14 +205,19 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       ...(plan.skipped.length ? [`Skipped: ${plan.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}`] : []),
       ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
     ];
-    await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)] });
+    await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)] }, 20_000);
     await modLog(ctx, {
       action: 'Screenshot roles',
       moderator: ctx.client.user!,
       target: message.author,
-      reason: `${reading.mastery_rank_title ?? 'rank unknown'} · ${reading.in_game_name ?? 'name not shown'}`,
+      reason: `Verified: ${reading.mastery_rank_title ?? 'rank unknown'}${mr !== null ? ` (MR ${mr})` : ''}`,
       fields: [
-        { name: 'Added', value: plan.add.map((r) => r.name).join(', ') || '—' },
+        { name: 'Mastery points', value: reading.mastery_points ?? '—' },
+        { name: 'Clan', value: `${reading.clan_name ?? '—'}${reading.clan_tag ? `#${reading.clan_tag}` : ''}${reading.clan_tier_rank ? ` · ${reading.clan_tier_rank}` : ''}` },
+        { name: 'In-game name', value: reading.in_game_name ?? 'not shown' },
+        { name: 'Accolades', value: reading.accolades.join(', ') || '—' },
+        { name: 'Roles added', value: plan.add.map((r) => r.name).join(', ') || '—' },
+        { name: 'Roles removed', value: plan.remove.map((r) => r.name).join(', ') || '—' },
         { name: 'Reader', value: read.reader === 'ocr' ? 'OCR' : 'Gemini (OCR could not read it; emblem not compared)' },
       ],
     });
@@ -243,6 +257,9 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
   if (reference && reference.data.length > MAX_IMAGE_BYTES) throw new UserError('The reference image is over 8 MB.');
   const learned = reference ? await learnReference(ctx, reference.data, reference.mime) : null;
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
+  // The example card is public, so its mastery total is reserved for Ordis: posting a copy of the example gets nobody roles.
+  ctx.store.claimSs(ctx.config.DISCORD_GUILD_ID, 'points', EXAMPLE_POINTS, ctx.client.user!.id);
+  const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png` : null;
   // The instructions are the channel's sticky message: always the last thing posted, so new members see them.
   await setSticky(
     ctx,
@@ -254,6 +271,8 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     ].join('\n\n'),
     '🖼️ Get your roles from a screenshot',
     ctx.client.user!.id,
+    false,
+    exampleUrl,
   );
   return learned;
 }

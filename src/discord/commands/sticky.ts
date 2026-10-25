@@ -18,6 +18,7 @@ export const sticky: Command = {
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
         .addStringOption((o) => o.setName('message').setDescription('The text. Type \n for a new line. Markdown works.').setRequired(true).setMaxLength(MAX_STICKY_LENGTH))
         .addStringOption((o) => o.setName('title').setDescription('Optional heading').setMaxLength(200))
+        .addStringOption((o) => o.setName('image').setDescription('Optional picture under the text: a direct https link').setMaxLength(1000))
         .addBooleanOption((o) => o.setName('clean').setDescription('Also delete everything others post there, so only this stays (staff exempt)')),
     )
     .addSubcommand((s) =>
@@ -43,7 +44,7 @@ export const sticky: Command = {
     }
     const channel = interaction.options.getChannel('channel', true);
     if (sub === 'set') {
-      await setSticky(ctx, channel.id, interaction.options.getString('message', true), interaction.options.getString('title'), interaction.user.id, interaction.options.getBoolean('clean') ?? false);
+      await setSticky(ctx, channel.id, interaction.options.getString('message', true), interaction.options.getString('title'), interaction.user.id, interaction.options.getBoolean('clean') ?? false, interaction.options.getString('image'));
       await interaction.editReply(`📌 Sticky set in <#${channel.id}>. ${interaction.options.getBoolean('clean') ? 'Everything else posted there is deleted (staff are exempt).' : 'Ordis moves it to the bottom whenever someone else posts.'}`);
       return;
     }

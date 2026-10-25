@@ -2,6 +2,7 @@ import { EmbedBuilder, type Message, PermissionFlagsBits } from 'discord.js';
 import type { AppContext } from '../context.js';
 import type { Sticky } from '../db.js';
 import { COLORS } from '../discord/embeds.js';
+import { validImageUrl } from '../lfg/lifecycle.js';
 import { UserError } from '../services/clan.js';
 
 /**
@@ -13,9 +14,10 @@ import { UserError } from '../services/clan.js';
 export const STICKY_DEBOUNCE_MS = 3000;
 export const MAX_STICKY_LENGTH = 4000;
 
-export function renderSticky(s: Pick<Sticky, 'title' | 'content'>): EmbedBuilder {
+export function renderSticky(s: Pick<Sticky, 'title' | 'content'> & { imageUrl?: string | null }): EmbedBuilder {
   const embed = new EmbedBuilder().setColor(COLORS.brand).setDescription(s.content).setFooter({ text: '📌 Sticky message' });
   if (s.title) embed.setTitle(s.title);
+  if (s.imageUrl) embed.setImage(s.imageUrl);
   return embed;
 }
 
@@ -80,7 +82,8 @@ let keeper: StickyKeeper | null = null;
 export const stickyKeeper = (ctx: AppContext): StickyKeeper => (keeper ??= new StickyKeeper(ctx));
 
 /** Sets (or replaces) a channel's sticky and posts it right away. */
-export async function setSticky(ctx: AppContext, channelId: string, content: string, title: string | null, userId: string, deleteOthers = false): Promise<void> {
+export async function setSticky(ctx: AppContext, channelId: string, content: string, title: string | null, userId: string, deleteOthers = false, imageUrl: string | null = null): Promise<void> {
+  if (imageUrl && !validImageUrl(imageUrl)) throw new UserError('The image must be a direct https link.');
   const text = content.replace(/\\n/g, '\n').trim();
   if (!text) throw new UserError('The message is empty.');
   if (text.length > MAX_STICKY_LENGTH) throw new UserError(`That message is ${text.length} characters; the limit is ${MAX_STICKY_LENGTH}.`);
@@ -93,7 +96,7 @@ export async function setSticky(ctx: AppContext, channelId: string, content: str
   if (!channel || !channel.isTextBased() || channel.isDMBased() || channel.guildId !== ctx.config.DISCORD_GUILD_ID) throw new UserError('Pick a text channel of this server.');
 
   const previous = ctx.store.getSticky(channelId);
-  ctx.store.setSticky({ channelId, guildId: ctx.config.DISCORD_GUILD_ID, title: title?.trim() || null, content: text, createdBy: userId, deleteOthers });
+  ctx.store.setSticky({ channelId, guildId: ctx.config.DISCORD_GUILD_ID, title: title?.trim() || null, content: text, createdBy: userId, deleteOthers, imageUrl: imageUrl?.trim() || null });
   // A replaced sticky keeps its old message id so the refresh deletes it; the new text always gets posted.
   if (previous?.messageId) ctx.store.setStickyMessage(channelId, previous.messageId);
   // The old copy might already be the last message, but the text changed, so always repost.

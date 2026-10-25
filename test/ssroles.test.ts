@@ -107,3 +107,10 @@ test('a screenshot or in-game name belongs to the first member who used it', () 
   assert.deepEqual([...store.getSsReference('g')!.fingerprint], [1, 2, 3]);
   assert.equal(store.getSsReference('g')!.clanText, 'The Rats Den 69#043');
 });
+
+test('an exact mastery total can only be claimed by one member', () => {
+  const store = new Store(':memory:');
+  assert.equal(store.claimSs('g', 'points', '2692721', 'bot'), null);
+  assert.equal(store.claimSs('g', 'points', '2692721', 'someone'), 'bot');
+  assert.equal(store.claimSs('g', 'points', '2637138', 'someone'), null);
+});
