@@ -43,6 +43,17 @@ const roleInfos = (guild: Guild): RoleInfo[] =>
     .filter((r) => r.id !== guild.id)
     .map((r) => ({ id: r.id, name: r.name, position: r.position, managed: r.managed, dangerous: r.permissions.any(DANGEROUS) }));
 
+/** The example card is public, so its mastery total is reserved for Ordis: posting a copy of it gets nobody roles. */
+const reserveExample = (ctx: AppContext): void => void ctx.store.claimSs(ctx.config.DISCORD_GUILD_ID, 'points', EXAMPLE_POINTS, ctx.client.user!.id);
+
+/** Clears who has used which in-game name, screenshot and mastery total, so every card is accepted again. */
+export function resetSsClaims(ctx: AppContext): number {
+  const cleared = ctx.store.resetSsClaims(ctx.config.DISCORD_GUILD_ID);
+  reserveExample(ctx);
+  lastTry.clear();
+  return cleared;
+}
+
 const mimeOf = (contentType: string | null) => (contentType ?? '').split(';')[0]!.trim();
 
 async function download(url: string): Promise<Uint8Array> {
@@ -258,7 +269,7 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
   const learned = reference ? await learnReference(ctx, reference.data, reference.mime) : null;
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
   // The example card is public, so its mastery total is reserved for Ordis: posting a copy of the example gets nobody roles.
-  ctx.store.claimSs(ctx.config.DISCORD_GUILD_ID, 'points', EXAMPLE_POINTS, ctx.client.user!.id);
+  reserveExample(ctx);
   const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png?v=2` : null;
   // The instructions are the channel's sticky message: always the last thing posted, so new members see them.
   await saveSticky(ctx, {

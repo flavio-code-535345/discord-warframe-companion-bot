@@ -795,6 +795,11 @@ export class Store {
     return null;
   }
 
+  /** Forgets every claimed in-game name, screenshot and mastery total, so those cards can be used again. Returns how many were cleared. */
+  resetSsClaims(guildId: string): number {
+    return Number(this.db.prepare('DELETE FROM ss_claims WHERE guild_id = ?').run(guildId).changes);
+  }
+
   addTempVoice(v: TempVoice): void {
     this.db
       .prepare('INSERT OR REPLACE INTO temp_voice (channel_id, guild_id, owner_id, created_at) VALUES (?, ?, ?, ?)')

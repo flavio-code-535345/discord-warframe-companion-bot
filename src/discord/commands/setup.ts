@@ -2,7 +2,7 @@ import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashComm
 import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
 import { disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
-import { disableSsRoles, setupSsRoles } from '../../ssroles/service.js';
+import { disableSsRoles, resetSsClaims, setupSsRoles } from '../../ssroles/service.js';
 import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
@@ -95,6 +95,7 @@ export const setup: Command = {
         .addChannelOption((o) => o.setName('channel').setDescription('Channel for screenshots').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
         .addAttachmentOption((o) => o.setName('reference').setDescription('A clan profile screenshot (PNG/JPG) to learn the emblem from; not saved')),
     )
+    .addSubcommand((s) => s.setName('ssreset').setDescription('Forget which cards were used, so every screenshot is accepted again'))
     .addSubcommand((s) =>
       s
         .setName('levels')
@@ -208,6 +209,11 @@ export const setup: Command = {
           lfgVoiceGraceMinutes: interaction.options.getInteger('grace_minutes'),
         });
         break;
+      case 'ssreset': {
+        const cleared = resetSsClaims(ctx);
+        await interaction.reply({ content: `Screenshot roles reset: ${cleared} used names, images and totals forgotten. Every card is accepted again (the example card stays reserved).`, flags: MessageFlags.Ephemeral });
+        return;
+      }
       case 'levels':
         settings = ctx.store.updateSettings(guildId, { levelingOff: 0, levelChannelId: interaction.options.getChannel('channel')?.id ?? null });
         break;

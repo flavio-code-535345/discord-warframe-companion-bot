@@ -105,3 +105,13 @@ describe('xp storage', () => {
     assert.equal(s.getSettings('g').levelChannelId, '42');
   });
 });
+
+describe('screenshot claims reset', () => {
+  it('forgets every claim so the same card can be used again', () => {
+    const s = new Store(':memory:');
+    assert.equal(s.claimSs('g', 'image', 'hash', 'u1'), null);
+    assert.equal(s.claimSs('g', 'image', 'hash', 'u2'), 'u1');
+    assert.equal(s.resetSsClaims('g'), 1);
+    assert.equal(s.claimSs('g', 'image', 'hash', 'u2'), null);
+  });
+});
