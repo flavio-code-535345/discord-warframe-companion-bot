@@ -24,6 +24,9 @@ const CUES: { ask: RegExp; sentence: RegExp }[] = [
 
 const has = (text: string, term: string) => text.includes(term) || (term.length > 3 && term.endsWith('s') && text.includes(term.slice(0, -1)));
 
+/** A sentence that leans on the one before it ("these requirements", "This allows…") makes no sense alone. */
+const DEPENDS_ON_PREVIOUS = /^(these|this|those|they|it|its|such|that)\b|\bthese (requirements|conditions|steps)\b/i;
+
 export function sentences(text: string): string[] {
   return text
     .split(/\n+| · |(?<=[.!?])\s+(?=[A-Z0-9"'(])/)
@@ -63,7 +66,10 @@ export function answerFrom(question: string, passages: Passage[], maxChars = 700
     length += c.s.length + 1;
   }
   if (!chosen.length) chosen.push(best[0]!);
-  chosen.sort((a, b) => a.i - b.i);
-  const source = passages[best[0]!.rank]!;
-  return { text: chosen.map((c) => c.s).join(' '), source };
+  const rank = best[0]!.rank;
+  const all = sentences(passages[rank]!.extract);
+  const picked = new Set(chosen.map((c) => c.i));
+  for (const i of [...picked]) if (i > 0 && DEPENDS_ON_PREVIOUS.test(all[i]!)) picked.add(i - 1);
+  const text = [...picked].sort((a, b) => a - b).map((i) => all[i]!).join(' ');
+  return { text, source: passages[rank]! };
 }

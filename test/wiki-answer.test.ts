@@ -22,3 +22,11 @@ test('answers "what is" with the opening definition', () => {
 test('gives no direct answer when nothing in the passages matches', () => {
   assert.equal(answerFrom('how tall is the moon', [page('Lotus', 'The Lotus guides the Tenno through the origin system.')]), null);
 });
+
+test('adds the sentence a "these requirements" sentence refers to', () => {
+  const a = answerFrom('how do i unlock the steel path', [
+    page('The Steel Path', 'Reach Mastery Rank 5 and clear every planet node on the star chart. Once the player meets these requirements, Teshin will let the player unlock The Steel Path.'),
+  ]);
+  assert.match(a!.text, /^Reach Mastery Rank 5/);
+  assert.match(a!.text, /Teshin will let/);
+});
