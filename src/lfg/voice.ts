@@ -2,6 +2,7 @@ import { ChannelType, type Guild, OverwriteType, PermissionFlagsBits, type Voice
 import type { AppContext } from '../context.js';
 import type { LfgPost } from '../db.js';
 import { getSendableChannel, renderLfg } from '../services/clan.js';
+import { sweepTempVoice } from './autovc.js';
 import { DEFAULT_GRACE_MINUTES, sweepAction } from './lifecycle.js';
 
 const SWEEP_INTERVAL_MS = 60_000;
@@ -145,6 +146,7 @@ export class LfgVoiceSweeper {
     this.running = true;
     try {
       await sweepSquads(this.ctx);
+      await sweepTempVoice(this.ctx);
     } catch (err) {
       console.error('[lfg] sweep failed:', err);
     } finally {

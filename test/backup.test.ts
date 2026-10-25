@@ -48,6 +48,7 @@ function sampleBackup(): ServerBackup {
       honeypotAction: null,
       lfgVoiceCategoryId: null,
       lfgVoiceGraceMinutes: null,
+      autoVcHubChannelId: null,
     },
     includesMessages: true,
   };

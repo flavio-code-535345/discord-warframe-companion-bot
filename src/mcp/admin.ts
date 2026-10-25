@@ -577,6 +577,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         honeypot_channel_id: snowflake.nullable().optional().describe('Trap channel: anyone without moderator powers who posts there is removed. Posts a "do not post" notice in it.'),
         honeypot_action: z.enum(HONEYPOT_ACTIONS).optional().describe('softban (default: remove + clear the last hour of messages, can rejoin), ban or kick'),
         lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
+        auto_vc_hub_channel_id: snowflake.nullable().optional().describe('Join-to-create lobby: a voice channel that gives whoever joins it their own temporary room next to it; null turns it off'),
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -595,6 +596,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.chat_channel_id !== undefined ? { chatChannelId: args.chat_channel_id } : {}),
         ...(args.mod_log_channel_id !== undefined ? { modLogChannelId: args.mod_log_channel_id } : {}),
         ...(args.lfg_voice_category_id !== undefined ? { lfgVoiceCategoryId: args.lfg_voice_category_id } : {}),
+        ...(args.auto_vc_hub_channel_id !== undefined ? { autoVcHubChannelId: args.auto_vc_hub_channel_id } : {}),
         ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);

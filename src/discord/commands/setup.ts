@@ -27,6 +27,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
       },
       { name: 'Moderation log', value: ch(s.modLogChannelId) },
+      { name: 'Join-to-create lobby', value: s.autoVcHubChannelId ? `<#${s.autoVcHubChannelId}>` : '*off*' },
       {
         name: 'Squad voice',
         value: s.lfgVoiceCategoryId ? `category <#${s.lfgVoiceCategoryId}> · host grace ${s.lfgVoiceGraceMinutes ?? 5} min` : '*off* (squads post without a voice channel)',
@@ -102,6 +103,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('autovc')
+        .setDescription('Join-to-create: joining this lobby voice channel gives a member their own room')
+        .addChannelOption((o) => o.setName('lobby').setDescription('The lobby voice channel').setRequired(true).addChannelTypes(ChannelType.GuildVoice)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('lfgvoice')
         .setDescription('Give every /lfg squad its own voice channel in a category (made and removed automatically)')
         .addChannelOption((o) => o.setName('category').setDescription('Category for the squad voice channels').setRequired(true).addChannelTypes(ChannelType.GuildCategory))
@@ -131,6 +138,7 @@ export const setup: Command = {
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
               { name: 'Squad voice channels', value: 'lfgvoice' },
+              { name: 'Join-to-create voice', value: 'autovc' },
             ),
         ),
     )
@@ -173,6 +181,9 @@ export const setup: Command = {
         await interaction.editReply({ content: `🛡️ Verification panel posted: ${url}`, embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
         return;
       }
+      case 'autovc':
+        settings = ctx.store.updateSettings(guildId, { autoVcHubChannelId: channelId('lobby') });
+        break;
       case 'lfgvoice':
         settings = ctx.store.updateSettings(guildId, {
           lfgVoiceCategoryId: channelId('category'),
@@ -190,6 +201,10 @@ export const setup: Command = {
         if (feature === 'verification') {
           await disableVerification(ctx);
           settings = ctx.store.getSettings(guildId);
+          break;
+        }
+        if (feature === 'autovc') {
+          settings = ctx.store.updateSettings(guildId, { autoVcHubChannelId: null });
           break;
         }
         if (feature === 'lfgvoice') {

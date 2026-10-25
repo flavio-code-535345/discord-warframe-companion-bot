@@ -77,6 +77,14 @@ turns it off.
 direct `https` link to an image. `/activity clear` removes a setting, and `/activity list` shows everything. The same
 settings are in the admin panel (Settings page) and the `set_activity`, `list_activities` and `remove_activity` MCP tools.
 
+### Join-to-create voice rooms
+
+`/setup autovc lobby` marks a voice channel as the lobby. Whoever joins it gets their own room (`🎧 Name's room`) created
+next to the lobby, in the same category, and is moved into it automatically. The room is deleted as soon as it is empty.
+Each member has one room at a time (joining the lobby again takes them back to it). The owner can change it with
+`/vc rename`, `/vc limit` and `/vc lock` / `/vc unlock` while sitting in it. Upkeep also runs once a minute, so a restart
+can't leave empty rooms behind. `/setup off feature:Join-to-create voice` turns it off.
+
 ### Honeypot
 
 `/setup honeypot channel [action]` turns a channel into a trap for spam bots and hacked accounts. It posts a "do not post

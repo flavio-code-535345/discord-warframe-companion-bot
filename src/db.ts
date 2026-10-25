@@ -26,6 +26,15 @@ export interface GuildSettings {
   lfgVoiceCategoryId: string | null;
   /** Minutes a squad waits for its host to be in voice before closing (default 5). */
   lfgVoiceGraceMinutes: number | null;
+  /** Join-to-create: joining this voice channel makes a personal room for the member. */
+  autoVcHubChannelId: string | null;
+}
+
+export interface TempVoice {
+  channelId: string;
+  guildId: string;
+  ownerId: string;
+  createdAt: number;
 }
 
 /** GuildSettings field → guild_settings column. Adding a setting means a migration plus one line here. */
@@ -44,6 +53,7 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['honeypotAction', 'honeypot_action'],
   ['lfgVoiceCategoryId', 'lfg_voice_category_id'],
   ['lfgVoiceGraceMinutes', 'lfg_voice_grace_minutes'],
+  ['autoVcHubChannelId', 'auto_vc_hub_channel_id'],
 ];
 const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes']);
 
@@ -291,6 +301,15 @@ const MIGRATIONS: string[] = [
     channel_id TEXT
   );
   `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN auto_vc_hub_channel_id TEXT;
+  CREATE TABLE temp_voice (
+    channel_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -337,6 +356,10 @@ function toLfg(r: Row): LfgPost {
     expiresAt: r.expires_at === null || r.expires_at === undefined ? null : Number(r.expires_at),
     hostAbsentSince: r.host_absent_since === null || r.host_absent_since === undefined ? null : Number(r.host_absent_since),
   };
+}
+
+function toTempVoice(r: Row): TempVoice {
+  return { channelId: String(r.channel_id), guildId: String(r.guild_id), ownerId: String(r.owner_id), createdAt: Number(r.created_at) };
 }
 
 function toActivity(r: Row): Activity {
@@ -546,6 +569,32 @@ export class Store {
 
   setLfgExpiry(id: number, expiresAt: number | null): void {
     this.db.prepare('UPDATE lfg_posts SET expires_at = ? WHERE id = ?').run(expiresAt, id);
+  }
+
+  // --- join-to-create voice rooms ---
+
+  addTempVoice(v: TempVoice): void {
+    this.db
+      .prepare('INSERT OR REPLACE INTO temp_voice (channel_id, guild_id, owner_id, created_at) VALUES (?, ?, ?, ?)')
+      .run(v.channelId, v.guildId, v.ownerId, v.createdAt);
+  }
+
+  getTempVoice(channelId: string): TempVoice | null {
+    const r = this.db.prepare('SELECT * FROM temp_voice WHERE channel_id = ?').get(channelId) as Row | undefined;
+    return r ? toTempVoice(r) : null;
+  }
+
+  tempVoiceByOwner(guildId: string, ownerId: string): TempVoice | null {
+    const r = this.db.prepare('SELECT * FROM temp_voice WHERE guild_id = ? AND owner_id = ?').get(guildId, ownerId) as Row | undefined;
+    return r ? toTempVoice(r) : null;
+  }
+
+  listTempVoice(): TempVoice[] {
+    return (this.db.prepare('SELECT * FROM temp_voice').all() as Row[]).map(toTempVoice);
+  }
+
+  removeTempVoice(channelId: string): void {
+    this.db.prepare('DELETE FROM temp_voice WHERE channel_id = ?').run(channelId);
   }
 
   // --- activities ---

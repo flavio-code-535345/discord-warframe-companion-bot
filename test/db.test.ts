@@ -71,6 +71,7 @@ test('settings: partial updates keep other fields', () => {
     honeypotAction: null,
     lfgVoiceCategoryId: null,
     lfgVoiceGraceMinutes: null,
+    autoVcHubChannelId: null,
   });
   store.updateSettings(G, { verifyMinAccountAgeDays: 7 });
   assert.equal(store.getSettings(G).verifyMinAccountAgeDays, 7);
