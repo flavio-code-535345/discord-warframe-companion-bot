@@ -1,5 +1,4 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -11,24 +10,10 @@ import { lookupItem, summarizeLookup } from '../warframe/items.js';
 import { readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { priceCheck } from '../warframe/market.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
+import { registerAdminTools } from './admin.js';
+import { READ_ONLY, snowflake, tool } from './util.js';
 import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
 
-const json = (data: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
-
-/** Expected failures (bad input, missing config) go back to the model as tool errors it can act on. */
-function tool<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<CallToolResult> {
-  return async (args) => {
-    try {
-      return json(await fn(args));
-    } catch (err) {
-      if (err instanceof UserError) return { isError: true, content: [{ type: 'text', text: err.message }] };
-      throw err;
-    }
-  };
-}
-
-const READ_ONLY = { readOnlyHint: true, openWorldHint: true } as const;
-const snowflake = z.string().regex(/^\d{15,22}$/, 'Discord IDs are 15-22 digit numbers');
 
 /**
  * Builds the MCP server exposing Warframe data and clan management. A new instance is created
@@ -44,7 +29,8 @@ export function createMcpServer(ctx: AppContext): McpServer {
         `${config.BOT_NAME}, the companion bot for the Warframe clan "${config.CLAN_NAME}" and its Discord server. ` +
         'Use the get_* tools for live Warframe data and clan info. Tools that post to Discord ' +
         '(send_announcement, create_event) are visible to the whole clan: confirm wording with the user first. ' +
-        'Call list_channels_and_roles to find channel and role IDs.',
+        'Call list_channels_and_roles to find channel and role IDs. Server admin tools (create/edit channels and roles) ' +
+        'change the real server: show the user the plan and get approval before using them.',
     },
   );
 
@@ -332,6 +318,8 @@ export function createMcpServer(ctx: AppContext): McpServer {
     },
     tool(async ({ discord_user_id }) => ({ removed: store.removeMember(guildId, discord_user_id) })),
   );
+
+  registerAdminTools(server, ctx);
 
   return server;
 }
