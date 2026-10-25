@@ -2,6 +2,7 @@ import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashComm
 import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
 import { disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
+import { disableSsRoles, setupSsRoles } from '../../ssroles/service.js';
 import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
@@ -32,6 +33,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         name: 'Squad voice',
         value: s.lfgVoiceCategoryId ? `category <#${s.lfgVoiceCategoryId}> · host grace ${s.lfgVoiceGraceMinutes ?? 5} min` : '*off* (squads post without a voice channel)',
       },
+      { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}${flags.ENABLE_MESSAGE_CONTENT ? '' : ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see screenshots'}` : '*off*' },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Verification',
@@ -87,6 +89,13 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('ssroles')
+        .setDescription('Channel where members post a profile screenshot to get their rank and clan roles')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel for screenshots').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
+        .addAttachmentOption((o) => o.setName('reference').setDescription('A genuine clan profile screenshot, used to check the clan emblem')),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('honeypot')
         .setDescription('Trap channel: anyone without moderator powers who posts there is removed (for spam bots)')
         .addChannelOption((o) => o.setName('channel').setDescription('A channel nobody should write in').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
@@ -137,6 +146,7 @@ export const setup: Command = {
               { name: 'Moderation log', value: 'modlog' },
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
+              { name: 'Screenshot roles', value: 'ssroles' },
               { name: 'Squad voice channels', value: 'lfgvoice' },
               { name: 'Join-to-create voice', value: 'autovc' },
             ),
@@ -190,6 +200,14 @@ export const setup: Command = {
           lfgVoiceGraceMinutes: interaction.options.getInteger('grace_minutes'),
         });
         break;
+      case 'ssroles': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const file = interaction.options.getAttachment('reference');
+        const reference = file ? { mime: (file.contentType ?? 'image/png').split(';')[0]!, data: new Uint8Array(await (await fetch(file.url)).arrayBuffer()) } : undefined;
+        await setupSsRoles(ctx, channelId(), reference);
+        await interaction.editReply({ embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
+        return;
+      }
       case 'honeypot': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await setupHoneypot(ctx, channelId(), honeypotAction(interaction.options.getString('action')));
@@ -209,6 +227,11 @@ export const setup: Command = {
         }
         if (feature === 'lfgvoice') {
           settings = ctx.store.updateSettings(guildId, { lfgVoiceCategoryId: null, lfgVoiceGraceMinutes: null });
+          break;
+        }
+        if (feature === 'ssroles') {
+          disableSsRoles(ctx);
+          settings = ctx.store.getSettings(guildId);
           break;
         }
         if (feature === 'honeypot') {

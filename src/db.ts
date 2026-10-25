@@ -28,6 +28,8 @@ export interface GuildSettings {
   lfgVoiceGraceMinutes: number | null;
   /** Join-to-create: joining this voice channel makes a personal room for the member. */
   autoVcHubChannelId: string | null;
+  /** Screenshot roles: members post their profile card here to get the roles it earns. */
+  ssRolesChannelId: string | null;
 }
 
 export interface TempVoice {
@@ -54,6 +56,7 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['lfgVoiceCategoryId', 'lfg_voice_category_id'],
   ['lfgVoiceGraceMinutes', 'lfg_voice_grace_minutes'],
   ['autoVcHubChannelId', 'auto_vc_hub_channel_id'],
+  ['ssRolesChannelId', 'ss_roles_channel_id'],
 ];
 const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes']);
 
@@ -308,6 +311,23 @@ const MIGRATIONS: string[] = [
     guild_id TEXT NOT NULL,
     owner_id TEXT NOT NULL,
     created_at INTEGER NOT NULL
+  );
+  `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN ss_roles_channel_id TEXT;
+  CREATE TABLE ss_reference (
+    guild_id TEXT PRIMARY KEY,
+    mime TEXT NOT NULL,
+    image BLOB NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE ss_claims (
+    guild_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    claimed_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, kind, key)
   );
   `,
 ];
@@ -572,6 +592,30 @@ export class Store {
   }
 
   // --- join-to-create voice rooms ---
+
+  // --- screenshot roles ---
+
+  setSsReference(guildId: string, mime: string, image: Uint8Array): void {
+    this.db
+      .prepare('INSERT INTO ss_reference (guild_id, mime, image, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (guild_id) DO UPDATE SET mime = excluded.mime, image = excluded.image, updated_at = excluded.updated_at')
+      .run(guildId, mime, image, Date.now());
+  }
+
+  getSsReference(guildId: string): { mime: string; image: Buffer } | null {
+    const r = this.db.prepare('SELECT mime, image FROM ss_reference WHERE guild_id = ?').get(guildId) as Row | undefined;
+    return r ? { mime: String(r.mime), image: Buffer.from(r.image as Uint8Array) } : null;
+  }
+
+  /**
+   * Binds something a screenshot proves (its in-game name, or the image itself) to the member who used it first.
+   * Returns the other member's id when it already belongs to someone else, otherwise null (and keeps the claim).
+   */
+  claimSs(guildId: string, kind: 'ign' | 'image', key: string, userId: string): string | null {
+    const r = this.db.prepare('SELECT user_id FROM ss_claims WHERE guild_id = ? AND kind = ? AND key = ?').get(guildId, kind, key) as Row | undefined;
+    if (r) return String(r.user_id) === userId ? null : String(r.user_id);
+    this.db.prepare('INSERT INTO ss_claims (guild_id, kind, key, user_id, claimed_at) VALUES (?, ?, ?, ?, ?)').run(guildId, kind, key, userId, Date.now());
+    return null;
+  }
 
   addTempVoice(v: TempVoice): void {
     this.db
