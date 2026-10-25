@@ -4,6 +4,7 @@ import {
   ChannelType,
   type Guild,
   type NonThreadGuildBasedChannel,
+  OverwriteType,
   type GuildMember,
   PermissionFlagsBits,
   type PermissionOverwriteOptions,
@@ -83,7 +84,14 @@ async function overwriteTarget(guild: Guild, id: string): Promise<Role | GuildMe
   return member;
 }
 
-const toCreateOverwrites = (list: OverwriteInput[]) => list.map((o) => ({ id: o.target_id, allow: o.allow, deny: o.deny }));
+/** Overwrites for channel creation. The explicit type matters: discord.js can only infer it for cached roles/users. */
+const toCreateOverwrites = (guild: Guild, list: OverwriteInput[]) =>
+  list.map((o) => ({
+    id: o.target_id,
+    type: guild.roles.cache.has(o.target_id) ? OverwriteType.Role : OverwriteType.Member,
+    allow: o.allow,
+    deny: o.deny,
+  }));
 
 function describeChannel(guild: Guild, me: GuildMember, c: NonThreadGuildBasedChannel) {
   const name = (id: string) => (id === guild.id ? '@everyone' : (guild.roles.cache.get(id)?.name ?? guild.members.cache.get(id)?.displayName ?? id));
@@ -180,7 +188,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         name,
         type: ChannelType.GuildCategory,
         position,
-        permissionOverwrites: overwrites ? toCreateOverwrites(overwrites) : undefined,
+        permissionOverwrites: overwrites ? toCreateOverwrites(guild, overwrites) : undefined,
         reason: reasonFor(reason),
       });
       log(`created category ${created.name} (${created.id})`);
@@ -218,7 +226,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         position,
         userLimit: type === 'voice' ? user_limit : undefined,
         rateLimitPerUser: slowmode_seconds,
-        permissionOverwrites: overwrites ? toCreateOverwrites(overwrites) : undefined,
+        permissionOverwrites: overwrites ? toCreateOverwrites(guild, overwrites) : undefined,
         reason: reasonFor(reason),
       });
       log(`created ${type} channel #${created.name} (${created.id})`);
@@ -237,7 +245,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         name: z.string().min(1).max(100).optional(),
         topic: z.string().max(1024).optional(),
         category_id: snowflake.nullable().optional().describe('null moves it out of any category'),
-        position: z.number().int().min(0).optional(),
+        position: z.number().int().min(0).optional().describe('Index within its category (or among categories), 0 = top'),
         sync_with_category: z.boolean().optional(),
         nsfw: z.boolean().optional(),
         slowmode_seconds: z.number().int().min(0).max(21600).optional(),
