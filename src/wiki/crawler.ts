@@ -65,7 +65,7 @@ export class WikiCrawler {
   private async maybeRefresh(): Promise<void> {
     const last = Number(this.index.getMeta('refreshed_at') ?? 0);
     if (Date.now() - last < REFRESH_AFTER_MS) return;
-    await this.refresh().catch((err) => console.error('[wiki] refresh failed:', err));
+    await this.refresh().catch((err) => console.error('[archive] refresh failed:', err));
   }
 
   private async call(params: Record<string, string>): Promise<ApiResponse> {
@@ -77,7 +77,7 @@ export class WikiCrawler {
         const res = await this.fetcher(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as ApiResponse;
-        if (data.error?.code === 'maxlag') throw new Error('wiki servers are lagging');
+        if (data.error?.code === 'maxlag') throw new Error('source servers are lagging');
         if (data.error) throw new Error(`${data.error.code}: ${data.error.info}`);
         return data;
       } catch (err) {
@@ -116,17 +116,17 @@ export class WikiCrawler {
 
   /** Brings the index up to date. Safe to interrupt: every stored page is complete, and the next run resumes by revision. */
   async refresh(): Promise<RefreshResult> {
-    if (this.running) throw new Error('A wiki refresh is already running.');
+    if (this.running) throw new Error('An archive refresh is already running.');
     this.running = true;
     try {
       const started = Date.now();
       const { revisions: remote, aliases } = await this.listArticles();
       const local = this.index.revisions();
       // A truncated listing must never wipe a healthy index.
-      if (local.size >= 50 && remote.size < local.size * 0.5) throw new Error(`Wiki listing looks incomplete (${remote.size} of ${local.size} pages), keeping the index.`);
+      if (local.size >= 50 && remote.size < local.size * 0.5) throw new Error(`Archive listing looks incomplete (${remote.size} of ${local.size} pages), keeping the index.`);
 
       const stale = [...remote].filter(([title, revid]) => local.get(title) !== revid).map(([title]) => title);
-      console.log(`[wiki] ${remote.size} articles, ${stale.length} to download`);
+      console.log(`[archive] ${remote.size} articles, ${stale.length} to download`);
       let done = 0;
       for (let i = 0; i < stale.length; i += CONTENT_BATCH) {
         const batch = stale.slice(i, i + CONTENT_BATCH);
@@ -139,7 +139,7 @@ export class WikiCrawler {
           done++;
         }
         await yieldToLoop();
-        if ((i / CONTENT_BATCH) % 25 === 24) console.log(`[wiki] indexed ${done}/${stale.length}`);
+        if ((i / CONTENT_BATCH) % 25 === 24) console.log(`[archive] indexed ${done}/${stale.length}`);
       }
 
       let removed = 0;
@@ -151,7 +151,7 @@ export class WikiCrawler {
       }
       this.index.replaceAliases(aliases);
       this.index.setMeta('refreshed_at', String(Date.now()));
-      console.log(`[wiki] index up to date: ${remote.size} pages (${done} updated, ${removed} removed) in ${Math.round((Date.now() - started) / 1000)}s`);
+      console.log(`[archive] index up to date: ${remote.size} pages (${done} updated, ${removed} removed) in ${Math.round((Date.now() - started) / 1000)}s`);
       return { total: remote.size, changed: done, removed };
     } finally {
       this.running = false;
