@@ -33,7 +33,7 @@ const EnvSchema = z.object({
   /** Optional free-tier LLM (any OpenAI-compatible API) that words wiki answers. Off without a key. */
   FREE_AI_KEY: z.string().min(8).optional(),
   FREE_AI_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
-  FREE_AI_MODEL: z.string().default('gemini-3.8-flash'),
+  FREE_AI_MODEL: z.string().default('gemini-flash-latest'),
   FREE_AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(150),
   WATCHTOWER_URL: z.string().url().optional(),
   WATCHTOWER_TOKEN: z.string().min(8).optional(),
