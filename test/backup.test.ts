@@ -33,7 +33,18 @@ function sampleBackup(): ServerBackup {
     ],
     emojis: [{ name: 'rat', animated: false, data: Buffer.from('png').toString('base64') }],
     bans: [{ id: 'u-troll', reason: 'spam' }],
-    botSettings: { alertsChannelId: null, alertsRoleId: null, announcementsChannelId: 'c-news', welcomeChannelId: null, chatChannelId: null, modLogChannelId: null },
+    botSettings: {
+      alertsChannelId: null,
+      alertsRoleId: null,
+      announcementsChannelId: 'c-news',
+      welcomeChannelId: null,
+      chatChannelId: null,
+      modLogChannelId: null,
+      verifyChannelId: 'c-general',
+      verifyPanelMessageId: null,
+      verifyRoleId: 'r-verified',
+      verifyMinAccountAgeDays: 3,
+    },
     includesMessages: true,
   };
 }
@@ -140,6 +151,8 @@ test('restoreBackup recreates missing roles and channels with mapped parents, ov
   assert.equal(result.emojisCreated, 1);
   assert.equal(result.bansAdded, 1);
   assert.equal(store.getSettings('g-new').announcementsChannelId, result.channelMap.get('c-news'));
+  assert.equal(store.getSettings('g-new').verifyChannelId, result.channelMap.get('c-general'));
+  assert.equal(store.getSettings('g-new').verifyRoleId, verifiedId);
   // Existing channels are left alone in "missing" mode.
   assert.equal(calls.filter((c) => c.op === 'channel.edit').length, 0);
 });

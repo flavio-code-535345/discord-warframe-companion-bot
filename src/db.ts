@@ -14,7 +14,27 @@ export interface GuildSettings {
   chatChannelId: string | null;
   /** Channel where moderation actions are logged. */
   modLogChannelId: string | null;
+  /** Verification: the panel's channel and message, the role it grants, and the minimum account age in days. */
+  verifyChannelId: string | null;
+  verifyPanelMessageId: string | null;
+  verifyRoleId: string | null;
+  verifyMinAccountAgeDays: number | null;
 }
+
+/** GuildSettings field → guild_settings column. Adding a setting means a migration plus one line here. */
+const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
+  ['alertsChannelId', 'alerts_channel_id'],
+  ['alertsRoleId', 'alerts_role_id'],
+  ['announcementsChannelId', 'announcements_channel_id'],
+  ['welcomeChannelId', 'welcome_channel_id'],
+  ['chatChannelId', 'chat_channel_id'],
+  ['modLogChannelId', 'mod_log_channel_id'],
+  ['verifyChannelId', 'verify_channel_id'],
+  ['verifyPanelMessageId', 'verify_panel_message_id'],
+  ['verifyRoleId', 'verify_role_id'],
+  ['verifyMinAccountAgeDays', 'verify_min_account_age_days'],
+];
+const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays']);
 
 export interface Warning {
   id: number;
@@ -190,6 +210,12 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX backups_guild ON backups (guild_id, created_at);
   `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN verify_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN verify_panel_message_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN verify_role_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN verify_min_account_age_days INTEGER;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -269,40 +295,23 @@ export class Store {
 
   getSettings(guildId: string): GuildSettings {
     const r = this.db.prepare('SELECT * FROM guild_settings WHERE guild_id = ?').get(guildId) as Row | undefined;
-    return {
-      guildId,
-      alertsChannelId: str(r?.alerts_channel_id),
-      alertsRoleId: str(r?.alerts_role_id),
-      announcementsChannelId: str(r?.announcements_channel_id),
-      welcomeChannelId: str(r?.welcome_channel_id),
-      chatChannelId: str(r?.chat_channel_id),
-      modLogChannelId: str(r?.mod_log_channel_id),
-    };
+    const values = SETTINGS_COLUMNS.map(([key, col]) => {
+      const v = r?.[col];
+      return [key, NUMERIC_SETTINGS.has(key) ? (v === null || v === undefined ? null : Number(v)) : str(v)];
+    });
+    return { guildId, ...Object.fromEntries(values) } as GuildSettings;
   }
 
   updateSettings(guildId: string, patch: Partial<Omit<GuildSettings, 'guildId'>>): GuildSettings {
     const next = { ...this.getSettings(guildId), ...patch };
+    const cols = SETTINGS_COLUMNS.map(([, col]) => col);
     this.db
       .prepare(
-        `INSERT INTO guild_settings (guild_id, alerts_channel_id, alerts_role_id, announcements_channel_id, welcome_channel_id, chat_channel_id, mod_log_channel_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (guild_id) DO UPDATE SET
-           alerts_channel_id = excluded.alerts_channel_id,
-           alerts_role_id = excluded.alerts_role_id,
-           announcements_channel_id = excluded.announcements_channel_id,
-           welcome_channel_id = excluded.welcome_channel_id,
-           chat_channel_id = excluded.chat_channel_id,
-           mod_log_channel_id = excluded.mod_log_channel_id`,
+        `INSERT INTO guild_settings (guild_id, ${cols.join(', ')})
+         VALUES (?, ${cols.map(() => '?').join(', ')})
+         ON CONFLICT (guild_id) DO UPDATE SET ${cols.map((c) => `${c} = excluded.${c}`).join(', ')}`,
       )
-      .run(
-        guildId,
-        next.alertsChannelId,
-        next.alertsRoleId,
-        next.announcementsChannelId,
-        next.welcomeChannelId,
-        next.chatChannelId,
-        next.modLogChannelId,
-      );
+      .run(guildId, ...SETTINGS_COLUMNS.map(([key]) => next[key]));
     return next;
   }
 

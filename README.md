@@ -41,7 +41,7 @@ intent; see *Optional: Claude-powered chat* below).
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
 | `/lfg activity [details] [size]` | Squad post with Join / Leave / Close buttons; pings everyone when full |
-| `/setup alerts · announcements · welcome · chat · modlog · off · show` | (Manage Server) choose channels and the alert ping role |
+| `/setup alerts · announcements · welcome · chat · modlog · verification · off · show` | (Manage Server) choose channels and the alert ping role |
 
 ### Moderation
 
@@ -58,6 +58,19 @@ intent; see *Optional: Claude-powered chat* below).
 Commands are hidden from members without the permission. Nobody can act on themselves, the owner, Ordis, or anyone
 whose top role is at or above theirs or Ordis's. Every action is posted to the `/setup modlog` channel and recorded
 in Discord's audit log with the moderator's name.
+
+### Verification (Captcha.bot-style)
+
+`/setup verification channel role [min_account_age_days]` posts a **Verify** panel. A newcomer presses it and gets a
+private captcha image: a distorted 6-character code drawn by Ordis itself, with no outside service. They type the code
+into a pop-up, and if it's right they get the role.
+
+- **Who sees what:** the server's channel permissions still decide this. Unverified members see only the verify channel; the role unlocks the rest.
+- **Wrong answers:** three in a row lock the member out for 5 minutes, even if they ask for a new picture in between.
+- **Account age:** optionally, accounts younger than N days are refused, to stop fresh raid accounts.
+- **Role safety:** Ordis refuses to hand out a role with moderator or admin permissions.
+- **Logging and welcome:** every pass and every refusal goes to the mod log. If a welcome channel is set, members are greeted once they've verified.
+- **Turning it off:** `/setup off feature:Verification` removes the panel.
 
 ### Server backups (Xenon-style)
 

@@ -1,21 +1,22 @@
 import {
   type ChatInputCommandInteraction,
   Client,
-  EmbedBuilder,
   Events,
   GatewayIntentBits,
   type Interaction,
   MessageFlags,
   Partials,
   type ButtonInteraction,
+  type ModalSubmitInteraction,
 } from 'discord.js';
 import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
-import { UserError, getSendableChannel } from '../services/clan.js';
+import { UserError } from '../services/clan.js';
 import { handleButton } from './buttons.js';
 import { handleChatMessage } from './chat.js';
-import { COLORS } from './embeds.js';
-import { brandIcon, syncIdentity } from './identity.js';
+import { handleVerifyModal } from './verification.js';
+import { postWelcome } from './welcome.js';
+import { syncIdentity } from './identity.js';
 import type { Command } from './command.js';
 import { ask } from './commands/ask.js';
 import { backup } from './commands/backup.js';
@@ -41,7 +42,7 @@ export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MES
   return new Client({ intents, partials: [Partials.Channel] });
 }
 
-async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction, err: unknown): Promise<void> {
+async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {
   const message = err instanceof UserError ? err.message : 'Something went wrong. The error has been logged.';
   if (!(err instanceof UserError)) console.error(`[discord] interaction ${interaction.id} failed:`, err);
   const payload = { content: `⚠️ ${message}`, flags: MessageFlags.Ephemeral } as const;
@@ -110,30 +111,24 @@ export function attachHandlers(ctx: AppContext): void {
       } catch (err) {
         await replyError(interaction, err);
       }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'verify:modal') {
+      try {
+        await handleVerifyModal(interaction, ctx);
+      } catch (err) {
+        await replyError(interaction, err);
+      }
     }
   });
 
   if (config.ENABLE_WELCOME) {
     client.on(Events.GuildMemberAdd, async (member) => {
       if (member.guild.id !== config.DISCORD_GUILD_ID || member.user.bot) return;
-      const channelId = store.getSettings(member.guild.id).welcomeChannelId;
-      if (!channelId) return;
-      try {
-        const channel = await getSendableChannel(ctx, channelId);
-        const embed = new EmbedBuilder()
-          .setColor(COLORS.brand)
-          .setTitle(`Welcome to ${config.CLAN_NAME}, Operator!`)
-          .setDescription(
-            `${config.BOT_NAME} is pleased to have you aboard.\n\n` +
-              '• Link your Warframe name with `/clan register`\n' +
-              '• See upcoming clan runs with `/event list`\n' +
-              '• Find a squad with `/lfg`',
-          )
-          .setThumbnail(brandIcon(ctx) ?? null);
-        await channel.send({ content: `${member}`, embeds: [embed], allowedMentions: { users: [member.id] } });
-      } catch (err) {
-        console.error('[discord] welcome message failed:', err);
-      }
+      // With verification on, members are welcomed once they pass it instead of on join.
+      if (store.getSettings(member.guild.id).verifyRoleId) return;
+      await postWelcome(ctx, member);
     });
   }
 }

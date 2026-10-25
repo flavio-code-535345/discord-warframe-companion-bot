@@ -12,6 +12,7 @@ import {
 } from 'discord.js';
 import { z } from 'zod';
 import { summaryOf, takeBackup } from '../backup/service.js';
+import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -451,6 +452,18 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       log(`posted in #${channel.name}${pin ? ' (pinned)' : ''}`);
       return { messageId: message.id, link: message.url, pinned: Boolean(pin) };
     }),
+  );
+
+  server.registerTool(
+    'setup_verification',
+    {
+      title: 'Set up captcha verification',
+      description:
+        'Posts the Verify panel in a channel and sets the role members get after solving the captcha (refuses roles with moderator/admin permissions). Re-running moves or refreshes the panel.',
+      inputSchema: { channel_id: snowflake, role_id: snowflake, min_account_age_days: z.number().int().min(0).max(365).optional() },
+      annotations: WRITE,
+    },
+    tool(async ({ channel_id, role_id, min_account_age_days }) => ({ panel: await setupVerification(ctx, channel_id, role_id, min_account_age_days || null) })),
   );
 
   server.registerTool(

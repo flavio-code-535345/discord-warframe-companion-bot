@@ -1,6 +1,7 @@
 import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
+import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 
@@ -25,6 +26,12 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
       },
       { name: 'Moderation log', value: ch(s.modLogChannelId) },
+      {
+        name: 'Verification',
+        value: s.verifyRoleId
+          ? `panel in ${ch(s.verifyChannelId)} · grants <@&${s.verifyRoleId}>${s.verifyMinAccountAgeDays ? ` · accounts older than ${s.verifyMinAccountAgeDays} days` : ''}`
+          : '*off*',
+      },
       {
         name: 'Ordis chat channel',
         value: `${ch(s.chatChannelId)} · mentions, replies, /ask and DMs always work${chatWarnings.length ? `
@@ -59,6 +66,14 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('verification')
+        .setDescription('Captcha verification: posts a Verify panel that gives a role on success')
+        .addChannelOption((o) => o.setName('channel').setDescription('Where newcomers verify').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
+        .addRoleOption((o) => o.setName('role').setDescription('Role to give verified members').setRequired(true))
+        .addIntegerOption((o) => o.setName('min_account_age_days').setDescription('Refuse Discord accounts younger than this (default: no limit)').setMinValue(0).setMaxValue(365)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('modlog')
         .setDescription('Channel where purges, warnings, timeouts, kicks and bans are logged')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -84,6 +99,7 @@ export const setup: Command = {
               { name: 'Welcome messages', value: 'welcome' },
               { name: 'Ordis chat channel', value: 'chat' },
               { name: 'Moderation log', value: 'modlog' },
+              { name: 'Verification', value: 'verification' },
             ),
         ),
     )
@@ -115,8 +131,24 @@ export const setup: Command = {
       case 'modlog':
         settings = ctx.store.updateSettings(guildId, { modLogChannelId: channelId() });
         break;
+      case 'verification': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const url = await setupVerification(
+          ctx,
+          channelId(),
+          interaction.options.getRole('role', true).id,
+          interaction.options.getInteger('min_account_age_days') || null,
+        );
+        await interaction.editReply({ content: `🛡️ Verification panel posted: ${url}`, embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
+        return;
+      }
       case 'off': {
         const feature = interaction.options.getString('feature', true);
+        if (feature === 'verification') {
+          await disableVerification(ctx);
+          settings = ctx.store.getSettings(guildId);
+          break;
+        }
         settings = ctx.store.updateSettings(
           guildId,
           feature === 'alerts'

@@ -63,7 +63,13 @@ test('settings: partial updates keep other fields', () => {
     welcomeChannelId: null,
     chatChannelId: null,
     modLogChannelId: null,
+    verifyChannelId: null,
+    verifyPanelMessageId: null,
+    verifyRoleId: null,
+    verifyMinAccountAgeDays: null,
   });
+  store.updateSettings(G, { verifyMinAccountAgeDays: 7 });
+  assert.equal(store.getSettings(G).verifyMinAccountAgeDays, 7);
 });
 
 test('bot meta values round-trip and overwrite', () => {

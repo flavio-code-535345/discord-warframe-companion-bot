@@ -4,6 +4,7 @@ import type { RsvpStatus } from '../db.js';
 import { UserError, renderEvent, renderLfg } from '../services/clan.js';
 import { handleBackupButton } from './commands/backup.js';
 import { handlePurgeButton } from './commands/moderation.js';
+import { handleVerifyButton } from './verification.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
@@ -18,6 +19,10 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
   }
   if (kind === 'backup') {
     await handleBackupButton(interaction, ctx, rawId ?? '', action ?? '');
+    return;
+  }
+  if (kind === 'verify') {
+    await handleVerifyButton(interaction, ctx, rawId ?? '');
     return;
   }
 
