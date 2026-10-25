@@ -70,7 +70,7 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
             { role: 'user', content: `Question: ${question}\n\nExcerpts:\n${excerpts}` },
           ],
         }),
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) {
         const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);

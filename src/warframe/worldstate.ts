@@ -7,6 +7,8 @@ import { apiFetch } from './fetch.js';
 /** Official, cross-platform worldstate feed published by Digital Extremes. */
 const WORLDSTATE_URL = 'https://api.warframe.com/cdn/worldState.php';
 const CACHE_TTL_MS = 55_000;
+/** After a failed fetch the feed is left alone this long, so a block (HTTP 403) isn't made worse by hammering it. */
+const FAILURE_COOLDOWN_MS = 5 * 60_000;
 
 export type WorldState = Awaited<ReturnType<typeof WorldStateParser.build>>;
 export type Fissure = WorldState['fissures'][number];
@@ -15,6 +17,8 @@ const quietLogger = { debug: () => {} };
 
 let cached: { at: number; ws: WorldState } | null = null;
 let inflight: Promise<WorldState> | null = null;
+let failedAt = 0;
+let lastError: Error | null = null;
 
 async function fetchWorldState(): Promise<WorldState> {
   const res = await apiFetch(WORLDSTATE_URL);
@@ -25,10 +29,25 @@ async function fetchWorldState(): Promise<WorldState> {
 /** Returns the parsed worldstate, cached briefly and de-duplicated across concurrent callers. */
 export async function getWorldState(): Promise<WorldState> {
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.ws;
+  // While the feed is failing, serve the last good copy (stale beats nothing) or repeat the last error without a request.
+  if (Date.now() - failedAt < FAILURE_COOLDOWN_MS) {
+    if (cached) return cached.ws;
+    throw lastError ?? new Error('Worldstate is unavailable');
+  }
   inflight ??= fetchWorldState()
     .then((ws) => {
       cached = { at: Date.now(), ws };
+      failedAt = 0;
       return ws;
+    })
+    .catch((err: unknown) => {
+      failedAt = Date.now();
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (cached) {
+        console.warn(`[worldstate] fetch failed (${lastError.message}); serving the data from ${Math.round((Date.now() - cached.at) / 60_000)} min ago`);
+        return cached.ws;
+      }
+      throw lastError;
     })
     .finally(() => {
       inflight = null;
