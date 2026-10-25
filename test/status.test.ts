@@ -11,7 +11,7 @@ const GUILD = '111111111111111111';
 
 function ctx(): AppContext {
   const config = loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD });
-  return { config, store: new Store(':memory:'), client: { isReady: () => false } as unknown as Client };
+  return { config, store: new Store(':memory:'), client: { isReady: () => false } as unknown as Client, ai: null };
 }
 
 const soon = () => new Date(Date.now() + 600_000);

@@ -1,8 +1,32 @@
 import { type TimeInput, relative, toMs } from '../time.js';
-import { type Fissure, type WorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
+import {
+  type Fissure,
+  type WorldState,
+  archimedeaName,
+  bountyStanding,
+  isBaroHere,
+  resurgenceItemName,
+  rewardText,
+} from '../warframe/worldstate.js';
 
-export const SECTIONS = ['cycles', 'sortie', 'archon', 'baro', 'steelpath', 'nightwave', 'invasions', 'alerts'] as const;
+export const SECTIONS = [
+  'cycles',
+  'sortie',
+  'archon',
+  'baro',
+  'steelpath',
+  'nightwave',
+  'invasions',
+  'alerts',
+  'deals',
+  'events',
+  'archimedea',
+  'bounties',
+  'resurgence',
+] as const;
 export type Section = (typeof SECTIONS)[number];
+/** Sections returned when none are requested; bounties and resurgence stock are long, so they're opt-in. */
+export const DEFAULT_SECTIONS: readonly Section[] = SECTIONS.filter((s) => s !== 'bounties' && s !== 'resurgence');
 
 const when = (date: TimeInput, now: number) => {
   const ms = toMs(date);
@@ -101,6 +125,66 @@ export function summarizeWorldState(ws: WorldState, sections: readonly Section[]
         reward: rewardText(a.mission.reward),
         ends: when(a.expiry, now),
       }));
+  }
+
+  if (want.has('deals')) {
+    out.darvoDeal = (ws.dailyDeals ?? []).map((d) => ({
+      item: d.item,
+      salePrice: d.salePrice,
+      originalPrice: d.originalPrice,
+      discountPercent: d.discount,
+      remaining: d.total - d.sold,
+      ends: when(d.expiry, now),
+    }))[0] ?? null;
+  }
+
+  if (want.has('events')) {
+    out.events = (ws.events ?? [])
+      .filter((e) => toMs(e.expiry) > now)
+      .map((e) => ({
+        description: e.description,
+        node: e.node ?? null,
+        progressPercent: e.maximumScore > 1 ? Math.round((e.currentScore / e.maximumScore) * 100) : null,
+        rewards: (e.rewards ?? []).map(rewardText).filter((r) => r !== '—'),
+        ends: when(e.expiry, now),
+      }));
+  }
+
+  if (want.has('archimedea')) {
+    out.archimedea = (ws.archimedeas ?? []).map((a) => ({
+      name: archimedeaName(a.type),
+      resets: when((a as unknown as { expiry?: Date }).expiry, now),
+      missions: a.missions.map((m) => ({
+        type: m.missionType,
+        faction: m.faction,
+        deviation: m.deviation?.name ?? null,
+        risks: (m.risks ?? []).map((r) => r.name),
+      })),
+      personalModifiers: (a.personalModifiers ?? []).map((p) => p.name),
+    }));
+  }
+
+  if (want.has('bounties')) {
+    out.bounties = (ws.syndicateMissions ?? [])
+      .filter((m) => m.jobs?.length)
+      .map((m) => ({
+        syndicate: m.syndicate,
+        rotates: when(m.expiry, now),
+        jobs: m.jobs.map((j) => ({
+          type: j.type ?? null,
+          enemyLevels: j.enemyLevels,
+          totalStanding: bountyStanding(j.standingStages),
+          minMR: j.minMR || null,
+          rewardPool: [...new Set(j.rewardPool ?? [])],
+        })),
+      }));
+  }
+
+  if (want.has('resurgence') && ws.vaultTrader) {
+    out.primeResurgence = {
+      rotates: when(ws.vaultTrader.expiry, now),
+      items: (ws.vaultTrader.inventory ?? []).map((i) => ({ item: resurgenceItemName(i.item), aya: i.ducats || null })),
+    };
   }
 
   return out;

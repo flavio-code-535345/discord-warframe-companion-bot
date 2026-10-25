@@ -18,6 +18,15 @@ const EnvSchema = z.object({
   HTTP_HOST: z.string().default('0.0.0.0'),
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   MCP_AUTH_TOKEN: z.string().min(24, 'MCP_AUTH_TOKEN must be at least 24 characters').optional(),
+  // AI chat (Ordis answering questions). Disabled when no API key is set.
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  AI_MODEL: z.string().default('claude-opus-5-5'),
+  AI_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
+  AI_WEB_SEARCH: bool.default(true),
+  AI_USER_HOURLY_LIMIT: z.coerce.number().int().min(1).default(20),
+  AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(300),
+  /** Lets Ordis read every message in the /setup chat channel; needs the privileged Message Content intent. */
+  ENABLE_MESSAGE_CONTENT: bool.default(false),
   MCP_ALLOWED_HOSTS: z
     .string()
     .optional()

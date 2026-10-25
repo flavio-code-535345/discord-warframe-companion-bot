@@ -61,6 +61,7 @@ test('settings: partial updates keep other fields', () => {
     alertsRoleId: 'r',
     announcementsChannelId: 'b',
     welcomeChannelId: null,
+    chatChannelId: null,
   });
 });
 
@@ -78,4 +79,15 @@ test('markSeen returns true only the first time', () => {
   assert.equal(store.markSeen('sortie:1'), true);
   assert.equal(store.markSeen('sortie:1'), false);
   assert.equal(store.seenCount(), 1);
+});
+
+test('trackers: create, list per user, delete only own', () => {
+  const store = new Store(':memory:');
+  const a = store.createTracker(G, 'u1', JSON.stringify({ kind: 'baro' }));
+  store.createTracker(G, 'u2', JSON.stringify({ kind: 'reward', keyword: 'Nitain' }));
+  assert.equal(store.listTrackers(G, 'u1').length, 1);
+  assert.equal(store.listTrackers(G).length, 2);
+  assert.equal(store.deleteTracker(G, 'u2', a.id), false);
+  assert.equal(store.deleteTracker(G, 'u1', a.id), true);
+  assert.equal(store.listTrackers(G, 'u1').length, 0);
 });

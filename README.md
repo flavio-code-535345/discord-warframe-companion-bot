@@ -2,25 +2,48 @@
 
 # Cephalon Ordis — The Rats Den 69 clan bot
 
-**Cephalon Ordis** is the Discord companion bot for the Warframe clan **The Rats Den 69**: live world state, market prices, drop tables,
-a clan roster, events with RSVPs, LFG squads, automatic alerts, and an **MCP server** so AI assistants
-(Claude Code, Claude Desktop, …) can read Warframe data and manage the clan.
+**Cephalon Ordis** is the Discord companion bot for the Warframe clan **The Rats Den 69**. It answers Warframe
+questions in chat (powered by Claude, using live game data), looks up items and relics, shows the live world state and
+market prices, DMs members about things they track, runs clan events and LFG squads, posts automatic alerts, and
+serves an **MCP server** so AI assistants (Claude Code, Claude Desktop, …) can read Warframe data and manage the clan.
 
 ## Features
 
+### Ask Ordis
+
+Mention the bot (`@Cephalon Ordis where does Neo N16 drop?`), reply to one of its answers to keep the conversation
+going, use `/ask`, or DM it. Ordis answers in character, and it looks things up instead of guessing:
+
+- **Live data:** cycles, fissures, sortie, Archon Hunt, Baro, Nightwave, events, Archimedea, bounties and Darvo come
+  from the world state on every question.
+- **Items and prices:** item stats, relic contents, drop chances and warframe.market prices.
+- **Background:** the Warframe wiki, plus web search on Warframe sites for patch notes and anything newer.
+- **Your clan:** upcoming clan events and the registered roster.
+
+Optionally, `/setup chat` names a channel where Ordis answers every message (see *AI chat* below).
+
+### Commands
+
 | Command | What it does |
 | --- | --- |
-| `/wf cycles · fissures · sortie · archon · baro · steelpath · invasions · nightwave` | Live world state (fissures filter by tier / Steel Path / Void Storm) |
-| `/price item` | warframe.market cheapest online sellers & top buyers, with a ready-to-paste whisper (autocomplete) |
+| `/ask question` | Ask Ordis anything about Warframe |
+| `/item name` | Stats for a Warframe (abilities, polarities), weapon (damage, crit, status, riven disposition), mod or arcane (max-rank effect, best drop sources) or relic (contents with intact → radiant chances, vaulted status) |
+| `/wf cycles · fissures · sortie · archon · baro · steelpath · invasions · nightwave · deals · events · archimedea · bounties · resurgence` | Live world state, including Darvo's deal, events, Deep/Temporal Archimedea, syndicate bounties and Varzia's Prime Resurgence |
+| `/price item` | warframe.market cheapest online sellers and top buyers, with a ready-to-paste whisper |
 | `/drops item` | Where an item, mod or relic drops, with chances |
+| `/wiki query` | Wiki article summary and link |
+| `/track reward · fissure · cycle · baro · list · remove` | Personal DM alerts: a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), fissures matching tier/mission/Steel Path, a cycle starting (e.g. Cetus night), Baro arriving |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
 | `/lfg activity [details] [size]` | Squad post with Join / Leave / Close buttons; pings everyone when full |
-| `/setup alerts · announcements · welcome · off · show` | (Manage Server) choose channels and the alert ping role |
+| `/setup alerts · announcements · welcome · chat · off · show` | (Manage Server) choose channels and the alert ping role |
 
 **Automatic alerts** (in the `/setup alerts` channel): new daily sortie, weekly Archon Hunt, Baro Ki'Teer's arrival
 with inventory, Steel Path reward rotation, in-game alerts, and invasions offering Orokin Catalysts/Reactors, Forma,
 Exilus Adapters or Wraith/Vandal parts. Each alert is posted once (tracked in the database across restarts).
+
+Feature ideas borrowed from community tools: Genesis/WFCD (world-state commands, trackers), Warframe Hub (personal
+notifications), warframestat.us (item and drop data) and the wiki.
 
 ## 1. Create the Discord application
 
@@ -39,6 +62,21 @@ Slash commands are registered to that server automatically on startup. Then run 
 `assets/clan-logo.png` as its avatar. It only sends a change when something differs, because Discord allows just
 a couple of changes per hour. To change the logo, replace that file and ship a new image. The application name in
 the Developer Portal (General Information → Name) is separate: set it to `Cephalon Ordis` there too.
+
+### AI chat
+
+Set `ANTHROPIC_API_KEY` (a Claude API key from <https://platform.claude.com>) to turn chat on. Without it, every
+other feature still works.
+
+- **Model:** Claude Opus 5.5 by default. Set `AI_MODEL` to `claude-sonnet-5-5` or `claude-haiku-5-5` for cheaper answers.
+- **Refusal fallbacks:** on Opus and Sonnet, the bot sends Anthropic's server-side refusal fallback (`fallbacks: "default"`), so a
+  declined request is retried on a suitable model instead of failing.
+- **Spend limits:** `AI_USER_HOURLY_LIMIT` (default 20 questions per member per hour) and `AI_DAILY_LIMIT` (default 300 per UTC day).
+  The system prompt and tools are prompt-cached. Every answer logs its token use (`[ai] … in= cache_read= out=`) in the container log.
+- **Privileged intents:** none needed. Discord gives bots the text of messages that mention them and of DMs. For a `/setup chat`
+  channel where Ordis reads *every* message, enable **Message Content Intent** in the Developer Portal and set
+  `ENABLE_MESSAGE_CONTENT=true`.
+- **DMs:** only clan server members can DM Ordis questions.
 
 ## 2. Configure
 
@@ -114,7 +152,7 @@ Cloudflare Access if your event titles are private.
 
 | Tool | Kind |
 | --- | --- |
-| `get_worldstate`, `get_fissures`, `price_check`, `search_drops` | Warframe data (read-only) |
+| `get_worldstate`, `get_fissures`, `lookup_item`, `price_check`, `search_drops`, `search_wiki` | Warframe data (read-only) |
 | `get_clan_overview`, `list_clan_members`, `list_channels_and_roles`, `list_events` | Clan & Discord info (read-only) |
 | `create_event`, `cancel_event`, `send_announcement` | Post to Discord |
 | `register_member`, `remove_member` | Edit the clan roster |
@@ -154,6 +192,8 @@ read/write scope rather than the account password). The image name defaults to `
 - World state: Digital Extremes' official feed (`api.warframe.com/cdn/worldState.php`), parsed locally with
   [`warframe-worldstate-parser`](https://github.com/WFCD/warframe-worldstate-parser)
 - Prices: [warframe.market](https://warframe.market) API v2
-- Drop tables: [warframestat.us](https://docs.warframestat.us)
+- Drop tables and item data: [warframestat.us](https://docs.warframestat.us)
+- Wiki summaries: [wiki.warframe.com](https://wiki.warframe.com) (MediaWiki API)
+- AI chat: [Claude API](https://platform.claude.com) (Anthropic)
 
 Not affiliated with Digital Extremes.

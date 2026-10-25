@@ -4,10 +4,16 @@ import { getItemIndex, priceCheck, searchItems } from '../../warframe/market.js'
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../../warframe/worldstate.js';
 import type { Command } from '../command.js';
 import {
+  BOUNTY_SYNDICATES,
+  archimedeaEmbed,
   archonEmbed,
   baroEmbed,
+  bountiesEmbed,
   cyclesEmbed,
+  dealsEmbed,
   dropsEmbed,
+  eventsEmbed,
+  resurgenceEmbed,
   fissuresEmbed,
   invasionsEmbed,
   nightwaveEmbed,
@@ -37,6 +43,22 @@ export const wf: Command = {
     .addSubcommand((s) => s.setName('steelpath').setDescription("Teshin's weekly Steel Path reward"))
     .addSubcommand((s) => s.setName('invasions').setDescription('Active invasions and their rewards'))
     .addSubcommand((s) => s.setName('nightwave').setDescription('Current Nightwave challenges'))
+    .addSubcommand((s) => s.setName('deals').setDescription("Darvo's daily deal"))
+    .addSubcommand((s) => s.setName('events').setDescription('Running in-game events and their rewards'))
+    .addSubcommand((s) => s.setName('archimedea').setDescription('Deep and Temporal Archimedea missions, deviations and risks'))
+    .addSubcommand((s) =>
+      s
+        .setName('bounties')
+        .setDescription('Syndicate bounties with level ranges, standing and reward pools')
+        .addStringOption((o) =>
+          o
+            .setName('syndicate')
+            .setDescription('Syndicate')
+            .setRequired(true)
+            .addChoices(...BOUNTY_SYNDICATES.map((s) => ({ name: s, value: s }))),
+        ),
+    )
+    .addSubcommand((s) => s.setName('resurgence').setDescription("Varzia's Prime Resurgence stock"))
     .toJSON(),
 
   async execute(interaction) {
@@ -67,6 +89,16 @@ export const wf: Command = {
           return invasionsEmbed(ws);
         case 'nightwave':
           return nightwaveEmbed(ws);
+        case 'deals':
+          return dealsEmbed(ws);
+        case 'events':
+          return eventsEmbed(ws);
+        case 'archimedea':
+          return archimedeaEmbed(ws);
+        case 'bounties':
+          return bountiesEmbed(ws, interaction.options.getString('syndicate', true));
+        case 'resurgence':
+          return resurgenceEmbed(ws);
         default:
           throw new Error(`Unknown subcommand ${sub}`);
       }

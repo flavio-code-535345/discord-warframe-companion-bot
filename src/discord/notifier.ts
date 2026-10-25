@@ -2,8 +2,9 @@ import { EmbedBuilder } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { getSendableChannel } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
+import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
 import { type WorldState, getWorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
-import { COLORS, archonEmbed, baroEmbed, sortieEmbed, steelPathEmbed } from './embeds.js';
+import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
@@ -81,8 +82,11 @@ export class Notifier {
     if (this.running) return;
     this.running = true;
     try {
-      await this.postWorldStateAlerts();
+      // Reminders don't depend on the worldstate, so they still go out when DE's feed is down.
       await this.sendEventReminders();
+      const ws = await getWorldState();
+      await this.postWorldStateAlerts(ws);
+      await this.notifyTrackers(ws);
       this.ctx.store.pruneSeen(SEEN_RETENTION_MS);
     } catch (err) {
       console.error('[notifier] tick failed:', err);
@@ -91,9 +95,8 @@ export class Notifier {
     }
   }
 
-  private async postWorldStateAlerts(): Promise<void> {
+  private async postWorldStateAlerts(ws: WorldState): Promise<void> {
     const { store } = this.ctx;
-    const ws = await getWorldState();
     // On a brand-new database, record what's already live instead of flooding the channel with it.
     const bootstrap = store.seenCount() === 0;
     const fresh = collectAlerts(ws).filter((a) => store.markSeen(a.key));
@@ -114,6 +117,50 @@ export class Notifier {
         }
       } catch (err) {
         console.error(`[notifier] could not post alerts to ${settings.alertsChannelId}:`, err);
+      }
+    }
+  }
+
+  /** DMs each member about new worldstate items matching their /track trackers, one message per member per poll. */
+  private async notifyTrackers(ws: WorldState): Promise<void> {
+    const { store, config, client } = this.ctx;
+    const trackers = store.listTrackers(config.DISCORD_GUILD_ID);
+    if (!trackers.length) return;
+    const items = collectTrackables(ws);
+    const perUser = new Map<string, { label: string; lines: string[] }[]>();
+
+    for (const tracker of trackers) {
+      const spec = parseSpec(tracker.spec);
+      if (!spec) continue;
+      const lines: string[] = [];
+      for (const item of items) {
+        const hits = matchTracker(spec, item);
+        if (hits === null || !store.markSeen(`track:${tracker.id}:${item.key}`)) continue;
+        const ends = item.expiry ? ` · ends ${discordTime(item.expiry)}` : '';
+        lines.push(`**${item.title}**${hits.length ? ` — ${hits.join(', ')}` : ''}
+${item.detail}${ends}`);
+      }
+      if (lines.length) {
+        const list = perUser.get(tracker.userId) ?? [];
+        list.push({ label: `#${tracker.id} ${describeTracker(spec)}`, lines });
+        perUser.set(tracker.userId, list);
+      }
+    }
+
+    for (const [userId, groups] of perUser) {
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.brand)
+        .setAuthor({ name: config.BOT_NAME, iconURL: brandIcon(this.ctx) })
+        .setTitle('Operator, something you asked Ordis to watch for is here!')
+        .setFooter({ text: 'Manage with /track list and /track remove' });
+      for (const g of groups.slice(0, 20)) {
+        embed.addFields({ name: g.label.slice(0, 256), value: clampLines(g.lines, 1000) });
+      }
+      try {
+        const user = await client.users.fetch(userId);
+        await user.send({ embeds: [embed] });
+      } catch (err) {
+        console.warn(`[notifier] could not DM tracker update to ${userId} (DMs closed?):`, (err as Error).message);
       }
     }
   }

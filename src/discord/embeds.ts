@@ -1,8 +1,16 @@
 import { EmbedBuilder } from 'discord.js';
 import type { DropGroup } from '../warframe/drops.js';
 import type { PriceCheck } from '../warframe/market.js';
-import { type Fissure, type WorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
-import { discordTime } from '../time.js';
+import {
+  type Fissure,
+  type WorldState,
+  archimedeaName,
+  isBaroHere,
+  resurgenceItemName,
+  bountyStanding,
+  rewardText,
+} from '../warframe/worldstate.js';
+import { discordTime, toMs } from '../time.js';
 
 export const COLORS = {
   /** Crystal blue sampled from the clan logo's glow. */
@@ -192,4 +200,78 @@ export function dropsEmbed(query: string, groups: DropGroup[]): EmbedBuilder {
     });
   }
   return embed.setFooter({ text: 'Drop tables via warframestat.us' });
+}
+
+export const BOUNTY_SYNDICATES = ['Ostrons', 'Solaris United', 'Entrati', 'The Holdfasts', 'Cavia', 'The Hex'] as const;
+
+export function dealsEmbed(ws: WorldState): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("Darvo's deal");
+  const deal = ws.dailyDeals?.[0];
+  if (!deal) return embed.setDescription('No deal right now.');
+  const left = deal.total - deal.sold;
+  return embed.setDescription(
+    `**${deal.item}**\n~~${deal.originalPrice}p~~ → **${deal.salePrice} platinum** (-${deal.discount}%)\n` +
+      `${left > 0 ? `${left} of ${deal.total} left` : '**Sold out**'} · ends ${discordTime(deal.expiry)}`,
+  );
+}
+
+export function eventsEmbed(ws: WorldState): EmbedBuilder {
+  const events = (ws.events ?? []).filter((e) => toMs(e.expiry) > Date.now());
+  const embed = new EmbedBuilder().setColor(COLORS.warn).setTitle(`Events (${events.length})`);
+  if (!events.length) return embed.setDescription('No in-game events are running.');
+  for (const e of events.slice(0, 10)) {
+    const progress =
+      e.maximumScore > 1 ? `Progress ${Math.round((e.currentScore / e.maximumScore) * 100)}% · ` : typeof e.health === 'number' ? `${Math.round(e.health)}% · ` : '';
+    const rewards = (e.rewards ?? []).map(rewardText).filter((r) => r !== '—');
+    embed.addFields({
+      name: e.description.slice(0, 256),
+      value: `${e.node ? `${e.node} · ` : ''}${progress}ends ${discordTime(e.expiry)}${rewards.length ? `\n**Rewards:** ${rewards.join(', ').slice(0, 800)}` : ''}`,
+    });
+  }
+  return embed;
+}
+
+export function archimedeaEmbed(ws: WorldState): EmbedBuilder {
+  const list = ws.archimedeas ?? [];
+  const embed = new EmbedBuilder().setColor(COLORS.danger).setTitle('Archimedea');
+  if (!list.length) return embed.setDescription('No Archimedea data right now.');
+  for (const a of list) {
+    const expiry = (a as unknown as { expiry?: Date }).expiry;
+    const missions = a.missions.map((m, i) => {
+      const risks = (m.risks ?? []).map((r) => `${r.isHard ? '⚠️ ' : ''}${r.name}`).join(', ');
+      return `**${i + 1}. ${m.missionType}** (${m.faction})${m.deviation?.name ? ` · deviation: ${m.deviation.name}` : ''}${risks ? `\n-# risks: ${risks}` : ''}`;
+    });
+    const personal = (a.personalModifiers ?? []).map((p) => p.name).join(', ');
+    embed.addFields({
+      name: `${archimedeaName(a.type)}${expiry ? ` · resets ${new Date(expiry).toUTCString().slice(0, 16)}` : ''}`,
+      value: `${missions.join('\n')}${personal ? `\n**Personal modifiers:** ${personal}` : ''}`.slice(0, 1024),
+    });
+  }
+  return embed;
+}
+
+export function bountiesEmbed(ws: WorldState, syndicate: string): EmbedBuilder {
+  const mission = (ws.syndicateMissions ?? []).find((m) => m.syndicate.toLowerCase() === syndicate.toLowerCase());
+  const jobs = mission?.jobs ?? [];
+  const embed = new EmbedBuilder().setColor(COLORS.success).setTitle(`${syndicate} bounties`);
+  if (!jobs.length) return embed.setDescription(`No ${syndicate} bounties are listed right now.`);
+  embed.setDescription(`Rotate ${discordTime(mission!.expiry)}`);
+  for (const j of jobs.slice(0, 10)) {
+    const standing = bountyStanding(j.standingStages);
+    const levels = j.enemyLevels?.length ? `Lv ${j.enemyLevels[0]}-${j.enemyLevels.at(-1)}` : '';
+    const rewards = [...new Set(j.rewardPool ?? [])].slice(0, 6).join(', ');
+    embed.addFields({
+      name: `${j.type ?? 'Bounty'}${j.isVault ? ' (Vault)' : ''}`.slice(0, 256),
+      value: `${[levels, standing ? `${standing.toLocaleString('en-US')} standing` : '', j.minMR ? `MR ${j.minMR}+` : ''].filter(Boolean).join(' · ') || '—'}${rewards ? `\n-# ${rewards}` : ''}`.slice(0, 1024),
+    });
+  }
+  return embed;
+}
+
+export function resurgenceEmbed(ws: WorldState): EmbedBuilder {
+  const t = ws.vaultTrader;
+  const embed = new EmbedBuilder().setColor(COLORS.void).setTitle('Prime Resurgence (Varzia)');
+  if (!t?.inventory?.length) return embed.setDescription('No Prime Resurgence stock right now.');
+  const lines = t.inventory.map((i) => `• ${resurgenceItemName(i.item)}${i.ducats ? ` — **${i.ducats}** Aya` : ''}${i.credits ? ` · ${Number(i.credits).toLocaleString('en-US')} cr` : ''}`);
+  return embed.setDescription(`Rotates ${discordTime(t.expiry)}\n\n${clampLines(lines, 3800)}`);
 }

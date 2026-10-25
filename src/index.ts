@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import { join } from 'node:path';
+import { AskLimiter } from './ai/limits.js';
+import { OrdisBrain } from './ai/ordis.js';
 import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { Store } from './db.js';
@@ -10,8 +12,12 @@ import { getItemIndex } from './warframe/market.js';
 
 const config = loadConfig();
 const store = new Store(join(config.DATA_DIR, 'bot.db'));
-const client = createClient(config.ENABLE_WELCOME);
-const ctx: AppContext = { config, store, client };
+const client = createClient(config);
+const ai = config.ANTHROPIC_API_KEY
+  ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
+  : null;
+if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: chat answers and /ask are disabled.');
+const ctx: AppContext = { config, store, client, ai };
 
 attachHandlers(ctx);
 const notifier = new Notifier(ctx);

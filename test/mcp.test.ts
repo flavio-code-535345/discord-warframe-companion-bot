@@ -21,7 +21,7 @@ before(async () => {
   store = new Store(':memory:');
   // Only the store-backed tools are exercised here, so a minimal Discord client stub is enough.
   const client = { isReady: () => false } as unknown as Client;
-  const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client };
+  const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client, ai: null };
   const server = startHttpServer(ctx);
   await new Promise<void>((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -60,7 +60,7 @@ test('MCP lists tools and serves clan data', async () => {
   const client = await connect(TOKEN);
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name);
-  for (const expected of ['get_worldstate', 'get_fissures', 'price_check', 'search_drops', 'create_event', 'send_announcement', 'list_events']) {
+  for (const expected of ['get_worldstate', 'get_fissures', 'price_check', 'search_drops', 'lookup_item', 'search_wiki', 'create_event', 'send_announcement', 'list_events']) {
     assert.ok(names.includes(expected), `missing tool ${expected}`);
   }
 

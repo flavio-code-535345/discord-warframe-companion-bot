@@ -7,9 +7,11 @@ import { PLATFORMS } from '../discord/commands/clan.js';
 import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../services/clan.js';
 import { parseWhen } from '../time.js';
 import { searchDrops } from '../warframe/drops.js';
+import { lookupItem, summarizeLookup } from '../warframe/items.js';
+import { readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { priceCheck } from '../warframe/market.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
-import { SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
+import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
 
 const json = (data: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
 
@@ -53,11 +55,13 @@ export function createMcpServer(ctx: AppContext): McpServer {
     {
       title: 'Warframe world state',
       description:
-        'Live Warframe world state: open-world cycles, daily sortie, weekly Archon Hunt, Baro Ki\'Teer, Steel Path reward, Nightwave, invasions and alerts. Times are ISO-8601 UTC with a relative "in" string.',
-      inputSchema: { sections: z.array(z.enum(SECTIONS)).optional().describe('Limit to these sections (default: all)') },
+        'Live Warframe world state: open-world cycles, daily sortie, weekly Archon Hunt, Baro Ki\'Teer, Steel Path reward, Nightwave, invasions, alerts, Darvo\'s deal, events, Deep/Temporal Archimedea, syndicate bounties and Varzia\'s Prime Resurgence. Times are ISO-8601 UTC with a relative "in" string.',
+      inputSchema: {
+        sections: z.array(z.enum(SECTIONS)).optional().describe('Limit to these sections (default: all except bounties and resurgence)'),
+      },
       annotations: READ_ONLY,
     },
-    tool(async ({ sections }) => summarizeWorldState(await getWorldState(), sections?.length ? sections : SECTIONS)),
+    tool(async ({ sections }) => summarizeWorldState(await getWorldState(), sections?.length ? sections : DEFAULT_SECTIONS)),
   );
 
   server.registerTool(
@@ -102,6 +106,37 @@ export function createMcpServer(ctx: AppContext): McpServer {
       annotations: READ_ONLY,
     },
     tool(async ({ item }) => searchDrops(item)),
+  );
+
+  server.registerTool(
+    'lookup_item',
+    {
+      title: 'Item lookup',
+      description:
+        'Stats for a Warframe, weapon (incl. riven disposition), mod or arcane (effect at max rank), or relic (contents with intact/radiant chances, vaulted status).',
+      inputSchema: { name: z.string().min(2).describe('e.g. "Wisp Prime", "Kuva Bramma", "Neo N16"') },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ name }) => {
+      const result = await lookupItem(name);
+      if (!result) throw new UserError(`No item matches "${name}".`);
+      return summarizeLookup(result);
+    }),
+  );
+
+  server.registerTool(
+    'search_wiki',
+    {
+      title: 'Warframe wiki search',
+      description: 'Search wiki.warframe.com; returns the top pages with intro paragraphs. Pass read_full=true to get the first result as full text.',
+      inputSchema: { query: z.string().min(2), read_full: z.boolean().optional() },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ query, read_full }) => {
+      const results = await searchWiki(query, 3);
+      if (read_full && results[0]) return (await readWikiPage(results[0].title)) ?? results;
+      return results;
+    }),
   );
 
   // --- Clan & Discord ---

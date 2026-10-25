@@ -1,12 +1,19 @@
 import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement] as const;
 
-export function settingsEmbed(s: GuildSettings, welcomeEnabled: boolean): EmbedBuilder {
+type Flags = Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ANTHROPIC_API_KEY'>;
+
+export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
   const ch = (id: string | null) => (id ? `<#${id}>` : '*off*');
+  const chatWarnings = [
+    flags.ANTHROPIC_API_KEY ? null : 'AI chat is off (no ANTHROPIC_API_KEY)',
+    s.chatChannelId && !flags.ENABLE_MESSAGE_CONTENT ? 'needs ENABLE_MESSAGE_CONTENT=true and the Message Content intent' : null,
+  ].filter(Boolean);
   return new EmbedBuilder()
     .setColor(COLORS.brand)
     .setTitle('Bot settings')
@@ -15,7 +22,12 @@ export function settingsEmbed(s: GuildSettings, welcomeEnabled: boolean): EmbedB
       { name: 'Announcements & events', value: ch(s.announcementsChannelId) },
       {
         name: 'Welcome messages',
-        value: `${ch(s.welcomeChannelId)}${welcomeEnabled ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
+        value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
+      },
+      {
+        name: 'Ordis chat channel',
+        value: `${ch(s.chatChannelId)} · mentions, replies, /ask and DMs always work${chatWarnings.length ? `
+⚠️ ${chatWarnings.join('; ')}` : ''}`,
       },
     );
 }
@@ -46,6 +58,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('chat')
+        .setDescription('Channel where Ordis answers every message, not only mentions')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('off')
         .setDescription('Turn a feature off')
         .addStringOption((o) =>
@@ -57,6 +75,7 @@ export const setup: Command = {
               { name: 'Worldstate alerts', value: 'alerts' },
               { name: 'Announcements channel', value: 'announcements' },
               { name: 'Welcome messages', value: 'welcome' },
+              { name: 'Ordis chat channel', value: 'chat' },
             ),
         ),
     )
@@ -82,6 +101,9 @@ export const setup: Command = {
       case 'welcome':
         settings = ctx.store.updateSettings(guildId, { welcomeChannelId: channelId() });
         break;
+      case 'chat':
+        settings = ctx.store.updateSettings(guildId, { chatChannelId: channelId() });
+        break;
       case 'off': {
         const feature = interaction.options.getString('feature', true);
         settings = ctx.store.updateSettings(
@@ -90,13 +112,15 @@ export const setup: Command = {
             ? { alertsChannelId: null, alertsRoleId: null }
             : feature === 'announcements'
               ? { announcementsChannelId: null }
-              : { welcomeChannelId: null },
+              : feature === 'chat'
+                ? { chatChannelId: null }
+                : { welcomeChannelId: null },
         );
         break;
       }
       default:
         settings = ctx.store.getSettings(guildId);
     }
-    await interaction.reply({ embeds: [settingsEmbed(settings, ctx.config.ENABLE_WELCOME)], flags: MessageFlags.Ephemeral });
+    await interaction.reply({ embeds: [settingsEmbed(settings, ctx.config)], flags: MessageFlags.Ephemeral });
   },
 };

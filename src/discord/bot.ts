@@ -6,27 +6,37 @@ import {
   GatewayIntentBits,
   type Interaction,
   MessageFlags,
+  Partials,
   type ButtonInteraction,
 } from 'discord.js';
+import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
 import { handleButton } from './buttons.js';
+import { handleChatMessage } from './chat.js';
 import { COLORS } from './embeds.js';
 import { brandIcon, syncIdentity } from './identity.js';
 import type { Command } from './command.js';
+import { ask } from './commands/ask.js';
 import { clan } from './commands/clan.js';
 import { event } from './commands/event.js';
 import { lfg } from './commands/lfg.js';
+import { item, wiki } from './commands/lookup.js';
 import { setup } from './commands/setup.js';
+import { track } from './commands/track.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, price, drops, clan, event, lfg, setup];
+export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, setup];
 
-export function createClient(enableWelcome: boolean): Client {
-  const intents = [GatewayIntentBits.Guilds];
-  // Server Members is a privileged intent: it must also be switched on in the Developer Portal.
-  if (enableWelcome) intents.push(GatewayIntentBits.GuildMembers);
-  return new Client({ intents });
+export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT'>): Client {
+  // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
+  // text of messages that mention it and of DMs, which is all mention-based chat needs.
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages];
+  // These two are privileged: they must also be switched on in the Developer Portal, or login fails.
+  if (config.ENABLE_WELCOME) intents.push(GatewayIntentBits.GuildMembers);
+  if (config.ENABLE_MESSAGE_CONTENT) intents.push(GatewayIntentBits.MessageContent);
+  // DM channels aren't cached up front; the Channel partial lets their first message through.
+  return new Client({ intents, partials: [Partials.Channel] });
 }
 
 async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction, err: unknown): Promise<void> {
@@ -57,6 +67,10 @@ export function attachHandlers(ctx: AppContext): void {
     // Guild-scoped commands update instantly, unlike global ones.
     await guild.commands.set(COMMANDS.map((c) => c.data));
     console.log(`[discord] registered ${COMMANDS.length} slash commands in "${guild.name}"`);
+  });
+
+  client.on(Events.MessageCreate, (message) => {
+    void handleChatMessage(message, ctx).catch((err) => console.error('[discord] chat handler failed:', err));
   });
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {

@@ -76,3 +76,18 @@ export function isBaroHere(ws: WorldState, now = Date.now()): boolean {
   if (!t) return false;
   return toMs(t.activation) <= now && now < toMs(t.expiry) && (t.inventory?.length ?? 0) > 0;
 }
+
+const ARCHIMEDEA_NAMES: Record<string, string> = { CT_LAB: 'Deep Archimedea', CT_HEX: 'Temporal Archimedea' };
+/** The parser spaces out camel-cased internal names ("C T_ L A B", "M P V Protea Prime Single Pack"). */
+const despace = (s: string) => s.replace(/\s+/g, '');
+export const archimedeaName = (type: string) => ARCHIMEDEA_NAMES[despace(type)] ?? type;
+export const resurgenceItemName = (item: string) => item.replace(/^M P V /, '');
+
+/**
+ * Total standing for a bounty, or null when the stages aren't in standing units: Entrati jobs report
+ * single-digit stage values that don't match in-game standing, so they're left out rather than shown wrong.
+ */
+export function bountyStanding(stages: number[] | undefined): number | null {
+  const total = (stages ?? []).reduce((a, b) => a + b, 0);
+  return total >= 100 ? total : null;
+}

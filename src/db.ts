@@ -10,6 +10,16 @@ export interface GuildSettings {
   alertsRoleId: string | null;
   announcementsChannelId: string | null;
   welcomeChannelId: string | null;
+  /** Channel where Ordis answers every message (needs the Message Content intent). */
+  chatChannelId: string | null;
+}
+
+export interface Tracker {
+  id: number;
+  guildId: string;
+  userId: string;
+  spec: string;
+  createdAt: number;
 }
 
 export interface Member {
@@ -115,6 +125,17 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN chat_channel_id TEXT;
+  CREATE TABLE trackers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    spec TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX trackers_user ON trackers (guild_id, user_id);
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -200,6 +221,7 @@ export class Store {
       alertsRoleId: str(r?.alerts_role_id),
       announcementsChannelId: str(r?.announcements_channel_id),
       welcomeChannelId: str(r?.welcome_channel_id),
+      chatChannelId: str(r?.chat_channel_id),
     };
   }
 
@@ -207,15 +229,16 @@ export class Store {
     const next = { ...this.getSettings(guildId), ...patch };
     this.db
       .prepare(
-        `INSERT INTO guild_settings (guild_id, alerts_channel_id, alerts_role_id, announcements_channel_id, welcome_channel_id)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO guild_settings (guild_id, alerts_channel_id, alerts_role_id, announcements_channel_id, welcome_channel_id, chat_channel_id)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (guild_id) DO UPDATE SET
            alerts_channel_id = excluded.alerts_channel_id,
            alerts_role_id = excluded.alerts_role_id,
            announcements_channel_id = excluded.announcements_channel_id,
-           welcome_channel_id = excluded.welcome_channel_id`,
+           welcome_channel_id = excluded.welcome_channel_id,
+           chat_channel_id = excluded.chat_channel_id`,
       )
-      .run(guildId, next.alertsChannelId, next.alertsRoleId, next.announcementsChannelId, next.welcomeChannelId);
+      .run(guildId, next.alertsChannelId, next.alertsRoleId, next.announcementsChannelId, next.welcomeChannelId, next.chatChannelId);
     return next;
   }
 
@@ -357,6 +380,35 @@ export class Store {
   lfgMembers(id: number): string[] {
     const rows = this.db.prepare('SELECT user_id FROM lfg_members WHERE post_id = ? ORDER BY rowid').all(id) as Row[];
     return rows.map((r) => String(r.user_id));
+  }
+
+  // --- personal trackers ---
+
+  createTracker(guildId: string, userId: string, spec: string): Tracker {
+    const res = this.db
+      .prepare('INSERT INTO trackers (guild_id, user_id, spec, created_at) VALUES (?, ?, ?, ?)')
+      .run(guildId, userId, spec, Date.now());
+    return this.listTrackers(guildId, userId).find((t) => t.id === Number(res.lastInsertRowid))!;
+  }
+
+  listTrackers(guildId: string, userId?: string): Tracker[] {
+    const rows = (
+      userId
+        ? this.db.prepare('SELECT * FROM trackers WHERE guild_id = ? AND user_id = ? ORDER BY id').all(guildId, userId)
+        : this.db.prepare('SELECT * FROM trackers WHERE guild_id = ? ORDER BY id').all(guildId)
+    ) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      guildId: String(r.guild_id),
+      userId: String(r.user_id),
+      spec: String(r.spec),
+      createdAt: Number(r.created_at),
+    }));
+  }
+
+  /** Deletes one of the user's own trackers. */
+  deleteTracker(guildId: string, userId: string, id: number): boolean {
+    return this.db.prepare('DELETE FROM trackers WHERE guild_id = ? AND user_id = ? AND id = ?').run(guildId, userId, id).changes > 0;
   }
 
   // --- bot-wide key/value state ---
