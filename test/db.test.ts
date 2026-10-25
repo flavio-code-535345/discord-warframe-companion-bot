@@ -70,6 +70,8 @@ test('settings: partial updates keep other fields', () => {
     honeypotChannelId: null,
     honeypotAction: null,
     ssRolesChannelId: null,
+    levelingOff: null,
+    levelChannelId: null,
     lfgVoiceCategoryId: null,
     lfgVoiceGraceMinutes: null,
     autoVcHubChannelId: null,

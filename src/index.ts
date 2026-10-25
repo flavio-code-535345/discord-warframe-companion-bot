@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { AskLimiter } from './ai/limits.js';
 import { BackupScheduler } from './backup/service.js';
 import { LfgVoiceSweeper } from './lfg/voice.js';
+import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
 import { OrdisBrain } from './ai/ordis.js';
@@ -27,6 +28,7 @@ attachHandlers(ctx);
 const notifier = new Notifier(ctx);
 const backups = new BackupScheduler(ctx);
 const squadVoice = new LfgVoiceSweeper(ctx);
+const voiceXp = new LevelVoiceTicker(ctx);
 // The wiki index lives in its own file: it is big, rebuildable, and must not bloat the main database or backups.
 const wikiIndex = config.WIKI_INDEX ? new WikiIndex(join(config.DATA_DIR, 'wiki.db')) : null;
 setWikiIndex(wikiIndex);
@@ -35,6 +37,7 @@ client.once('clientReady', () => {
   notifier.start();
   backups.start();
   squadVoice.start();
+  voiceXp.start();
   wikiCrawler?.start();
 });
 
@@ -57,6 +60,7 @@ async function shutdown(signal: string): Promise<void> {
   notifier.stop();
   backups.stop();
   squadVoice.stop();
+  voiceXp.stop();
   wikiCrawler?.stop();
   http.close();
   await client.destroy();

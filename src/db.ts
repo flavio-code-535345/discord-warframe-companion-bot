@@ -30,6 +30,18 @@ export interface GuildSettings {
   autoVcHubChannelId: string | null;
   /** Screenshot roles: members post their profile card here to get the roles it earns. */
   ssRolesChannelId: string | null;
+  /** Leveling is on unless this is 1. */
+  levelingOff: number | null;
+  /** Where level-ups are announced; null announces in the channel the member was talking in. */
+  levelChannelId: string | null;
+}
+
+/** One member's XP. The level is derived from it (see leveling/xp.ts). */
+export interface MemberXp {
+  userId: string;
+  xp: number;
+  messages: number;
+  lastXpAt: number;
 }
 
 /** A message Ordis keeps at the bottom of a channel by deleting and reposting it after anyone else talks. */
@@ -73,8 +85,10 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['lfgVoiceGraceMinutes', 'lfg_voice_grace_minutes'],
   ['autoVcHubChannelId', 'auto_vc_hub_channel_id'],
   ['ssRolesChannelId', 'ss_roles_channel_id'],
+  ['levelingOff', 'leveling_off'],
+  ['levelChannelId', 'level_channel_id'],
 ];
-const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes']);
+const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
 
 export interface Warning {
   id: number;
@@ -369,6 +383,24 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE stickies ADD COLUMN image_url TEXT;
   `,
+  `
+  CREATE TABLE member_xp (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    xp INTEGER NOT NULL DEFAULT 0,
+    messages INTEGER NOT NULL DEFAULT 0,
+    last_xp_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  );
+  CREATE INDEX member_xp_rank ON member_xp (guild_id, xp DESC);
+  CREATE TABLE xp_ignored_channels (
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    PRIMARY KEY (guild_id, channel_id)
+  );
+  ALTER TABLE guild_settings ADD COLUMN leveling_off INTEGER;
+  ALTER TABLE guild_settings ADD COLUMN level_channel_id TEXT;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -642,6 +674,70 @@ export class Store {
 
   setLfgExpiry(id: number, expiresAt: number | null): void {
     this.db.prepare('UPDATE lfg_posts SET expires_at = ? WHERE id = ?').run(expiresAt, id);
+  }
+
+  // --- leveling ---
+
+  private toXp(r: Row): MemberXp {
+    return { userId: String(r.user_id), xp: Number(r.xp), messages: Number(r.messages), lastXpAt: Number(r.last_xp_at) };
+  }
+
+  getMemberXp(guildId: string, userId: string): MemberXp | null {
+    const r = this.db.prepare('SELECT * FROM member_xp WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as Row | undefined;
+    return r ? this.toXp(r) : null;
+  }
+
+  /** Adds XP (never below 0) and returns the total before and after. `countMessage` is false for voice XP. */
+  addXp(guildId: string, userId: string, amount: number, now: number, countMessage = true): { before: number; after: number } {
+    const existing = this.getMemberXp(guildId, userId);
+    const before = existing?.xp ?? 0;
+    const after = Math.max(0, before + amount);
+    // Voice XP must not restart the message cooldown.
+    const stamp = countMessage ? now : (existing?.lastXpAt ?? 0);
+    this.db
+      .prepare(
+        `INSERT INTO member_xp (guild_id, user_id, xp, messages, last_xp_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (guild_id, user_id) DO UPDATE SET xp = excluded.xp, messages = messages + ?, last_xp_at = excluded.last_xp_at`,
+      )
+      .run(guildId, userId, after, countMessage ? 1 : 0, stamp, countMessage ? 1 : 0);
+    return { before, after };
+  }
+
+  setXp(guildId: string, userId: string, xp: number): void {
+    this.db
+      .prepare('INSERT INTO member_xp (guild_id, user_id, xp) VALUES (?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET xp = excluded.xp')
+      .run(guildId, userId, Math.max(0, xp));
+  }
+
+  resetXp(guildId: string, userId: string): boolean {
+    return Number(this.db.prepare('DELETE FROM member_xp WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes) > 0;
+  }
+
+  /** 1-based position of a member by XP (ties share the better position). */
+  xpPosition(guildId: string, userId: string): number | null {
+    const mine = this.getMemberXp(guildId, userId);
+    if (!mine) return null;
+    const r = this.db.prepare('SELECT COUNT(*) AS n FROM member_xp WHERE guild_id = ? AND xp > ?').get(guildId, mine.xp) as Row;
+    return Number(r.n) + 1;
+  }
+
+  topXp(guildId: string, limit: number, offset = 0): MemberXp[] {
+    return (this.db.prepare('SELECT * FROM member_xp WHERE guild_id = ? AND xp > 0 ORDER BY xp DESC, user_id LIMIT ? OFFSET ?').all(guildId, limit, offset) as Row[]).map((r) => this.toXp(r));
+  }
+
+  countXpMembers(guildId: string): number {
+    return Number((this.db.prepare('SELECT COUNT(*) AS n FROM member_xp WHERE guild_id = ? AND xp > 0').get(guildId) as Row).n);
+  }
+
+  /** Turns XP gain off in a channel (or back on). Returns the new state: true = ignored. */
+  toggleXpIgnored(guildId: string, channelId: string): boolean {
+    const had = Number(this.db.prepare('DELETE FROM xp_ignored_channels WHERE guild_id = ? AND channel_id = ?').run(guildId, channelId).changes) > 0;
+    if (!had) this.db.prepare('INSERT INTO xp_ignored_channels (guild_id, channel_id) VALUES (?, ?)').run(guildId, channelId);
+    return !had;
+  }
+
+  xpIgnoredChannels(guildId: string): string[] {
+    return (this.db.prepare('SELECT channel_id FROM xp_ignored_channels WHERE guild_id = ?').all(guildId) as Row[]).map((r) => String(r.channel_id));
   }
 
   // --- join-to-create voice rooms ---

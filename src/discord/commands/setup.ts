@@ -34,6 +34,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: s.lfgVoiceCategoryId ? `category <#${s.lfgVoiceCategoryId}> · host grace ${s.lfgVoiceGraceMinutes ?? 5} min` : '*off* (squads post without a voice channel)',
       },
       { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}${flags.ENABLE_MESSAGE_CONTENT ? '' : ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see screenshots'}` : '*off*' },
+      { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Verification',
@@ -96,6 +97,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('levels')
+        .setDescription('Turn leveling on and choose where level-ups are announced (default: where the member talks)')
+        .addChannelOption((o) => o.setName('channel').setDescription('Level-up announcements channel').addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('honeypot')
         .setDescription('Trap channel: anyone without moderator powers who posts there is removed (for spam bots)')
         .addChannelOption((o) => o.setName('channel').setDescription('A channel nobody should write in').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
@@ -147,6 +154,7 @@ export const setup: Command = {
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
               { name: 'Screenshot roles', value: 'ssroles' },
+              { name: 'Leveling', value: 'levels' },
               { name: 'Squad voice channels', value: 'lfgvoice' },
               { name: 'Join-to-create voice', value: 'autovc' },
             ),
@@ -200,6 +208,9 @@ export const setup: Command = {
           lfgVoiceGraceMinutes: interaction.options.getInteger('grace_minutes'),
         });
         break;
+      case 'levels':
+        settings = ctx.store.updateSettings(guildId, { levelingOff: 0, levelChannelId: interaction.options.getChannel('channel')?.id ?? null });
+        break;
       case 'ssroles': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const file = interaction.options.getAttachment('reference');
@@ -230,6 +241,10 @@ export const setup: Command = {
         }
         if (feature === 'lfgvoice') {
           settings = ctx.store.updateSettings(guildId, { lfgVoiceCategoryId: null, lfgVoiceGraceMinutes: null });
+          break;
+        }
+        if (feature === 'levels') {
+          settings = ctx.store.updateSettings(guildId, { levelingOff: 1 });
           break;
         }
         if (feature === 'ssroles') {

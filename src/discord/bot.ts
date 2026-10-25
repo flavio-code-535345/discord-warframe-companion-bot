@@ -15,6 +15,7 @@ import { UserError } from '../services/clan.js';
 import { handleButton } from './buttons.js';
 import { handleVoiceStateUpdate } from '../lfg/autovc.js';
 import { handleHoneypotMessage } from '../moderation/honeypot.js';
+import { handleLevelMessage } from '../leveling/service.js';
 import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { handleChatMessage } from './chat.js';
@@ -30,13 +31,14 @@ import { event } from './commands/event.js';
 import { lfg } from './commands/lfg.js';
 import { MODERATION_COMMANDS } from './commands/moderation.js';
 import { item, wiki } from './commands/lookup.js';
+import { LEVEL_COMMANDS } from './commands/levels.js';
 import { setup } from './commands/setup.js';
 import { handleStickyModal, isStickyModal, sticky } from './commands/sticky.js';
 import { track } from './commands/track.js';
 import { vc } from './commands/vc.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, activity, vc, sticky, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, activity, vc, sticky, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
@@ -84,6 +86,7 @@ export function attachHandlers(ctx: AppContext): void {
 
   client.on(Events.MessageCreate, (message) => {
     stickyKeeper(ctx).onMessage(message);
+    void handleLevelMessage(message, ctx).catch((err) => console.error('[levels] message handler failed:', err));
     void handleHoneypotMessage(message, ctx)
       .then((trapped) => (trapped ? true : handleSsMessage(message, ctx)))
       .then((handled) => (handled ? undefined : handleChatMessage(message, ctx)))
