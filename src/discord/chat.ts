@@ -1,6 +1,7 @@
 import { type Message, type SendableChannels } from 'discord.js';
 import type { ChatTurn } from '../ai/ordis.js';
 import { splitForDiscord } from '../ai/ordis.js';
+import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
 
@@ -40,8 +41,9 @@ export function limitMessage(reason: 'user' | 'daily', retryAfterMs: number): st
 }
 
 /**
- * Answers Warframe questions in chat. Triggers: a mention of the bot (or a reply that pings it), any
- * message in the /setup chat channel (requires the Message Content intent), and DMs from clan members.
+ * Answers Warframe questions in chat. Triggers: a mention of the bot (or a reply that pings it), questions
+ * in the /setup chat channel (requires the Message Content intent), and DMs from clan members. Uses the free
+ * rule-based answers, or Claude when ANTHROPIC_API_KEY is configured.
  */
 export async function handleChatMessage(message: Message, ctx: AppContext): Promise<void> {
   const { client, config, store } = ctx;
@@ -57,20 +59,31 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   if (!message.channel.isSendable()) return;
 
   const reply = (content: string) => message.reply({ content, allowedMentions: { parse: [], repliedUser: true } });
+  const question = stripMention(message.content, botId);
+  // In the chat channel Ordis only picks up actual questions, so ordinary chatter ("good night all") is left alone.
+  if (inChatChannel && !mentioned && !question.endsWith('?')) return;
 
-  if (!ctx.ai) {
-    if (mentioned || isDM) await reply("Ordis's conversation matrix is offline, Operator. The bot's AI chat isn't configured.");
-    return;
-  }
-  // DMs cost API credits too, so only clan members may use them.
+  // Ordis is the clan's bot: DMs are for clan members only.
   if (isDM) {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     if (!(await guild.members.fetch(message.author.id).catch(() => null))) return;
   }
 
-  const question = stripMention(message.content, botId);
   if (!question) {
     await reply(`Yes, Operator? Ask Ordis anything about Warframe, for example "where does Neo N16 drop?" or "what is Baro selling?"`);
+    return;
+  }
+
+  // Without an AI key, Ordis answers from its own live data and the wiki (free).
+  if (!ctx.ai) {
+    try {
+      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx));
+      if (!answer.found && inChatChannel && !mentioned) return;
+      await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
+    } catch (err) {
+      console.error('[chat] answer failed:', err);
+      await reply('Ordis encountered a -- CRITICAL ERROR -- small hiccup, Operator. Please try again shortly.').catch(() => {});
+    }
     return;
   }
 

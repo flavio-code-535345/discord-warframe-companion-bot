@@ -45,10 +45,64 @@ async function extracts(titles: string[], intro: boolean, maxChars?: number): Pr
     .map((p) => ({ title: p.title, url: pageUrl(p.title), extract: p.extract!.trim() }));
 }
 
-/** Full-text wiki search, returning each hit's intro paragraph. */
+interface TitlesResponse {
+  query?: {
+    normalized?: { from: string; to: string }[];
+    redirects?: { from: string; to: string }[];
+    pages: Record<string, { title: string; missing?: string }>;
+  };
+}
+
+const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+/** Word runs of the query, longest first: "archon shards work" → "Archon Shards Work", "Archon Shards", … */
+export function titleCandidates(query: string, maxWords = 4): string[] {
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  for (let n = Math.min(maxWords, words.length); n >= 1; n--) {
+    for (let i = 0; i + n <= words.length; i++) {
+      const phrase = titleCase(words.slice(i, i + n).join(' '));
+      if (n === 1 && phrase.length < 4) continue;
+      if (!out.includes(phrase)) out.push(phrase);
+      // Wiki pages are mostly singular ("Archon Shard"), with no redirect from every plural.
+      const singular = phrase.replace(/s$/, '');
+      if (singular !== phrase && singular.length >= 4 && !out.includes(singular)) out.push(singular);
+    }
+  }
+  return out.slice(0, 50);
+}
+
+/** The longest phrase of the query that is itself a wiki page title (following redirects), if any. */
+async function exactTitle(query: string): Promise<string | null> {
+  const candidates = titleCandidates(query);
+  if (!candidates.length) return null;
+  const data = await api<TitlesResponse>({ action: 'query', titles: candidates.join('|'), redirects: '1' });
+  const q = data.query;
+  if (!q) return null;
+  const existing = new Set(Object.values(q.pages).filter((p) => p.missing === undefined).map((p) => p.title));
+  const resolve = (t: string) => {
+    const normalized = q.normalized?.find((n) => n.from === t)?.to ?? t;
+    return q.redirects?.find((r) => r.from === normalized)?.to ?? normalized;
+  };
+  for (const c of candidates) {
+    const target = resolve(c);
+    if (existing.has(target)) return target;
+  }
+  return null;
+}
+
+/**
+ * Wiki search for a question: a page whose title appears in the query comes first ("how do archon shards
+ * work" → Archon Shard), then MediaWiki's full-text hits, which alone rank loosely matching pages too high.
+ */
 export async function searchWiki(query: string, limit = 3): Promise<WikiResult[]> {
-  const data = await api<SearchResponse>({ action: 'query', list: 'search', srsearch: query, srlimit: String(limit), srnamespace: '0' });
-  return extracts((data.query?.search ?? []).map((s) => s.title), true);
+  const [title, data] = await Promise.all([
+    exactTitle(query).catch(() => null),
+    api<SearchResponse>({ action: 'query', list: 'search', srsearch: query, srlimit: String(limit), srnamespace: '0' }),
+  ]);
+  const titles = (data.query?.search ?? []).map((s) => s.title);
+  const ordered = title ? [title, ...titles.filter((t) => t !== title)] : titles;
+  return extracts(ordered.slice(0, limit), true);
 }
 
 /** One article as plain text, cut to `maxChars` (the wiki's long pages would otherwise flood a model's context). */

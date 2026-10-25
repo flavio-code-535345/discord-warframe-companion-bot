@@ -3,7 +3,7 @@
 # Cephalon Ordis — The Rats Den 69 clan bot
 
 **Cephalon Ordis** is the Discord companion bot for the Warframe clan **The Rats Den 69**. It answers Warframe
-questions in chat (powered by Claude, using live game data), looks up items and relics, shows the live world state and
+questions in chat (free, from live game data and the wiki), looks up items and relics, shows the live world state and
 market prices, DMs members about things they track, runs clan events and LFG squads, posts automatic alerts, and
 serves an **MCP server** so AI assistants (Claude Code, Claude Desktop, …) can read Warframe data and manage the clan.
 
@@ -11,16 +11,21 @@ serves an **MCP server** so AI assistants (Claude Code, Claude Desktop, …) can
 
 ### Ask Ordis
 
-Mention the bot (`@Cephalon Ordis where does Neo N16 drop?`), reply to one of its answers to keep the conversation
-going, use `/ask`, or DM it. Ordis answers in character, and it looks things up instead of guessing:
+Mention the bot (`@Cephalon Ordis where does Neo N16 drop?`), use `/ask`, or DM it (clan members only). Ordis
+works out what you're asking and answers from live data. No AI model or API key is involved, so it costs nothing:
 
-- **Live data:** cycles, fissures, sortie, Archon Hunt, Baro, Nightwave, events, Archimedea, bounties and Darvo come
-  from the world state on every question.
-- **Items and prices:** item stats, relic contents, drop chances and warframe.market prices.
-- **Background:** the Warframe wiki, plus web search on Warframe sites for patch notes and anything newer.
-- **Your clan:** upcoming clan events and the registered roster.
+| You ask | Ordis answers with |
+| --- | --- |
+| "price of Arcane Energize", "how much is Wisp Prime set worth?" | warframe.market sellers and buyers |
+| "where does Neo N16 drop?", "how do I get Condition Overload?", "what drops Nitain?" | the relic card or the drop tables |
+| "Kuva Bramma stats", "what's in Axi A1?", "build for Wisp Prime" | the item or relic card (builds add Overframe and wiki links) |
+| "when is Baro coming?", "is it night on Cetus?", "today's sortie", "Entrati bounties", "steel path axi fissures", "what is Varzia selling?" | the live world state |
+| "when is our next clan event?" | the clan's upcoming events |
+| anything else ("how do Archon Shards work?") | the best-matching wiki article |
+| "help" | examples of what to ask |
 
-Optionally, `/setup chat` names a channel where Ordis answers every message (see *AI chat* below).
+Optionally, `/setup chat` names a channel where Ordis answers every message ending in `?` (needs the Message Content
+intent; see *Optional: Claude-powered chat* below).
 
 ### Commands
 
@@ -63,10 +68,12 @@ Slash commands are registered to that server automatically on startup. Then run 
 a couple of changes per hour. To change the logo, replace that file and ship a new image. The application name in
 the Developer Portal (General Information → Name) is separate: set it to `Cephalon Ordis` there too.
 
-### AI chat
+### Optional: Claude-powered chat
 
-Set `ANTHROPIC_API_KEY` (a Claude API key from <https://platform.claude.com>) to turn chat on. Without it, every
-other feature still works.
+The free answers above handle the common questions. To get real conversations instead (follow-up questions,
+explaining builds and mechanics in its own words), set `ANTHROPIC_API_KEY` to a Claude API key from
+<https://platform.claude.com>. This is billed per question by Anthropic and is separate from a Claude subscription.
+Leave it empty to stay free.
 
 - **Model:** Claude Opus 5.5 by default. Set `AI_MODEL` to `claude-sonnet-5-5` or `claude-haiku-5-5` for cheaper answers.
 - **Refusal fallbacks:** on Opus and Sonnet, the bot sends Anthropic's server-side refusal fallback (`fallbacks: "default"`), so a

@@ -1,0 +1,199 @@
+import { EmbedBuilder } from 'discord.js';
+import type { AppContext } from '../context.js';
+import {
+  BOUNTY_SYNDICATES,
+  COLORS,
+  archimedeaEmbed,
+  archonEmbed,
+  baroEmbed,
+  bountiesEmbed,
+  clampLines,
+  cyclesEmbed,
+  dealsEmbed,
+  dropsEmbed,
+  eventsEmbed,
+  fissuresEmbed,
+  invasionsEmbed,
+  nightwaveEmbed,
+  priceEmbed,
+  resurgenceEmbed,
+  sortieEmbed,
+  steelPathEmbed,
+} from '../discord/embeds.js';
+import { lookupEmbed, relicEmbed, showsDrops, wikiEmbed } from '../discord/lookup-embeds.js';
+import { discordTime } from '../time.js';
+import { searchDrops } from '../warframe/drops.js';
+import { lookupItem } from '../warframe/items.js';
+import { priceCheck } from '../warframe/market.js';
+import { searchWiki } from '../warframe/wiki.js';
+import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
+import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
+
+export interface SmartAnswer {
+  content: string;
+  embeds: EmbedBuilder[];
+  /** False when nothing useful was found, so a busy chat channel can stay quiet instead of replying "no idea". */
+  found: boolean;
+}
+
+const pick = <T>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+
+/** Ordis's voice: one short line before the data, with the occasional glitch. */
+const LINES: Record<string, string[]> = {
+  price: ['Ordis has consulted the market, Operator.', 'The traders of the Relays report the following, Operator.', 'Market data acquired. Ordis advises haggling -- RUTHLESSLY -- politely.'],
+  drops: ['Ordis has searched the drop tables, Operator.', 'Here is where to find it, Operator. Happy hunting!'],
+  relic: ['Ordis has scanned the relic, Operator.', 'The Void whispers its contents, Operator.'],
+  world: ['Ordis has checked the Origin System, Operator.', 'Current readings, Operator.', 'Ordis is happy to report -- EVERYTHING IS FINE -- the following.'],
+  item: ['Ordis has pulled the Codex entry, Operator.', 'Arsenal data, Operator.'],
+  build: ['Ordis cannot mod for you, Operator, but here is what you are working with.'],
+  wiki: ['Ordis found this in the archives, Operator.', 'The wiki says, Operator:'],
+  clan: ['Clan schedule, Operator.'],
+};
+
+export const HELP_TEXT = [
+  'Operator! Ordis can answer questions like these:',
+  '• **Prices:** "price of Arcane Energize", "how much is Wisp Prime set worth?"',
+  '• **Farming:** "where does Neo N16 drop?", "how do I get Condition Overload?"',
+  '• **Items:** "Kuva Bramma stats", "what\'s in Axi A1?"',
+  '• **Right now:** "when is Baro coming?", "is it night on Cetus?", "steel path axi fissures", "today\'s sortie", "Entrati bounties", "what is Varzia selling?"',
+  '• **Your clan:** "when is our next clan event?"',
+  '• **Anything else:** Ordis checks the wiki ("how do Archon Shards work?").',
+  'Slash commands: `/item` `/price` `/drops` `/wiki` `/wf` `/track` `/event` `/lfg` `/clan`.',
+].join('\n');
+
+function worldEmbed(ws: WorldState, view: WorldView): EmbedBuilder {
+  switch (view) {
+    case 'baro':
+      return baroEmbed(ws);
+    case 'sortie':
+      return sortieEmbed(ws);
+    case 'archon':
+      return archonEmbed(ws);
+    case 'steelpath':
+      return steelPathEmbed(ws);
+    case 'nightwave':
+      return nightwaveEmbed(ws);
+    case 'invasions':
+      return invasionsEmbed(ws);
+    case 'deals':
+      return dealsEmbed(ws);
+    case 'events':
+      return eventsEmbed(ws);
+    case 'archimedea':
+      return archimedeaEmbed(ws);
+    case 'resurgence':
+      return resurgenceEmbed(ws);
+    case 'cycles':
+      return cyclesEmbed(ws);
+  }
+}
+
+async function wikiAnswer(query: string): Promise<SmartAnswer> {
+  const results = await searchWiki(query, 3).catch(() => []);
+  if (!results.length) {
+    return {
+      content: `Ordis searched everywhere, Operator, but found nothing on "${query}". Try rephrasing, or ask Ordis "help".`,
+      embeds: [],
+      found: false,
+    };
+  }
+  return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true };
+}
+
+async function itemAnswer(name: string, line: string, fallbackQuery: string): Promise<SmartAnswer> {
+  const result = await lookupItem(name).catch(() => null);
+  if (!result) return wikiAnswer(fallbackQuery);
+  let drops;
+  if (showsDrops(result) && result.kind === 'item') {
+    const groups = await searchDrops(result.item.name, 6, 10).catch(() => []);
+    drops = groups.find((g) => g.item.toLowerCase() === result.item.name.toLowerCase())?.locations;
+  }
+  return { content: line, embeds: [lookupEmbed(result, drops)], found: true };
+}
+
+async function answerIntent(intent: Intent, question: string, ctx: AppContext): Promise<SmartAnswer> {
+  const fallback = cleanQuestion(question);
+  switch (intent.kind) {
+    case 'help':
+      return { content: HELP_TEXT, embeds: [], found: true };
+
+    case 'price': {
+      try {
+        const result = await priceCheck(intent.item, ctx.config.WARFRAME_PLATFORM);
+        return { content: pick(LINES.price!), embeds: [priceEmbed(result)], found: true };
+      } catch {
+        return { content: `Ordis found no tradable item called "${intent.item}" on warframe.market, Operator. Check the spelling, or try \`/price\` for autocomplete.`, embeds: [], found: false };
+      }
+    }
+
+    case 'drops': {
+      const groups = await searchDrops(intent.item).catch(() => []);
+      if (groups.length) return { content: pick(LINES.drops!), embeds: [dropsEmbed(intent.item, groups)], found: true };
+      // Not in the drop tables (e.g. a Warframe or a place): the item card or the wiki explains how to get it.
+      return itemAnswer(intent.item, pick(LINES.item!), fallback);
+    }
+
+    case 'relic': {
+      const result = await lookupItem(intent.name).catch(() => null);
+      if (result?.kind === 'relic') return { content: pick(LINES.relic!), embeds: [relicEmbed(result.relic)], found: true };
+      return wikiAnswer(fallback);
+    }
+
+    case 'world': {
+      const ws = await getWorldState();
+      return { content: pick(LINES.world!), embeds: [worldEmbed(ws, intent.view)], found: true };
+    }
+
+    case 'fissures': {
+      const ws = await getWorldState();
+      const list = filterFissures(ws.fissures, { tier: intent.tier, steelPath: intent.steelPath, storm: intent.storm });
+      return { content: pick(LINES.world!), embeds: [fissuresEmbed(list)], found: true };
+    }
+
+    case 'bounties': {
+      const ws = await getWorldState();
+      if (!intent.syndicate) {
+        const open = BOUNTY_SYNDICATES.filter((s) => ws.syndicateMissions?.some((m) => m.syndicate === s && m.jobs?.length));
+        return {
+          content: `Which syndicate, Operator? Bounties are up for **${open.join('**, **') || 'nobody right now'}**. Ask e.g. "Entrati bounties", or use \`/wf bounties\`.`,
+          embeds: [],
+          found: true,
+        };
+      }
+      return { content: pick(LINES.world!), embeds: [bountiesEmbed(ws, intent.syndicate)], found: true };
+    }
+
+    case 'clanEvents': {
+      const events = ctx.store.upcomingEvents(ctx.config.DISCORD_GUILD_ID).slice(0, 8);
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.brand)
+        .setTitle(`${ctx.config.CLAN_NAME}: upcoming events`)
+        .setDescription(
+          events.length
+            ? clampLines(events.map((e) => `**${e.title}** — ${discordTime(e.startsAt, 'f')} (${discordTime(e.startsAt)}) · ${ctx.store.getRsvps(e.id).going.length} going`))
+            : 'Nothing scheduled yet. Create one with `/event create`.',
+        );
+      return { content: pick(LINES.clan!), embeds: [embed], found: true };
+    }
+
+    case 'build': {
+      const answer = await itemAnswer(intent.item, pick(LINES.build!), fallback);
+      if (answer.found) {
+        const q = encodeURIComponent(intent.item);
+        answer.content += `\nCommunity builds: <https://overframe.gg/search/?q=${q}> · wiki: <https://wiki.warframe.com/index.php?search=${q}>`;
+      }
+      return answer;
+    }
+
+    case 'item':
+      return itemAnswer(intent.name, pick(LINES.item!), fallback);
+
+    case 'wiki':
+      return wikiAnswer(intent.query);
+  }
+}
+
+/** Answers a chat question from live data and the wiki, without any AI model. */
+export async function smartAnswer(question: string, ctx: AppContext): Promise<SmartAnswer> {
+  return answerIntent(detectIntent(question), question, ctx);
+}
