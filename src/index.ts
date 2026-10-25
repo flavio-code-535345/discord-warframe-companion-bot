@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { AskLimiter } from './ai/limits.js';
 import { BackupScheduler } from './backup/service.js';
 import { LfgVoiceSweeper } from './lfg/voice.js';
+import { SAFE_BOOT_MS, markOverlayHealthy } from './overlay.js';
 import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
@@ -39,6 +40,8 @@ client.once('clientReady', () => {
   squadVoice.start();
   voiceXp.start();
   wikiCrawler?.start();
+  // A start with live code patches counts as good once it has stayed up this long (see overlay.ts).
+  setTimeout(() => markOverlayHealthy(config.DATA_DIR), SAFE_BOOT_MS).unref();
 });
 
 const http = startHttpServer(ctx);

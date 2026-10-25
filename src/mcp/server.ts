@@ -11,6 +11,7 @@ import { readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { priceCheck } from '../warframe/market.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { registerAdminTools } from './admin.js';
+import { registerCodeTools } from './code.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
 
@@ -320,6 +321,7 @@ export function createMcpServer(ctx: AppContext): McpServer {
   );
 
   registerAdminTools(server, ctx);
+  if (ctx.config.ALLOW_CODE_EDIT) registerCodeTools(server, ctx);
 
   return server;
 }
