@@ -192,12 +192,39 @@ npm ci
 npm run dev
 ```
 
+## Admin panel
+
+`https://<PUBLIC_URL>/admin` is a web panel for clan admins. You log in with Discord, and only whitelisted Discord IDs get in.
+
+| Page | What you can do |
+| --- | --- |
+| Overview | Bot status, ping, members, events, latest backup, where the bot posts |
+| Settings | Alert, announcement, mod-log, welcome and chat channels; the alert ping role; captcha verification (channel, role, minimum account age) |
+| Announce | Write and post an announcement, optionally pinging a role |
+| Events | Create clan events (posted with RSVP buttons) and cancel them |
+| Members | Roster and warnings: remove members, clear warnings |
+| Backups | Take, download and delete server backups (restoring stays in Discord with `/backup load`) |
+| Admins | Add or remove panel admins by Discord ID |
+
+**Setup:**
+1. In the Discord Developer Portal, open OAuth2 → Redirects and add `https://<PUBLIC_URL>/admin/callback`.
+2. Copy the OAuth2 Client Secret.
+3. Set `DISCORD_CLIENT_SECRET`, `PUBLIC_URL`, and optionally `PANEL_OWNER_IDS` in the stack. `PANEL_OWNER_IDS` defaults to the clan owner's ID; these owners can't be removed from the panel.
+
+**Security:**
+- **Login:** Discord OAuth asks only for the `identify` scope, and Discord's access token is used once and never stored.
+- **Sessions:** kept in the database behind an HMAC-signed cookie that is HttpOnly, Secure and SameSite=Lax, scoped to `/admin`, and valid for 7 days.
+- **Every request** re-checks the whitelist, so removing an admin signs them out immediately.
+- **Forms** carry a CSRF token. Destructive buttons need a "sure" tick.
+- **Logging:** every change is posted to the mod log.
+
 ## Web endpoints
 
 The bot's HTTP port (3000 in the container) serves:
 
 | Path | What |
 | --- | --- |
+| `/admin` | Admin panel (see above) |
 | `/` | Status page: logo, online status and ping, clan stats, current open-world cycles with live countdowns, upcoming events (titles and RSVP counts only). Refreshes itself |
 | `/status.json` | The same data as JSON |
 | `/health` | `{"status":"ok","discord":true}` once connected to Discord (used by the Docker health check) |

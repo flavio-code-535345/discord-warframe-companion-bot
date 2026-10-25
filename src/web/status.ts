@@ -125,6 +125,7 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--mute
 .event-title{font-weight:600;overflow-wrap:anywhere}
 .empty{color:var(--muted)}
 footer{margin-top:40px;color:var(--muted);font-size:12px;text-align:center}
+footer a{color:var(--accent)}
 `;
 
 const SCRIPT = `
@@ -193,7 +194,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
 <section aria-label="Clan stats"><h2>Clan</h2><div class="grid stats">${stats}</div></section>
 <section aria-label="Open world cycles"><h2>Current cycles</h2>${cycles}</section>
 <section aria-label="Upcoming events"><h2>Upcoming events</h2>${events}</section>
-<footer>World state from Digital Extremes · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically</footer>
+<footer>World state from Digital Extremes · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
 </main>
 <script nonce="${nonce}">${SCRIPT}</script>
 </body>

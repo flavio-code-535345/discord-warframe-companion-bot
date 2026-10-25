@@ -27,6 +27,18 @@ const EnvSchema = z.object({
   AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(300),
   /** Lets Ordis read every message in the /setup chat channel; needs the privileged Message Content intent. */
   ENABLE_MESSAGE_CONTENT: bool.default(false),
+  // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.
+  DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
+  PUBLIC_URL: z
+    .string()
+    .url()
+    .optional()
+    .transform((v) => v?.replace(/\/+$/, '')),
+  /** Always-admins who can't be removed from the panel; others are added in the panel itself. */
+  PANEL_OWNER_IDS: z
+    .string()
+    .default('603293720061935626')
+    .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
   MCP_ALLOWED_HOSTS: z
     .string()
     .optional()

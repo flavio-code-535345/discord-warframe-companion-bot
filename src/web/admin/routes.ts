@@ -1,0 +1,501 @@
+import { randomBytes } from 'node:crypto';
+import { ChannelType, type Guild } from 'discord.js';
+import express, { type NextFunction, type Request, type Response, type Router } from 'express';
+import { summaryOf, takeBackup } from '../../backup/service.js';
+import type { AppContext } from '../../context.js';
+import type { GuildSettings, PanelSession } from '../../db.js';
+import { disableVerification, setupVerification } from '../../discord/verification.js';
+import { modLog } from '../../moderation/service.js';
+import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
+import { parseWhen } from '../../time.js';
+import { buildStatus, escapeHtml as e } from '../status.js';
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  STATE_COOKIE,
+  authorizeUrl,
+  clearCookie,
+  cookie,
+  exchangeCode,
+  isPanelAdmin,
+  parseCookies,
+  randomToken,
+  safeEqual,
+  sessionSecret,
+  sign,
+  unsign,
+} from './auth.js';
+import { type Option, type PageContext, actionButton, csrfField, deniedPage, layout, loginPage, notConfiguredPage, select } from './pages.js';
+
+const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+const kb = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+const id = (v: unknown) => (typeof v === 'string' && /^\d{15,22}$/.test(v) ? v : null);
+const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+/** The /admin web panel: Discord login, whitelist check on every request, CSRF token on every form. */
+export function adminRouter(ctx: AppContext): Router {
+  const { config, store, client } = ctx;
+  const router = express.Router();
+  const guildId = config.DISCORD_GUILD_ID;
+  const enabled = Boolean(config.DISCORD_CLIENT_SECRET && config.PUBLIC_URL);
+  let secret: Buffer | null = null;
+  const key = () => (secret ??= sessionSecret(store));
+
+  router.use(express.urlencoded({ extended: false, limit: '100kb' }));
+  router.use((_req, res, next) => {
+    const nonce = randomBytes(16).toString('base64');
+    res.locals.nonce = nonce;
+    res.set({
+      'Content-Security-Policy': `default-src 'none'; img-src 'self' https://cdn.discordapp.com; style-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin',
+    });
+    next();
+  });
+
+  const pc = (res: Response, active?: string, req?: Request): PageContext => ({
+    nonce: res.locals.nonce as string,
+    session: (res.locals.session as PanelSession | undefined) ?? null,
+    active,
+    flash: req ? { ok: text(req.query.ok, 300) || undefined, err: text(req.query.err, 300) || undefined } : undefined,
+  });
+  const html = (res: Response, body: string, status = 200) => res.status(status).type('html').send(body);
+  const sessionOf = (req: Request) => {
+    const sid = unsign(parseCookies(req.headers.cookie)[SESSION_COOKIE], key());
+    return sid ? store.getPanelSession(sid) : null;
+  };
+
+  if (!enabled) {
+    router.use((_req, res) => html(res, notConfiguredPage(pc(res)), 503));
+    return router;
+  }
+
+  // --- login flow ---
+
+  router.get('/login', (_req, res) => {
+    const clientId = client.application?.id ?? client.user?.id;
+    if (!clientId) return html(res, loginPage({ ...pc(res), flash: { err: 'Ordis is still starting up. Try again in a moment.' } }, config.CLAN_NAME), 503);
+    const state = randomToken();
+    res.setHeader('Set-Cookie', cookie(STATE_COOKIE, sign(state, key()), 600));
+    res.redirect(authorizeUrl(clientId, config, state));
+  });
+
+  router.get('/callback', async (req, res) => {
+    const expected = unsign(parseCookies(req.headers.cookie)[STATE_COOKIE], key());
+    const fail = (msg: string) => html(res.setHeader('Set-Cookie', clearCookie(STATE_COOKIE)), loginPage({ ...pc(res), flash: { err: msg } }, config.CLAN_NAME), 400);
+    if (!expected || !safeEqual(text(req.query.state, 200), expected)) return fail('That login link expired or was not started here. Please try again.');
+    const code = text(req.query.code, 200);
+    if (!code) return fail('Discord did not send a login code. Please try again.');
+    const clientId = client.application?.id ?? client.user?.id ?? '';
+    try {
+      const user = await exchangeCode(clientId, config, code);
+      if (!isPanelAdmin(config, store, user.id)) {
+        console.warn(`[admin] login refused for ${user.username} (${user.id}): not whitelisted`);
+        res.setHeader('Set-Cookie', clearCookie(STATE_COOKIE));
+        return html(res, deniedPage(pc(res), user.id), 403);
+      }
+      const session = store.createPanelSession(
+        { id: randomToken(), userId: user.id, username: user.global_name ?? user.username, avatar: user.avatar, csrf: randomToken() },
+        SESSION_TTL_MS,
+      );
+      res.setHeader('Set-Cookie', [clearCookie(STATE_COOKIE), cookie(SESSION_COOKIE, sign(session.id, key()), SESSION_TTL_MS / 1000)]);
+      console.log(`[admin] ${user.username} (${user.id}) logged in`);
+      res.redirect('/admin/');
+    } catch (err) {
+      console.error('[admin] login failed:', err);
+      fail((err as Error).message);
+    }
+  });
+
+  // --- everything below needs a whitelisted admin; POSTs also need the session's CSRF token ---
+
+  const guard = (req: Request, res: Response, next: NextFunction) => {
+    const session = sessionOf(req);
+    if (!session) {
+      if (req.method === 'GET' && (req.path === '/' || req.path === '')) return html(res, loginPage(pc(res), config.CLAN_NAME));
+      return res.redirect('/admin/');
+    }
+    if (!isPanelAdmin(config, store, session.userId)) {
+      store.deletePanelSession(session.id);
+      return html(res, deniedPage(pc(res), session.userId), 403);
+    }
+    res.locals.session = session;
+    if (req.method === 'POST' && !safeEqual(req.body?._csrf, session.csrf)) return html(res, layout('Expired', '<p>That form expired. Go back, reload and try again.</p>', pc(res)), 403);
+    next();
+  };
+  router.use(guard);
+
+  const back = (res: Response, path: string, msg: { ok?: string; err?: string }) =>
+    res.redirect(`/admin/${path}?${new URLSearchParams(msg.ok ? { ok: msg.ok } : { err: msg.err ?? '' })}`);
+
+  /** Runs a POST action and redirects back with a flash message; UserErrors become the message. */
+  const action =
+    (path: string, fn: (req: Request, session: PanelSession) => Promise<string>) =>
+    async (req: Request, res: Response) => {
+      const session = res.locals.session as PanelSession;
+      try {
+        back(res, path, { ok: await fn(req, session) });
+      } catch (err) {
+        if (!(err instanceof UserError)) console.error(`[admin] ${req.path} failed:`, err);
+        back(res, path, { err: err instanceof UserError ? err.message : 'Something went wrong; check the bot logs.' });
+      }
+    };
+
+  const audit = async (session: PanelSession, what: string, fields: { name: string; value: string }[] = []) => {
+    const user = await client.users.fetch(session.userId).catch(() => null);
+    if (user) await modLog(ctx, { action: 'Admin panel', moderator: user, reason: what, fields });
+  };
+
+  const guild = () => client.guilds.fetch(guildId);
+  async function channelOptions(g: Guild): Promise<Option[]> {
+    const channels = await g.channels.fetch();
+    return [...channels.values()]
+      .filter((c) => c && (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement))
+      .sort((a, b) => (a!.parent?.rawPosition ?? -1) - (b!.parent?.rawPosition ?? -1) || a!.rawPosition - b!.rawPosition)
+      .map((c) => ({ value: c!.id, label: `#${c!.name}${c!.parent ? ` (${c!.parent.name})` : ''}` }));
+  }
+  async function roleOptions(g: Guild): Promise<Option[]> {
+    const roles = await g.roles.fetch();
+    return [...roles.values()]
+      .filter((r) => r.id !== g.id && !r.managed)
+      .sort((a, b) => b.position - a.position)
+      .map((r) => ({ value: r.id, label: r.name }));
+  }
+  const nameOf = async (userId: string) => (await client.users.fetch(userId).catch(() => null))?.username ?? userId;
+
+  // --- overview ---
+
+  router.get('/', async (req, res) => {
+    const s = await buildStatus(ctx);
+    const settings = store.getSettings(guildId);
+    const latest = store.listBackups(guildId)[0];
+    const ch = (cid: string | null) => (cid ? `<code>#${e(client.channels.cache.get(cid) && 'name' in client.channels.cache.get(cid)! ? (client.channels.cache.get(cid) as { name: string }).name : cid)}</code>` : '<span class="muted">off</span>');
+    const body = `<h1>Overview</h1>
+<div class="grid">
+<div class="card"><div class="stat">${s.online ? '🟢 Online' : '🔴 Offline'}</div><div class="muted">${s.pingMs !== null ? `${s.pingMs} ms ping · ` : ''}up ${Math.floor(s.uptimeSeconds / 3600)}h ${Math.floor((s.uptimeSeconds % 3600) / 60)}m</div></div>
+<div class="card"><div class="stat">${e(String(s.server?.memberCount ?? '—'))}</div><div class="muted">Discord members</div></div>
+<div class="card"><div class="stat">${s.registeredMembers}</div><div class="muted">Registered Tenno</div></div>
+<div class="card"><div class="stat">${s.upcomingEvents.length}</div><div class="muted">Upcoming events</div></div>
+<div class="card"><div class="stat">${latest ? `#${latest.id}` : '—'}</div><div class="muted">${latest ? `Latest backup · ${utc(latest.createdAt)}` : 'No backups yet'}</div></div>
+</div>
+<h2>Bot channels</h2>
+<div class="card"><table>
+<tr><td>Worldstate alerts</td><td>${ch(settings.alertsChannelId)}</td></tr>
+<tr><td>Announcements &amp; events</td><td>${ch(settings.announcementsChannelId)}</td></tr>
+<tr><td>Moderation log</td><td>${ch(settings.modLogChannelId)}</td></tr>
+<tr><td>Welcome</td><td>${ch(settings.welcomeChannelId)}</td></tr>
+<tr><td>Verification</td><td>${settings.verifyRoleId ? `${ch(settings.verifyChannelId)}${settings.verifyMinAccountAgeDays ? ` · accounts ≥ ${settings.verifyMinAccountAgeDays} days` : ''}` : '<span class="muted">off</span>'}</td></tr>
+</table><p><a href="/admin/settings">Change settings →</a></p></div>`;
+    html(res, layout('Overview', body, pc(res, 'overview', req)));
+  });
+
+  // --- settings ---
+
+  router.get('/settings', async (req, res) => {
+    const g = await guild();
+    const [channels, roles] = await Promise.all([channelOptions(g), roleOptions(g)]);
+    const s = store.getSettings(guildId);
+    const p = pc(res, 'settings', req);
+    const field = (label: string, name: keyof GuildSettings, opts: Option[]) => `<label>${label}${select(name, opts, s[name] as string | null)}</label>`;
+    const body = `<h1>Settings</h1>
+<div class="card"><form class="stack" method="post" action="/admin/settings">${csrfField(p.session)}
+<div class="row">
+${field('Worldstate alerts channel', 'alertsChannelId', channels)}
+${field('Alerts ping role', 'alertsRoleId', roles)}
+${field('Announcements & events channel', 'announcementsChannelId', channels)}
+${field('Moderation log channel', 'modLogChannelId', channels)}
+${field('Welcome channel', 'welcomeChannelId', channels)}
+${field('Ordis chat channel', 'chatChannelId', channels)}
+</div><div><button>Save</button></div></form></div>
+<h2>Verification</h2>
+<div class="card"><form class="stack" method="post" action="/admin/settings/verification">${csrfField(p.session)}
+<div class="row">
+<label>Panel channel${select('channel', channels, s.verifyChannelId, '— pick a channel —')}</label>
+<label>Role to give${select('role', roles, s.verifyRoleId, '— pick a role —')}</label>
+<label>Minimum account age (days)<input type="number" name="min_age" min="0" max="365" value="${s.verifyMinAccountAgeDays ?? 0}"></label>
+</div><div><button>${s.verifyRoleId ? 'Update and re-post panel' : 'Turn on verification'}</button></div></form>
+${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/off', 'Turn verification off', { danger: true, confirm: true })}</p>` : ''}</div>`;
+    html(res, layout('Settings', body, p));
+  });
+
+  router.post(
+    '/settings',
+    action('settings', async (req, session) => {
+      const g = await guild();
+      await Promise.all([g.channels.fetch(), g.roles.fetch()]);
+      const ch = (k: string) => {
+        const v = id(req.body[k]);
+        if (v && !g.channels.cache.has(v)) throw new UserError('One of the channels no longer exists.');
+        return v;
+      };
+      const role = id(req.body.alertsRoleId);
+      if (role && !g.roles.cache.has(role)) throw new UserError('That role no longer exists.');
+      store.updateSettings(guildId, {
+        alertsChannelId: ch('alertsChannelId'),
+        alertsRoleId: role,
+        announcementsChannelId: ch('announcementsChannelId'),
+        modLogChannelId: ch('modLogChannelId'),
+        welcomeChannelId: ch('welcomeChannelId'),
+        chatChannelId: ch('chatChannelId'),
+      });
+      await audit(session, 'Changed bot channel settings');
+      return 'Settings saved.';
+    }),
+  );
+
+  router.post(
+    '/settings/verification',
+    action('settings', async (req, session) => {
+      const channel = id(req.body.channel);
+      const role = id(req.body.role);
+      if (!channel || !role) throw new UserError('Pick both a channel and a role.');
+      const minAge = Math.max(0, Math.min(365, Number(req.body.min_age) || 0));
+      const url = await setupVerification(ctx, channel, role, minAge || null);
+      await audit(session, 'Set up verification', [{ name: 'Panel', value: url }]);
+      return 'Verification panel posted.';
+    }),
+  );
+
+  router.post(
+    '/settings/verification/off',
+    action('settings', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      await disableVerification(ctx);
+      await audit(session, 'Turned verification off');
+      return 'Verification is off and its panel was removed.';
+    }),
+  );
+
+  // --- announcements ---
+
+  router.get('/announce', async (req, res) => {
+    const g = await guild();
+    const [channels, roles] = await Promise.all([channelOptions(g), roleOptions(g)]);
+    const p = pc(res, 'announce', req);
+    const body = `<h1>Announce</h1>
+<div class="card"><form class="stack" method="post" action="/admin/announce">${csrfField(p.session)}
+<div class="row">
+<label>Channel${select('channel', channels, store.getSettings(guildId).announcementsChannelId, '— pick a channel —')}</label>
+<label>Ping role (optional)${select('role', roles, null, '— no ping —')}</label>
+</div>
+<label>Title (optional)<input name="title" maxlength="256"></label>
+<label>Message (Discord markdown)<textarea name="message" maxlength="4000" required></textarea></label>
+<div><button>Post announcement</button></div></form></div>`;
+    html(res, layout('Announce', body, p));
+  });
+
+  router.post(
+    '/announce',
+    action('announce', async (req, session) => {
+      const message = text(req.body.message, 4000);
+      if (!message) throw new UserError('Write a message first.');
+      const sent = await postAnnouncement(ctx, { message, title: text(req.body.title, 256) || null, channelId: id(req.body.channel), pingRoleId: id(req.body.role) });
+      await audit(session, 'Posted an announcement', [{ name: 'Message', value: sent.url }]);
+      return 'Announcement posted.';
+    }),
+  );
+
+  // --- events ---
+
+  router.get('/events', async (req, res) => {
+    const p = pc(res, 'events', req);
+    const events = store.upcomingEvents(guildId);
+    const rows = events
+      .map((ev) => {
+        const r = store.getRsvps(ev.id);
+        return `<tr><td>#${ev.id}</td><td>${e(ev.title)}</td><td>${utc(ev.startsAt)}</td><td>${r.going.length} going · ${r.maybe.length} maybe</td><td>${actionButton(p.session, `/admin/events/${ev.id}/cancel`, 'Cancel', { danger: true, confirm: true })}</td></tr>`;
+      })
+      .join('');
+    const body = `<h1>Events</h1>
+<div class="card"><form class="stack" method="post" action="/admin/events">${csrfField(p.session)}
+<div class="row">
+<label>Title<input name="title" maxlength="200" required></label>
+<label>Starts (UTC)<input type="datetime-local" name="when" required></label>
+</div>
+<label>Description (optional)<textarea name="description" maxlength="2000"></textarea></label>
+<div><button>Create event</button> <span class="muted">Posted with RSVP buttons in the announcements channel.</span></div></form></div>
+<h2>Upcoming</h2>
+<div class="card">${events.length ? `<table><tr><th>#</th><th>Title</th><th>Starts</th><th>RSVPs</th><th></th></tr>${rows}</table>` : '<p class="muted">Nothing scheduled.</p>'}</div>`;
+    html(res, layout('Events', body, p));
+  });
+
+  router.post(
+    '/events',
+    action('events', async (req, session) => {
+      const title = text(req.body.title, 200);
+      const startsAt = parseWhen(text(req.body.when, 40));
+      if (!title || startsAt === null) throw new UserError('Give the event a title and a start time.');
+      const event = await createClanEvent(ctx, { title, description: text(req.body.description, 2000) || null, startsAt, createdBy: session.userId });
+      await audit(session, `Created event #${event.id}: ${title}`);
+      return `Event #${event.id} posted.`;
+    }),
+  );
+
+  router.post(
+    '/events/:id/cancel',
+    action('events', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      const event = await cancelClanEvent(ctx, Number(req.params.id));
+      await audit(session, `Cancelled event #${event.id}: ${event.title}`);
+      return `Event #${event.id} cancelled.`;
+    }),
+  );
+
+  // --- members & warnings ---
+
+  router.get('/members', async (req, res) => {
+    const p = pc(res, 'members', req);
+    const members = store.listMembers(guildId);
+    const warnings = store.listAllWarnings(guildId);
+    const memberRows = (
+      await Promise.all(
+        members.map(
+          async (m) =>
+            `<tr><td>${e(m.ign)}</td><td>${e(await nameOf(m.userId))}</td><td>${m.masteryRank ?? '—'}</td><td>${e(m.platform ?? '—')}</td><td>${actionButton(p.session, `/admin/members/${m.userId}/remove`, 'Remove', { danger: true, confirm: true })}</td></tr>`,
+        ),
+      )
+    ).join('');
+    const warnedUsers = [...new Set(warnings.map((w) => w.userId))];
+    const warningRows = (
+      await Promise.all(
+        warnedUsers.map(async (u) => {
+          const list = warnings.filter((w) => w.userId === u);
+          return `<tr><td>${e(await nameOf(u))}</td><td>${list.length}</td><td>${list.map((w) => `${utc(w.createdAt).slice(0, 10)}: ${e(w.reason)}`).join('<br>')}</td><td>${actionButton(p.session, `/admin/warnings/${u}/clear`, 'Clear', { danger: true, confirm: true })}</td></tr>`;
+        }),
+      )
+    ).join('');
+    const body = `<h1>Members</h1>
+<h2>Roster (${members.length})</h2>
+<div class="card">${members.length ? `<table><tr><th>In-game name</th><th>Discord</th><th>MR</th><th>Platform</th><th></th></tr>${memberRows}</table>` : '<p class="muted">Nobody has registered with /clan register yet.</p>'}</div>
+<h2>Warnings</h2>
+<div class="card">${warnedUsers.length ? `<table><tr><th>Member</th><th>Count</th><th>Warnings</th><th></th></tr>${warningRows}</table>` : '<p class="muted">No warnings.</p>'}</div>`;
+    html(res, layout('Members', body, p));
+  });
+
+  router.post(
+    '/members/:user/remove',
+    action('members', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      if (!store.removeMember(guildId, String(req.params.user))) throw new UserError('That member is not on the roster.');
+      await audit(session, `Removed ${await nameOf(String(req.params.user))} from the roster`);
+      return 'Removed from the roster.';
+    }),
+  );
+
+  router.post(
+    '/warnings/:user/clear',
+    action('members', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      const n = store.clearWarnings(guildId, String(req.params.user));
+      await audit(session, `Cleared ${n} warning(s) for ${await nameOf(String(req.params.user))}`);
+      return `Cleared ${n} warning${n === 1 ? '' : 's'}.`;
+    }),
+  );
+
+  // --- backups ---
+
+  router.get('/backups', (req, res) => {
+    const p = pc(res, 'backups', req);
+    const list = store.listBackups(guildId);
+    const rows = list
+      .map((b) => {
+        const s = summaryOf(b);
+        return `<tr><td>#${b.id}</td><td>${utc(b.createdAt)}</td><td>${b.auto ? 'auto' : 'manual'}${b.label ? ` · ${e(b.label)}` : ''}</td><td>${s.roles} roles · ${s.channels} channels · ${s.emojis} emojis · ${kb(s.sizeBytes)}</td><td><a href="/admin/backups/${b.id}/download">Download</a> ${actionButton(p.session, `/admin/backups/${b.id}/delete`, 'Delete', { danger: true, confirm: true })}</td></tr>`;
+      })
+      .join('');
+    const body = `<h1>Backups</h1>
+<div class="card"><form class="stack" method="post" action="/admin/backups">${csrfField(p.session)}
+<div class="row"><label>Label (optional)<input name="label" maxlength="80"></label></div>
+<div><button>Back up now</button> <span class="muted">Restoring is done in Discord with <code>/backup load</code>, which previews every change first.</span></div></form></div>
+<div class="card">${list.length ? `<table><tr><th>#</th><th>Taken</th><th>Kind</th><th>Contents</th><th></th></tr>${rows}</table>` : '<p class="muted">No backups yet.</p>'}</div>`;
+    html(res, layout('Backups', body, p));
+  });
+
+  router.post(
+    '/backups',
+    action('backups', async (req, session) => {
+      const stored = await takeBackup(ctx, text(req.body.label, 80) || null, false);
+      await audit(session, `Took backup #${stored.id}`);
+      return `Backup #${stored.id} saved.`;
+    }),
+  );
+
+  router.get('/backups/:id/download', (req, res) => {
+    const backupId = Number(req.params.id);
+    const data = store.getBackupData(guildId, backupId);
+    if (!data) return back(res, 'backups', { err: `There is no backup #${backupId}.` });
+    const b = store.listBackups(guildId).find((x) => x.id === backupId)!;
+    res.setHeader('Content-Disposition', `attachment; filename="ordis-backup-${backupId}-${new Date(b.createdAt).toISOString().slice(0, 10)}.json"`);
+    res.type('application/json').send(data);
+  });
+
+  router.post(
+    '/backups/:id/delete',
+    action('backups', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      if (!store.deleteBackup(guildId, Number(req.params.id))) throw new UserError('That backup does not exist.');
+      await audit(session, `Deleted backup #${req.params.id}`);
+      return `Backup #${req.params.id} deleted.`;
+    }),
+  );
+
+  // --- admins ---
+
+  router.get('/admins', async (req, res) => {
+    const p = pc(res, 'admins', req);
+    const owners = await Promise.all(config.PANEL_OWNER_IDS.map(async (u) => `<tr><td>${e(await nameOf(u))}</td><td><code>${u}</code></td><td>owner</td><td class="muted">set in PANEL_OWNER_IDS</td></tr>`));
+    const admins = await Promise.all(
+      store
+        .listPanelAdmins()
+        .filter((a) => !config.PANEL_OWNER_IDS.includes(a.userId))
+        .map(
+          async (a) =>
+            `<tr><td>${e(await nameOf(a.userId))}</td><td><code>${a.userId}</code></td><td>${e(a.note ?? '')}<div class="muted">added ${utc(a.addedAt).slice(0, 10)} by ${e(await nameOf(a.addedBy))}</div></td><td>${actionButton(p.session, `/admin/admins/${a.userId}/remove`, 'Remove', { danger: true, confirm: true })}</td></tr>`,
+        ),
+    );
+    const body = `<h1>Admins</h1>
+<div class="card"><form class="stack" method="post" action="/admin/admins">${csrfField(p.session)}
+<div class="row">
+<label>Discord user ID<input name="user_id" pattern="\\d{15,22}" required placeholder="e.g. 603293720061935626"></label>
+<label>Note (optional)<input name="note" maxlength="100" placeholder="e.g. clan officer"></label>
+</div><div><button>Add admin</button> <span class="muted">Right-click a member in Discord → Copy User ID (Developer Mode on).</span></div></form></div>
+<div class="card"><table><tr><th>User</th><th>ID</th><th>Role</th><th></th></tr>${owners.join('')}${admins.join('')}</table></div>`;
+    html(res, layout('Admins', body, p));
+  });
+
+  router.post(
+    '/admins',
+    action('admins', async (req, session) => {
+      const userId = id(req.body.user_id);
+      if (!userId) throw new UserError('That is not a Discord user ID (15-22 digits).');
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (!user) throw new UserError('Discord has no user with that ID.');
+      if (user.bot) throw new UserError("Bots can't be panel admins.");
+      store.addPanelAdmin(userId, session.userId, text(req.body.note, 100) || null);
+      await audit(session, `Added ${user.username} as a panel admin`);
+      return `${user.username} can now sign in.`;
+    }),
+  );
+
+  router.post(
+    '/admins/:user/remove',
+    action('admins', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      const userId = String(req.params.user);
+      if (config.PANEL_OWNER_IDS.includes(userId)) throw new UserError('Owners are set in PANEL_OWNER_IDS and can only be removed there.');
+      if (!store.removePanelAdmin(userId)) throw new UserError('That user is not an admin.');
+      await audit(session, `Removed ${await nameOf(userId)} as a panel admin`);
+      return 'Admin removed and signed out.';
+    }),
+  );
+
+  router.post('/logout', (req, res) => {
+    const session = res.locals.session as PanelSession;
+    store.deletePanelSession(session.id);
+    res.setHeader('Set-Cookie', clearCookie(SESSION_COOKIE));
+    res.redirect('/admin/');
+  });
+
+  return router;
+}

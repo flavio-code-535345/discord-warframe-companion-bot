@@ -6,6 +6,7 @@ import express, { type RequestHandler } from 'express';
 import type { AppContext } from './context.js';
 import { LOGO_PATH } from './discord/identity.js';
 import { createMcpServer } from './mcp/server.js';
+import { adminRouter } from './web/admin/routes.js';
 import { buildStatus, renderStatusPage } from './web/status.js';
 
 /** Constant-time bearer token check (hashing first makes the compared buffers equal length). */
@@ -37,6 +38,9 @@ export function startHttpServer(ctx: AppContext): Server {
     const discordReady = client.isReady();
     res.status(discordReady ? 200 : 503).json({ status: discordReady ? 'ok' : 'starting', discord: discordReady });
   });
+
+  // Admin panel: Discord login, whitelisted admins only (off until DISCORD_CLIENT_SECRET and PUBLIC_URL are set).
+  app.use('/admin', adminRouter(ctx));
 
   // Public status page. Page and JSON show aggregate clan data only (no member names or IDs).
   app.get('/', async (_req, res, next) => {

@@ -134,3 +134,15 @@ test('backups: save, list newest first, fetch data, prune only automatic ones', 
   assert.ok(left.some((b) => b.id === manual.id));
   assert.equal(store.deleteBackup(G, manual.id), true);
 });
+
+test('panel admins and sessions: removal signs the admin out, expired sessions are ignored', () => {
+  const store = new Store(':memory:');
+  store.addPanelAdmin('a1', 'owner', 'clan officer');
+  assert.equal(store.isPanelAdmin('a1'), true);
+  store.createPanelSession({ id: 's1', userId: 'a1', username: 'Rat', avatar: null, csrf: 'c' }, 60_000);
+  assert.equal(store.getPanelSession('s1')?.userId, 'a1');
+  assert.equal(store.getPanelSession('s1', Date.now() + 120_000), null);
+  assert.equal(store.removePanelAdmin('a1'), true);
+  assert.equal(store.isPanelAdmin('a1'), false);
+  assert.equal(store.getPanelSession('s1'), null);
+});

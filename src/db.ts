@@ -55,6 +55,22 @@ export interface StoredBackup {
   summary: string;
 }
 
+export interface PanelAdmin {
+  userId: string;
+  addedBy: string;
+  addedAt: number;
+  note: string | null;
+}
+
+export interface PanelSession {
+  id: string;
+  userId: string;
+  username: string;
+  avatar: string | null;
+  csrf: string;
+  expiresAt: number;
+}
+
 /** What a channel's overwrite for one target said about sending before /lock, so /unlock can put it back. */
 export type LockPrevious = 'allow' | 'deny' | 'neutral';
 
@@ -215,6 +231,23 @@ const MIGRATIONS: string[] = [
   ALTER TABLE guild_settings ADD COLUMN verify_panel_message_id TEXT;
   ALTER TABLE guild_settings ADD COLUMN verify_role_id TEXT;
   ALTER TABLE guild_settings ADD COLUMN verify_min_account_age_days INTEGER;
+  `,
+  `
+  CREATE TABLE panel_admins (
+    user_id TEXT PRIMARY KEY,
+    added_by TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    note TEXT
+  );
+  CREATE TABLE panel_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    avatar TEXT,
+    csrf TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
   `,
 ];
 
@@ -505,6 +538,18 @@ export class Store {
     }));
   }
 
+  listAllWarnings(guildId: string): Warning[] {
+    const rows = this.db.prepare('SELECT * FROM warnings WHERE guild_id = ? ORDER BY created_at DESC').all(guildId) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      guildId: String(r.guild_id),
+      userId: String(r.user_id),
+      moderatorId: String(r.moderator_id),
+      reason: String(r.reason),
+      createdAt: Number(r.created_at),
+    }));
+  }
+
   clearWarnings(guildId: string, userId: string): number {
     return Number(this.db.prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes);
   }
@@ -569,6 +614,45 @@ export class Store {
         )
         .run(guildId, guildId, keep).changes,
     );
+  }
+
+  // --- web admin panel ---
+
+  listPanelAdmins(): PanelAdmin[] {
+    const rows = this.db.prepare('SELECT * FROM panel_admins ORDER BY added_at').all() as Row[];
+    return rows.map((r) => ({ userId: String(r.user_id), addedBy: String(r.added_by), addedAt: Number(r.added_at), note: str(r.note) }));
+  }
+
+  isPanelAdmin(userId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM panel_admins WHERE user_id = ?').get(userId));
+  }
+
+  addPanelAdmin(userId: string, addedBy: string, note: string | null): void {
+    this.db.prepare('INSERT OR IGNORE INTO panel_admins (user_id, added_by, added_at, note) VALUES (?, ?, ?, ?)').run(userId, addedBy, Date.now(), note);
+  }
+
+  /** Removes an admin and signs them out everywhere. */
+  removePanelAdmin(userId: string): boolean {
+    this.db.prepare('DELETE FROM panel_sessions WHERE user_id = ?').run(userId);
+    return this.db.prepare('DELETE FROM panel_admins WHERE user_id = ?').run(userId).changes > 0;
+  }
+
+  createPanelSession(s: Omit<PanelSession, 'expiresAt'>, ttlMs: number): PanelSession {
+    const now = Date.now();
+    this.db.prepare('DELETE FROM panel_sessions WHERE expires_at < ?').run(now);
+    this.db
+      .prepare('INSERT INTO panel_sessions (id, user_id, username, avatar, csrf, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(s.id, s.userId, s.username, s.avatar, s.csrf, now, now + ttlMs);
+    return { ...s, expiresAt: now + ttlMs };
+  }
+
+  getPanelSession(id: string, now = Date.now()): PanelSession | null {
+    const r = this.db.prepare('SELECT * FROM panel_sessions WHERE id = ? AND expires_at > ?').get(id, now) as Row | undefined;
+    return r ? { id: String(r.id), userId: String(r.user_id), username: String(r.username), avatar: str(r.avatar), csrf: String(r.csrf), expiresAt: Number(r.expires_at) } : null;
+  }
+
+  deletePanelSession(id: string): void {
+    this.db.prepare('DELETE FROM panel_sessions WHERE id = ?').run(id);
   }
 
   // --- bot-wide key/value state ---

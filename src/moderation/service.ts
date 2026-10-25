@@ -61,6 +61,7 @@ const ACTION_STYLE: Record<string, { emoji: string; color: number }> = {
   'Warnings cleared': { emoji: '🧽', color: 0x22c55e },
   'Backup restored': { emoji: '♻️', color: 0x3b9ac7 },
   Verified: { emoji: '✅', color: 0x22c55e },
+  'Admin panel': { emoji: '🖥️', color: 0x3b9ac7 },
   'Verification failed': { emoji: '🚫', color: 0xf59e0b },
 };
 
