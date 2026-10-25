@@ -17,6 +17,7 @@ import type { AppContext } from '../context.js';
 import { validImageUrl } from '../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
+import { planRoleMove } from './role-order.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
@@ -406,8 +407,11 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       const edited = await role.edit({ name, color: hexColor(color), hoist, mentionable, permissions, reason: reasonFor(reason) });
       if (position !== undefined) {
         if (position >= me.roles.highest.position) throw new UserError("A role can't be moved to or above the bot's own highest role.");
-        // Only this role is sent: Role#setPosition renumbers every role in the server, including ones above the bot, which Discord refuses.
-        await guild.roles.setPositions([{ role: edited.id, position }]);
+        // Renumber the roles below the bot from fresh data and send only the ones that change: Role#setPosition also sends
+        // roles above the bot (Discord refuses that), and a lone role collides with the cached numbers.
+        const fresh = [...(await guild.roles.fetch()).values()].filter((r) => r.id !== guild.id && r.position < me.roles.highest.position);
+        const changes = planRoleMove(fresh.map((r) => ({ id: r.id, position: r.position })), edited.id, position);
+        if (changes.length) await guild.roles.setPositions(changes.map((c) => ({ role: c.id, position: c.position })));
       }
       log(`edited role ${before.name} -> ${edited.name}`);
       return { id: edited.id, before, after: { name: edited.name, color: edited.hexColor, position: edited.position } };
