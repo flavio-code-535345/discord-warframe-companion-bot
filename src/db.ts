@@ -25,6 +25,16 @@ export interface Warning {
   createdAt: number;
 }
 
+export interface StoredBackup {
+  id: number;
+  guildId: string;
+  createdAt: number;
+  label: string | null;
+  auto: boolean;
+  /** JSON of BackupSummary (counts and size), so listings don't load the full snapshot. */
+  summary: string;
+}
+
 /** What a channel's overwrite for one target said about sending before /lock, so /unlock can put it back. */
 export type LockPrevious = 'allow' | 'deny' | 'neutral';
 
@@ -167,6 +177,18 @@ const MIGRATIONS: string[] = [
     previous TEXT NOT NULL CHECK (previous IN ('allow', 'deny', 'neutral')),
     PRIMARY KEY (channel_id, target_id)
   );
+  `,
+  `
+  CREATE TABLE backups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    label TEXT,
+    auto INTEGER NOT NULL DEFAULT 0,
+    summary TEXT NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE INDEX backups_guild ON backups (guild_id, created_at);
   `,
 ];
 
@@ -492,6 +514,52 @@ export class Store {
 
   isLocked(channelId: string): boolean {
     return Boolean(this.db.prepare('SELECT 1 FROM channel_locks WHERE channel_id = ? LIMIT 1').get(channelId));
+  }
+
+  // --- server backups ---
+
+  saveBackup(b: { guildId: string; label: string | null; auto: boolean; summary: string; data: string; createdAt?: number }): StoredBackup {
+    const res = this.db
+      .prepare('INSERT INTO backups (guild_id, created_at, label, auto, summary, data) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(b.guildId, b.createdAt ?? Date.now(), b.label, b.auto ? 1 : 0, b.summary, b.data);
+    return this.listBackups(b.guildId).find((x) => x.id === Number(res.lastInsertRowid))!;
+  }
+
+  /** Newest first, without the snapshot data. */
+  listBackups(guildId: string): StoredBackup[] {
+    const rows = this.db
+      .prepare('SELECT id, guild_id, created_at, label, auto, summary FROM backups WHERE guild_id = ? ORDER BY created_at DESC, id DESC')
+      .all(guildId) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      guildId: String(r.guild_id),
+      createdAt: Number(r.created_at),
+      label: str(r.label),
+      auto: Boolean(r.auto),
+      summary: String(r.summary),
+    }));
+  }
+
+  getBackupData(guildId: string, id: number): string | null {
+    const r = this.db.prepare('SELECT data FROM backups WHERE guild_id = ? AND id = ?').get(guildId, id) as Row | undefined;
+    return r ? String(r.data) : null;
+  }
+
+  deleteBackup(guildId: string, id: number): boolean {
+    return this.db.prepare('DELETE FROM backups WHERE guild_id = ? AND id = ?').run(guildId, id).changes > 0;
+  }
+
+  /** Keeps the newest `keep` automatic backups; manual ones are never pruned. */
+  pruneAutoBackups(guildId: string, keep: number): number {
+    return Number(
+      this.db
+        .prepare(
+          `DELETE FROM backups WHERE guild_id = ? AND auto = 1 AND id NOT IN (
+             SELECT id FROM backups WHERE guild_id = ? AND auto = 1 ORDER BY created_at DESC, id DESC LIMIT ?
+           )`,
+        )
+        .run(guildId, guildId, keep).changes,
+    );
   }
 
   // --- bot-wide key/value state ---

@@ -112,3 +112,19 @@ test('channel locks round-trip once', () => {
   assert.equal(store.isLocked('c1'), false);
   assert.deepEqual(store.takeLock('c1'), {});
 });
+
+test('backups: save, list newest first, fetch data, prune only automatic ones', () => {
+  const store = new Store(':memory:');
+  const t = Date.now();
+  const manual = store.saveBackup({ guildId: G, label: 'before renovation', auto: false, summary: '{}', data: '{"v":0}', createdAt: t - 10_000 });
+  for (let i = 0; i < 4; i++) store.saveBackup({ guildId: G, label: null, auto: true, summary: '{}', data: `{"v":${i + 1}}`, createdAt: t - 5_000 + i });
+  assert.equal(store.listBackups(G).length, 5);
+  assert.equal(store.listBackups(G)[0]!.auto, true);
+  assert.equal(store.getBackupData(G, manual.id), '{"v":0}');
+  assert.equal(store.getBackupData('other', manual.id), null);
+  assert.equal(store.pruneAutoBackups(G, 2), 2);
+  const left = store.listBackups(G);
+  assert.equal(left.filter((b) => b.auto).length, 2);
+  assert.ok(left.some((b) => b.id === manual.id));
+  assert.equal(store.deleteBackup(G, manual.id), true);
+});

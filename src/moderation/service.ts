@@ -59,6 +59,7 @@ const ACTION_STYLE: Record<string, { emoji: string; color: number }> = {
   Unlock: { emoji: '🔓', color: 0x22c55e },
   Slowmode: { emoji: '🐢', color: 0x3b9ac7 },
   'Warnings cleared': { emoji: '🧽', color: 0x22c55e },
+  'Backup restored': { emoji: '♻️', color: 0x3b9ac7 },
 };
 
 export interface ModLogEntry {

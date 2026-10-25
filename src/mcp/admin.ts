@@ -11,6 +11,7 @@ import {
   type Role,
 } from 'discord.js';
 import { z } from 'zod';
+import { summaryOf, takeBackup } from '../backup/service.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -449,6 +450,38 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       if (pin) await message.pin();
       log(`posted in #${channel.name}${pin ? ' (pinned)' : ''}`);
       return { messageId: message.id, link: message.url, pinned: Boolean(pin) };
+    }),
+  );
+
+  server.registerTool(
+    'list_backups',
+    {
+      title: 'Server backups',
+      description: 'Stored server backups (Xenon-style snapshots of roles, channels, permissions, emojis, bans), newest first.',
+      annotations: READ_ONLY,
+    },
+    tool(async () =>
+      ctx.store.listBackups(ctx.config.DISCORD_GUILD_ID).map((b) => ({
+        id: b.id,
+        createdAt: new Date(b.createdAt).toISOString(),
+        label: b.label,
+        auto: b.auto,
+        ...summaryOf(b),
+      })),
+    ),
+  );
+
+  server.registerTool(
+    'create_backup',
+    {
+      title: 'Back up the server',
+      description: 'Takes a server backup now. Good practice before restructuring the server. Restoring is done by an admin with /backup load in Discord.',
+      inputSchema: { label: z.string().max(80).optional() },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    tool(async ({ label }) => {
+      const stored = await takeBackup(ctx, label ?? null, false);
+      return { id: stored.id, createdAt: new Date(stored.createdAt).toISOString(), ...summaryOf(stored) };
     }),
   );
 

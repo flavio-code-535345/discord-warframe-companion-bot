@@ -59,6 +59,30 @@ Commands are hidden from members without the permission. Nobody can act on thems
 whose top role is at or above theirs or Ordis's. Every action is posted to the `/setup modlog` channel and recorded
 in Discord's audit log with the moderator's name.
 
+### Server backups (Xenon-style)
+
+Ordis snapshots the server: roles (permissions, colors, order), categories and channels (permissions, topics,
+slowmode, voice settings), emojis, bans, server settings and its own channel setup. Message history is included too
+when `ENABLE_MESSAGE_CONTENT=true`, with the last 50 messages per channel.
+
+| Command (Administrator) | What it does |
+| --- | --- |
+| `/backup create [label]` | Take a backup now |
+| `/backup list` · `/backup info id` | Stored backups and what's in them |
+| `/backup download id` | Get the backup as a `.json` file to keep somewhere safe |
+| `/backup import file` | Load a downloaded file back into Ordis, even on a brand-new server |
+| `/backup load id [mode] [bans] [messages]` | Restore. Shows a preview of every change and waits for confirmation |
+| `/backup delete id` | Remove a stored backup |
+
+- **Automatic:** a backup is taken every day, and the newest 14 are kept. Manual backups stay until you delete them.
+- **Restore modes:**
+  - **Missing only** (the default) recreates what was deleted and touches nothing that still exists, so it's safe to run on a damaged server.
+  - **Full sync** also resets existing roles, channels and server settings to how they were in the backup.
+- **Safety:** a restore never deletes anything, and it takes a fresh backup first so it can be undone.
+- **Recovery:** recreated channels get their old position, category and permissions. Saved messages are re-posted into recreated channels through a webhook under the original author names. Ordis's own alert, event and mod-log channels are re-pointed automatically.
+- **If the whole server is deleted:** create a new server, invite Ordis, set `DISCORD_GUILD_ID` to the new server and redeploy. Then run `/backup import` with a downloaded file (or use a stored backup) and `/backup load`. Bot roles from other bots come back when you re-invite those bots.
+- **Where backups live:** in Ordis's database volume on your server. Download one now and then so a copy also survives your host going down.
+
 **Automatic alerts** (in the `/setup alerts` channel): new daily sortie, weekly Archon Hunt, Baro Ki'Teer's arrival
 with inventory, Steel Path reward rotation, in-game alerts, and invasions offering Orokin Catalysts/Reactors, Forma,
 Exilus Adapters or Wraith/Vandal parts. Each alert is posted once (tracked in the database across restarts).

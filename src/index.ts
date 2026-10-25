@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { join } from 'node:path';
 import { AskLimiter } from './ai/limits.js';
+import { BackupScheduler } from './backup/service.js';
 import { OrdisBrain } from './ai/ordis.js';
 import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
@@ -21,7 +22,11 @@ const ctx: AppContext = { config, store, client, ai };
 
 attachHandlers(ctx);
 const notifier = new Notifier(ctx);
-client.once('clientReady', () => notifier.start());
+const backups = new BackupScheduler(ctx);
+client.once('clientReady', () => {
+  notifier.start();
+  backups.start();
+});
 
 const http = startHttpServer(ctx);
 // Warm the market item index so the first /price autocomplete answers within Discord's 3s limit.
@@ -40,6 +45,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.log(`[app] ${signal} received, shutting down`);
   notifier.stop();
+  backups.stop();
   http.close();
   await client.destroy();
   store.close();
