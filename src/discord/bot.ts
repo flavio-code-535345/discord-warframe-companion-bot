@@ -13,6 +13,7 @@ import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
 import { handleButton } from './buttons.js';
+import { handleHoneypotMessage } from '../moderation/honeypot.js';
 import { handleChatMessage } from './chat.js';
 import { handleVerifyModal } from './verification.js';
 import { postWelcome } from './welcome.js';
@@ -73,7 +74,9 @@ export function attachHandlers(ctx: AppContext): void {
   });
 
   client.on(Events.MessageCreate, (message) => {
-    void handleChatMessage(message, ctx).catch((err) => console.error('[discord] chat handler failed:', err));
+    void handleHoneypotMessage(message, ctx)
+      .then((trapped) => (trapped ? undefined : handleChatMessage(message, ctx)))
+      .catch((err) => console.error('[discord] message handler failed:', err));
   });
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {

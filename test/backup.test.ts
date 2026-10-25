@@ -44,6 +44,8 @@ function sampleBackup(): ServerBackup {
       verifyPanelMessageId: null,
       verifyRoleId: 'r-verified',
       verifyMinAccountAgeDays: 3,
+      honeypotChannelId: null,
+      honeypotAction: null,
     },
     includesMessages: true,
   };

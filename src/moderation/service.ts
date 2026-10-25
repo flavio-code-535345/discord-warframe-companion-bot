@@ -63,6 +63,7 @@ const ACTION_STYLE: Record<string, { emoji: string; color: number }> = {
   Verified: { emoji: '✅', color: 0x22c55e },
   'Admin panel': { emoji: '🖥️', color: 0x3b9ac7 },
   'Verification failed': { emoji: '🚫', color: 0xf59e0b },
+  Honeypot: { emoji: '🍯', color: 0xeab308 },
 };
 
 export interface ModLogEntry {

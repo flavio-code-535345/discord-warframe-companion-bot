@@ -5,6 +5,7 @@ import { summaryOf, takeBackup } from '../../backup/service.js';
 import type { AppContext } from '../../context.js';
 import type { GuildSettings, PanelSession } from '../../db.js';
 import { disableVerification, setupVerification } from '../../discord/verification.js';
+import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { modLog } from '../../moderation/service.js';
 import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
 import { parseWhen } from '../../time.js';
@@ -187,6 +188,7 @@ export function adminRouter(ctx: AppContext): Router {
 <tr><td>Announcements &amp; events</td><td>${ch(settings.announcementsChannelId)}</td></tr>
 <tr><td>Moderation log</td><td>${ch(settings.modLogChannelId)}</td></tr>
 <tr><td>Welcome</td><td>${ch(settings.welcomeChannelId)}</td></tr>
+<tr><td>Honeypot</td><td>${settings.honeypotChannelId ? `${ch(settings.honeypotChannelId)} · ${e(honeypotAction(settings.honeypotAction))}` : '<span class="muted">off</span>'}</td></tr>
 <tr><td>Verification</td><td>${settings.verifyRoleId ? `${ch(settings.verifyChannelId)}${settings.verifyMinAccountAgeDays ? ` · accounts ≥ ${settings.verifyMinAccountAgeDays} days` : ''}` : '<span class="muted">off</span>'}</td></tr>
 </table><p><a href="/admin/settings">Change settings →</a></p></div>`;
     html(res, layout('Overview', body, pc(res, 'overview', req)));
@@ -210,6 +212,14 @@ ${field('Moderation log channel', 'modLogChannelId', channels)}
 ${field('Welcome channel', 'welcomeChannelId', channels)}
 ${field('Ordis chat channel', 'chatChannelId', channels)}
 </div><div><button>Save</button></div></form></div>
+<h2>Honeypot</h2>
+<div class="card"><form class="stack" method="post" action="/admin/settings/honeypot">${csrfField(p.session)}
+<p class="muted">Anyone without moderator powers who posts in this channel is removed. Pick a channel nobody should write in; a "do not post" notice is posted there.</p>
+<div class="row">
+<label>Trap channel${select('channel', channels, s.honeypotChannelId, '— pick a channel —')}</label>
+<label>Action${select('action', HONEYPOT_ACTIONS.map((a) => ({ value: a, label: a })), honeypotAction(s.honeypotAction), '— softban —')}</label>
+</div><div><button>${s.honeypotChannelId ? 'Update honeypot' : 'Turn on honeypot'}</button></div></form>
+${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/off', 'Turn honeypot off', { danger: true, confirm: true })}</p>` : ''}</div>
 <h2>Verification</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings/verification">${csrfField(p.session)}
 <div class="row">
@@ -243,6 +253,28 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
       });
       await audit(session, 'Changed bot channel settings');
       return 'Settings saved.';
+    }),
+  );
+
+  router.post(
+    '/settings/honeypot',
+    action('settings', async (req, session) => {
+      const channel = id(req.body.channel);
+      if (!channel) throw new UserError('Pick a channel for the trap.');
+      const chosen = honeypotAction(typeof req.body.action === 'string' ? req.body.action : null);
+      await setupHoneypot(ctx, channel, chosen);
+      await audit(session, 'Set up the honeypot', [{ name: 'Channel', value: `<#${channel}> · ${chosen}` }]);
+      return 'Honeypot is on.';
+    }),
+  );
+
+  router.post(
+    '/settings/honeypot/off',
+    action('settings', async (req, session) => {
+      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
+      disableHoneypot(ctx);
+      await audit(session, 'Turned the honeypot off');
+      return 'Honeypot is off.';
     }),
   );
 

@@ -42,7 +42,7 @@ plain lookups like "price of arcane energize" or "baro". Ordinary chatter is ign
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
 | `/lfg activity [details] [size]` | Squad post with Join / Leave / Close buttons; pings everyone when full |
-| `/setup alerts · announcements · welcome · chat · modlog · verification · off · show` | (Manage Server) choose channels and the alert ping role |
+| `/setup alerts · announcements · welcome · chat · modlog · honeypot · verification · off · show` | (Manage Server) choose channels and the alert ping role |
 
 ### Moderation
 
@@ -59,6 +59,16 @@ plain lookups like "price of arcane energize" or "baro". Ordinary chatter is ign
 Commands are hidden from members without the permission. Nobody can act on themselves, the owner, Ordis, or anyone
 whose top role is at or above theirs or Ordis's. Every action is posted to the `/setup modlog` channel and recorded
 in Discord's audit log with the moderator's name.
+
+### Honeypot
+
+`/setup honeypot channel [action]` turns a channel into a trap for spam bots and hacked accounts. It posts a "do not post
+here" notice, and anyone who then writes in the channel has their message deleted, gets a DM explaining why, and is
+removed. `action` is `softban` (default: ban that clears the last hour of their messages in every channel, then unban, so
+a real member can rejoin), `ban`, or `kick`. Staff (Administrator, Manage Server, Manage Messages, Moderate, Kick or Ban
+Members), the owner and anyone at or above Ordis's role are never trapped. Every catch goes to the mod log. Make the
+channel visible to everyone, including unverified members, or bots that can't see it won't fall in. It works without the
+Message Content intent. `/setup off feature:Honeypot` turns it off.
 
 ### Verification (Captcha.bot-style)
 

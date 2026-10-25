@@ -19,6 +19,9 @@ export interface GuildSettings {
   verifyPanelMessageId: string | null;
   verifyRoleId: string | null;
   verifyMinAccountAgeDays: number | null;
+  /** Honeypot: anyone without moderator powers who posts here is removed. Action is 'ban', 'softban' or 'kick'. */
+  honeypotChannelId: string | null;
+  honeypotAction: string | null;
 }
 
 /** GuildSettings field → guild_settings column. Adding a setting means a migration plus one line here. */
@@ -33,6 +36,8 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['verifyPanelMessageId', 'verify_panel_message_id'],
   ['verifyRoleId', 'verify_role_id'],
   ['verifyMinAccountAgeDays', 'verify_min_account_age_days'],
+  ['honeypotChannelId', 'honeypot_channel_id'],
+  ['honeypotAction', 'honeypot_action'],
 ];
 const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays']);
 
@@ -248,6 +253,10 @@ const MIGRATIONS: string[] = [
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
   );
+  `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN honeypot_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN honeypot_action TEXT;
   `,
 ];
 

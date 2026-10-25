@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { summaryOf, takeBackup } from '../backup/service.js';
 import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
+import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
@@ -502,7 +503,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel and the moderation log. null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log and the honeypot trap channel (+ its action). null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
@@ -510,13 +511,15 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         welcome_channel_id: snowflake.nullable().optional(),
         chat_channel_id: snowflake.nullable().optional(),
         mod_log_channel_id: snowflake.nullable().optional(),
+        honeypot_channel_id: snowflake.nullable().optional().describe('Trap channel: anyone without moderator powers who posts there is removed. Posts a "do not post" notice in it.'),
+        honeypot_action: z.enum(HONEYPOT_ACTIONS).optional().describe('softban (default: remove + clear the last hour of messages, can rejoin), ban or kick'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     tool(async (args) => {
       const { guild } = await guildFor(ctx);
       for (const [key, id] of Object.entries(args)) {
-        if (!id) continue;
+        if (!id || key === 'honeypot_action') continue;
         if (key === 'alerts_role_id' ? !guild.roles.cache.has(id) : !guild.channels.cache.has(id)) throw new UserError(`${key}: ${id} not found in the server.`);
       }
       const patch = {
@@ -528,7 +531,15 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.mod_log_channel_id !== undefined ? { modLogChannelId: args.mod_log_channel_id } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
-      return ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
+      const saved = ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
+      if (args.honeypot_channel_id) {
+        await setupHoneypot(ctx, args.honeypot_channel_id, honeypotAction(args.honeypot_action ?? saved.honeypotAction));
+      } else if (args.honeypot_channel_id === null) {
+        disableHoneypot(ctx);
+      } else if (args.honeypot_action) {
+        ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { honeypotAction: args.honeypot_action });
+      }
+      return ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
     }),
   );
 }

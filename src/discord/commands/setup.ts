@@ -1,6 +1,7 @@
 import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
+import { disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
@@ -26,6 +27,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
       },
       { name: 'Moderation log', value: ch(s.modLogChannelId) },
+      { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Verification',
         value: s.verifyRoleId
@@ -80,6 +82,22 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('honeypot')
+        .setDescription('Trap channel: anyone without moderator powers who posts there is removed (for spam bots)')
+        .addChannelOption((o) => o.setName('channel').setDescription('A channel nobody should write in').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
+        .addStringOption((o) =>
+          o
+            .setName('action')
+            .setDescription('What happens to the poster (default: softban)')
+            .addChoices(
+              { name: 'Softban: remove and clear the last hour of messages, they can rejoin', value: 'softban' },
+              { name: 'Ban: permanent', value: 'ban' },
+              { name: 'Kick: remove, messages stay', value: 'kick' },
+            ),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('chat')
         .setDescription('Channel where Ordis answers every message, not only mentions')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -100,6 +118,7 @@ export const setup: Command = {
               { name: 'Ordis chat channel', value: 'chat' },
               { name: 'Moderation log', value: 'modlog' },
               { name: 'Verification', value: 'verification' },
+              { name: 'Honeypot', value: 'honeypot' },
             ),
         ),
     )
@@ -142,10 +161,21 @@ export const setup: Command = {
         await interaction.editReply({ content: `🛡️ Verification panel posted: ${url}`, embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
         return;
       }
+      case 'honeypot': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await setupHoneypot(ctx, channelId(), honeypotAction(interaction.options.getString('action')));
+        await interaction.editReply({ embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
+        return;
+      }
       case 'off': {
         const feature = interaction.options.getString('feature', true);
         if (feature === 'verification') {
           await disableVerification(ctx);
+          settings = ctx.store.getSettings(guildId);
+          break;
+        }
+        if (feature === 'honeypot') {
+          disableHoneypot(ctx);
           settings = ctx.store.getSettings(guildId);
           break;
         }
