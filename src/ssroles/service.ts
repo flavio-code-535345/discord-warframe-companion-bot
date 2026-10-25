@@ -10,6 +10,7 @@ import { ocr } from './ocr.js';
 import { parseCard } from './parse.js';
 import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, norm, planRoles } from './roles.js';
 import { readProfileCard } from './vision.js';
+import { setSticky } from '../sticky/service.js';
 
 /**
  * Screenshots are processed in memory only: nothing is written to disk or the database (just a hash and the
@@ -222,7 +223,7 @@ export async function learnReference(ctx: AppContext, bytes: Uint8Array, mime: s
 
 /** Points screenshot roles at a channel, optionally learns the reference card, and posts the instructions there. */
 export async function setupSsRoles(ctx: AppContext, channelId: string, reference?: { mime: string; data: Uint8Array }): Promise<string | null> {
-  const channel = await getSendableChannel(ctx, channelId);
+  await getSendableChannel(ctx, channelId);
   const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
   if ([settings.chatChannelId, settings.honeypotChannelId, settings.verifyChannelId].includes(channelId)) {
     throw new UserError('That channel is used for something else. Pick a channel just for screenshots.');
@@ -230,18 +231,18 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
   if (reference && reference.data.length > MAX_IMAGE_BYTES) throw new UserError('The reference image is over 8 MB.');
   const learned = reference ? await learnReference(ctx, reference.data, reference.mime) : null;
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.brand)
-    .setAuthor({ name: ctx.config.BOT_NAME, iconURL: brandIcon(ctx) })
-    .setTitle('🖼️ Get your roles from a screenshot')
-    .setDescription(
-      [
-        `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
-        'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. This channel is for clan members only, and edited screenshots are rejected.',
-        'Your screenshot is deleted right after it is read and is never saved. Post a new one after you rank up and your rank role is updated.',
-      ].join('\n\n'),
-    );
-  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  // The instructions are the channel's sticky message: always the last thing posted, so new members see them.
+  await setSticky(
+    ctx,
+    channelId,
+    [
+      `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
+      'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. This channel is for clan members only, and edited screenshots are rejected.',
+      'Your screenshot is deleted right after it is read and is never saved. Post a new one after you rank up and your rank role is updated.',
+    ].join('\n\n'),
+    '🖼️ Get your roles from a screenshot',
+    ctx.client.user!.id,
+  );
   return learned;
 }
 
