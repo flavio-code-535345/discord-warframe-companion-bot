@@ -2,10 +2,21 @@
 import 'reflect-metadata';
 import WorldStateParser from 'warframe-worldstate-parser';
 import { toMs } from '../time.js';
+import { UserError } from '../services/clan.js';
 import { apiFetch } from './fetch.js';
 
 /** Official, cross-platform worldstate feed published by Digital Extremes. */
-const WORLDSTATE_URL = 'https://api.warframe.com/cdn/worldState.php';
+const DE_URL = 'https://api.warframe.com/cdn/worldState.php';
+let feedUrl = DE_URL;
+let enabled = true;
+
+/** Called once at startup from the config: where to read the feed and whether to read it at all. */
+export function configureWorldState(opts: { url?: string | undefined; enabled: boolean }): void {
+  feedUrl = opts.url ?? DE_URL;
+  enabled = opts.enabled;
+}
+
+export const worldStateEnabled = (): boolean => enabled;
 const CACHE_TTL_MS = 55_000;
 /** After a failed fetch the feed is left alone this long, so a block (HTTP 403) isn't made worse by hammering it. */
 const FAILURE_COOLDOWN_MS = 5 * 60_000;
@@ -21,13 +32,14 @@ let failedAt = 0;
 let lastError: Error | null = null;
 
 async function fetchWorldState(): Promise<WorldState> {
-  const res = await apiFetch(WORLDSTATE_URL);
+  const res = await apiFetch(feedUrl);
   if (!res.ok) throw new Error(`Worldstate request failed: HTTP ${res.status}`);
   return WorldStateParser.build(await res.text(), { locale: 'en', logger: quietLogger });
 }
 
 /** Returns the parsed worldstate, cached briefly and de-duplicated across concurrent callers. */
 export async function getWorldState(): Promise<WorldState> {
+  if (!enabled) throw new UserError('Live Warframe world data is switched off right now (WORLDSTATE_ENABLED=false), so there are no fissures, alerts or cycles to show.');
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.ws;
   // While the feed is failing, serve the last good copy (stale beats nothing) or repeat the last error without a request.
   if (Date.now() - failedAt < FAILURE_COOLDOWN_MS) {

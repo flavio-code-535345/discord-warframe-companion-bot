@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { AskLimiter } from './ai/limits.js';
 import { BackupScheduler } from './backup/service.js';
 import { LfgVoiceSweeper } from './lfg/voice.js';
+import { configureWorldState } from './warframe/worldstate.js';
 import { SAFE_BOOT_MS, markOverlayHealthy } from './overlay.js';
 import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
@@ -23,6 +24,7 @@ const ai = config.ANTHROPIC_API_KEY
   ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
   : null;
 if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: chat answers and /ask are disabled.');
+configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED });
 const ctx: AppContext = { config, store, client, ai };
 
 attachHandlers(ctx);

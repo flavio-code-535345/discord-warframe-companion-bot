@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 import { getSendableChannel } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
-import { NOTABLE_REWARD, type WorldState, getWorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
+import { NOTABLE_REWARD, type WorldState, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
 
@@ -82,6 +82,7 @@ export class Notifier {
     try {
       // Reminders don't depend on the worldstate, so they still go out when DE's feed is down.
       await this.sendEventReminders();
+      if (!worldStateEnabled()) return;
       const ws = await getWorldState();
       await this.postWorldStateAlerts(ws);
       await this.notifyTrackers(ws);

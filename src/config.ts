@@ -13,6 +13,10 @@ const EnvSchema = z.object({
   BOT_NAME: z.string().min(2).max(32).default('Cephalon Ordis'),
   WARFRAME_PLATFORM: z.enum(['pc', 'ps4', 'xbox', 'switch', 'mobile']).default('pc'),
   DATA_DIR: z.string().default('./data'),
+  /** Fetch the worldstate from DE at all. Off by default while DE's CDN blocks our IP (HTTP 403); alerts, fissures and the world tiles are paused meanwhile. */
+  WORLDSTATE_ENABLED: bool.default(false),
+  /** Raw worldState.php feed to read instead of DE's own, e.g. a relay on another IP. */
+  WORLDSTATE_URL: z.string().url().optional(),
   WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(30).default(60),
   ENABLE_WELCOME: bool.default(false),
   HTTP_HOST: z.string().default('0.0.0.0'),
