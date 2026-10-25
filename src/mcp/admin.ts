@@ -16,6 +16,7 @@ import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
 import { validImageUrl } from '../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
+import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
 import { UserError } from '../services/clan.js';
@@ -442,6 +443,54 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       });
       log('edited server settings');
       return { systemChannel: edited.systemChannel?.name ?? null, afkChannel: edited.afkChannel?.name ?? null, afkTimeout: edited.afkTimeout };
+    }),
+  );
+
+  server.registerTool(
+    'read_messages',
+    {
+      title: 'Read channel messages',
+      description: 'Reads the latest messages of a text channel (newest first, up to 100), including embed text and attachment links. Use it to see what is there before rewriting or clearing a channel.',
+      inputSchema: { channel_id: snowflake, limit: z.number().int().min(1).max(100).optional() },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ channel_id, limit }) => {
+      const { guild } = await guildFor(ctx);
+      const channel = await getChannel(guild, channel_id);
+      if (!channel.isTextBased()) throw new UserError(`#${channel.name} is not a text channel.`);
+      const batch = await channel.messages.fetch({ limit: limit ?? 50 });
+      return {
+        channel: channel.name,
+        messages: [...batch.values()].map((m) => ({
+          id: m.id,
+          author: m.author.username,
+          bot: m.author.bot,
+          pinned: m.pinned,
+          at: m.createdAt.toISOString(),
+          content: m.content,
+          embeds: m.embeds.map((e) => ({ title: e.title, description: e.description, fields: e.fields.map((f) => `${f.name}: ${f.value}`) , image: e.image?.url ?? null })),
+          attachments: [...m.attachments.values()].map((a) => a.url),
+        })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    'clear_messages',
+    {
+      title: 'Clear a channel',
+      description:
+        'PERMANENTLY deletes every message in a text channel, pinned ones included (messages older than 14 days go one by one, up to 300 per call). Read the channel first and get the user to confirm: it cannot be undone. Requires confirm: true.',
+      inputSchema: { channel_id: snowflake, confirm: z.literal(true) },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    },
+    tool(async ({ channel_id }) => {
+      const { guild } = await guildFor(ctx);
+      const channel = await getChannel(guild, channel_id);
+      if (!channel.isTextBased() || channel.isDMBased()) throw new UserError(`#${channel.name} is not a text channel.`);
+      const result = await runPurge(channel, 'all', { includePinned: true });
+      log(`cleared #${channel.name} (${result.deleted} messages)`);
+      return result;
     }),
   );
 
