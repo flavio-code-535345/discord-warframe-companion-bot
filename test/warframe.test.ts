@@ -45,6 +45,7 @@ test('filterFissures filters by tier/steel path and drops expired ones', () => {
 test('rewardText formats counted items, items and credits', () => {
   assert.equal(rewardText({ countedItems: [{ count: 3, type: 'Fieldron' }], items: ['Orokin Catalyst'], credits: 5000 }), '3x Fieldron, Orokin Catalyst, 5,000 cr');
   assert.equal(rewardText(undefined), '—');
+  assert.equal(rewardText({ countedItems: [{ count: 1, type: 'Pumpkin Dangle' }], items: ['Pumpkin Dangle', 'Glyph'] }), '1x Pumpkin Dangle, Glyph');
 });
 
 test('collectAlerts emits stable keys for sortie, Baro and notable invasions only', () => {

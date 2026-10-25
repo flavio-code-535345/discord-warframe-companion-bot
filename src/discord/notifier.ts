@@ -3,14 +3,12 @@ import type { AppContext } from '../context.js';
 import { getSendableChannel } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
-import { type WorldState, getWorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
+import { NOTABLE_REWARD, type WorldState, getWorldState, isBaroHere, rewardText } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
 const SEEN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-/** Invasion rewards worth pinging the clan about. */
-const NOTABLE_REWARD = /orokin (catalyst|reactor)|forma|exilus|wraith|vandal|umbra|aura/i;
 
 export interface WorldStateAlert {
   /** Stable identity used to post each alert only once, across restarts. */

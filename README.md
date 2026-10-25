@@ -225,7 +225,7 @@ The bot's HTTP port (3000 in the container) serves:
 | Path | What |
 | --- | --- |
 | `/admin` | Admin panel (see above) |
-| `/` | Status page: logo, online status and ping, clan stats, current open-world cycles with live countdowns, upcoming events (titles and RSVP counts only). Refreshes itself |
+| `/` | Live dashboard. Shows bot status, member counts and clan events (titles and RSVP counts only). Also shows open-world cycles, fissure counts per tier (normal, Steel Path, storm), the sortie, Archon Hunt, Baro and his best items, Steel Path honors, Darvo, invasions (worth-it rewards starred), in-game events, Nightwave, Archimedea and Prime Resurgence. Countdowns run live and the page refreshes itself |
 | `/status.json` | The same data as JSON |
 | `/health` | `{"status":"ok","discord":true}` once connected to Discord (used by the Docker health check) |
 | `/mcp` | MCP endpoint (below), only when `MCP_AUTH_TOKEN` is set |

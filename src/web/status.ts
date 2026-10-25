@@ -1,6 +1,15 @@
 import type { AppContext } from '../context.js';
 import { formatDuration, relative, toMs } from '../time.js';
-import { type WorldState, getWorldState } from '../warframe/worldstate.js';
+import {
+  FISSURE_TIERS,
+  NOTABLE_REWARD,
+  type WorldState,
+  archimedeaName,
+  getWorldState,
+  isBaroHere,
+  resurgenceItemName,
+  rewardText,
+} from '../warframe/worldstate.js';
 
 export interface CycleStatus {
   name: string;
@@ -8,6 +17,21 @@ export interface CycleStatus {
   icon: string;
   endsAt: string | null;
   note?: string;
+}
+
+/** Compact world-state digest for the dashboard tiles (and /status.json). Every part is optional. */
+export interface WorldTiles {
+  sortie: { boss: string; faction: string; endsAt: string | null; missions: { type: string; node: string; modifier: string }[] } | null;
+  archon: { boss: string; endsAt: string | null; missions: { type: string; node: string }[] } | null;
+  baro: { here: boolean; location: string; at: string | null; items: { name: string; ducats: number }[] } | null;
+  steelPath: { current: string; cost: number; next: string | null; endsAt: string | null } | null;
+  darvo: { item: string; price: number; original: number; discount: number; left: number; total: number; endsAt: string | null } | null;
+  fissures: { tier: string; normal: number; steelPath: number; storm: number }[];
+  invasions: { node: string; rewards: string; completion: number; notable: boolean }[];
+  events: { name: string; progress: number | null; endsAt: string | null; rewards: string }[];
+  archimedea: { name: string; endsAt: string | null; missions: string[] }[];
+  nightwave: { season: number; endsAt: string | null; challenges: { title: string; kind: string; reputation: number }[] } | null;
+  resurgence: { endsAt: string | null; items: string[] } | null;
 }
 
 export interface StatusData {
@@ -21,6 +45,7 @@ export interface StatusData {
   upcomingEvents: { id: number; title: string; startsAt: string; going: number; maybe: number }[];
   /** null when the worldstate could not be loaded. */
   cycles: CycleStatus[] | null;
+  world: WorldTiles | null;
   generatedAt: string;
 }
 
@@ -29,8 +54,9 @@ const ICONS: Record<string, string> = {
   joy: '😊', anger: '😠', envy: '💚', sorrow: '😢', fear: '😨',
 };
 
+const iso = (d: Date | string | undefined | null) => (Number.isNaN(toMs(d)) ? null : new Date(toMs(d)).toISOString());
+
 function cyclesOf(ws: WorldState): CycleStatus[] {
-  const iso = (d: Date | string | undefined) => (Number.isNaN(toMs(d)) ? null : new Date(toMs(d)).toISOString());
   const cycle = (name: string, key: string, expiry: Date | string | undefined, extra: { suffix?: string; note?: string } = {}): CycleStatus => ({
     name,
     state: key.charAt(0).toUpperCase() + key.slice(1) + (extra.suffix ?? ''),
@@ -49,6 +75,108 @@ function cyclesOf(ws: WorldState): CycleStatus[] {
   ];
 }
 
+/** Each part is read defensively: one malformed section must not blank the whole page. */
+function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
+  const live = (d: Date | string | undefined) => toMs(d) > now;
+  const part = <T>(fn: () => T, fallback: T): T => {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  };
+
+  return {
+    sortie: part(() => {
+      const s = ws.sortie;
+      return s && live(s.expiry)
+        ? { boss: s.boss ?? '', faction: s.faction ?? '', endsAt: iso(s.expiry), missions: s.variants.map((v) => ({ type: v.missionType, node: v.node, modifier: v.modifier })) }
+        : null;
+    }, null),
+    archon: part(() => {
+      const a = ws.archonHunt;
+      return a && live(a.expiry) ? { boss: a.boss ?? '', endsAt: iso(a.expiry), missions: a.missions.map((m) => ({ type: m.type, node: m.node })) } : null;
+    }, null),
+    baro: part(() => {
+      const t = ws.voidTrader;
+      if (!t) return null;
+      const here = isBaroHere(ws, now);
+      return {
+        here,
+        location: t.location ?? '',
+        at: iso(here ? t.expiry : t.activation),
+        items: here ? [...(t.inventory ?? [])].sort((x, y) => (y.ducats ?? 0) - (x.ducats ?? 0)).map((i) => ({ name: i.item, ducats: i.ducats ?? 0 })) : [],
+      };
+    }, null),
+    steelPath: part(() => {
+      const sp = ws.steelPath;
+      if (!sp?.currentReward) return null;
+      const rot = sp.rotation ?? [];
+      const idx = rot.findIndex((r) => r.name === sp.currentReward!.name);
+      return { current: sp.currentReward.name, cost: sp.currentReward.cost, next: idx >= 0 ? (rot[(idx + 1) % rot.length]?.name ?? null) : null, endsAt: iso(sp.expiry) };
+    }, null),
+    darvo: part(() => {
+      const d = ws.dailyDeals?.find((x) => live(x.expiry));
+      return d ? { item: d.item, price: d.salePrice, original: d.originalPrice, discount: d.discount, left: d.total - d.sold, total: d.total, endsAt: iso(d.expiry) } : null;
+    }, null),
+    fissures: part(
+      () =>
+        FISSURE_TIERS.map((tier) => {
+          const list = (ws.fissures ?? []).filter((f) => f.tier === tier && live(f.expiry));
+          return { tier, normal: list.filter((f) => !f.isHard && !f.isStorm).length, steelPath: list.filter((f) => f.isHard).length, storm: list.filter((f) => f.isStorm).length };
+        }).filter((r) => r.normal + r.steelPath + r.storm > 0),
+      [],
+    ),
+    invasions: part(
+      () =>
+        (ws.invasions ?? [])
+          .filter((i) => !i.completed)
+          .map((i) => {
+            const rewards = (i.vsInfestation ? [i.defender] : [i.attacker, i.defender]).map((side) => rewardText(side.reward)).filter((r) => r !== '—').join(' / ');
+            return { node: i.node, rewards, completion: Math.round(i.completion), notable: NOTABLE_REWARD.test(rewards) };
+          })
+          .sort((a, b) => Number(b.notable) - Number(a.notable)),
+      [],
+    ),
+    events: part(
+      () =>
+        (ws.events ?? [])
+          .filter((ev) => live(ev.expiry))
+          .map((ev) => ({
+            name: ev.description,
+            progress: ev.maximumScore > 1 ? Math.round((ev.currentScore / ev.maximumScore) * 100) : null,
+            endsAt: iso(ev.expiry),
+            rewards: (ev.rewards ?? []).map(rewardText).filter((r) => r !== '—').join(', '),
+          })),
+      [],
+    ),
+    archimedea: part(
+      () =>
+        (ws.archimedeas ?? []).map((a) => ({
+          name: archimedeaName(a.type),
+          endsAt: iso((a as unknown as { expiry?: Date }).expiry),
+          missions: a.missions.map((m) => `${m.missionType}${m.deviation?.name ? ` (${m.deviation.name})` : ''}`),
+        })),
+      [],
+    ),
+    nightwave: part(() => {
+      const nw = ws.nightwave;
+      if (!nw) return null;
+      return {
+        season: nw.season,
+        endsAt: iso(nw.expiry),
+        challenges: [...nw.activeChallenges]
+          .sort((a, b) => Number(b.isDaily) - Number(a.isDaily) || Number(a.isElite) - Number(b.isElite))
+          .map((c) => ({ title: c.title, kind: c.isDaily ? 'daily' : c.isElite ? 'elite' : 'weekly', reputation: c.reputation })),
+      };
+    }, null),
+    resurgence: part(() => {
+      const v = ws.vaultTrader;
+      return v?.inventory?.length && live(v.expiry) ? { endsAt: iso(v.expiry), items: v.inventory.map((i) => resurgenceItemName(i.item)) } : null;
+    }, null),
+  };
+}
+
 /** Collects everything the public status page shows. Uses only cached Discord data, so page views cost no API calls. */
 export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise<WorldState> = getWorldState): Promise<StatusData> {
   const { client, config, store } = ctx;
@@ -57,10 +185,13 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
   const ping = online ? client.ws.ping : -1;
 
   let cycles: CycleStatus[] | null = null;
+  let world: WorldTiles | null = null;
   try {
-    cycles = cyclesOf(await loadWorldState());
+    const ws = await loadWorldState();
+    cycles = cyclesOf(ws);
+    world = worldOf(ws);
   } catch {
-    // The notifier already logs worldstate failures; the page just shows the section as unavailable.
+    // The notifier already logs worldstate failures; the page just shows those tiles as unavailable.
   }
 
   return {
@@ -80,6 +211,7 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
         return { id: e.id, title: e.title, startsAt: new Date(e.startsAt).toISOString(), going: r.going.length, maybe: r.maybe.length };
       }),
     cycles,
+    world,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -89,42 +221,47 @@ export function escapeHtml(s: string): string {
 }
 
 /** Server-side fallback text; the page script replaces it with the reader's local time. */
-const utc = (iso: string) => `${new Date(iso).toUTCString().slice(0, 22)} UTC`;
+const utc = (isoTime: string) => `${new Date(isoTime).toUTCString().slice(0, 22)} UTC`;
 
-const countdown = (iso: string | null) =>
-  iso ? `<span class="countdown" data-until="${iso}">${escapeHtml(relative(iso))}</span>` : '<span class="countdown">unknown</span>';
+const countdown = (isoTime: string | null) =>
+  isoTime ? `<span class="cd" data-until="${isoTime}">${escapeHtml(relative(isoTime))}</span>` : '<span class="cd">—</span>';
 
 const STYLE = `
-:root{--bg:#010c18;--bg2:#0b2846;--card:rgba(255,255,255,.045);--border:rgba(59,154,199,.28);--accent:#3b9ac7;--glow:rgba(59,154,199,.45);--text:#e6eef6;--muted:#8fa7bd;--ok:#22c55e;--bad:#ef4444}
+:root{--bg:#010c18;--bg2:#0b2846;--card:rgba(255,255,255,.045);--border:rgba(59,154,199,.26);--line:rgba(59,154,199,.12);--accent:#3b9ac7;--glow:rgba(59,154,199,.45);--text:#e6eef6;--muted:#8fa7bd;--ok:#22c55e;--bad:#ef4444;--gold:#e8c66a}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,var(--bg2),var(--bg) 70%) fixed;color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:960px;margin:0 auto;padding:32px 16px 48px}
-header{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
-.logo{width:96px;height:96px;border-radius:22px;box-shadow:0 0 40px var(--glow)}
-h1{margin:0;font-size:28px;letter-spacing:.02em}
-.sub{color:var(--muted);margin-top:2px}
-.meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-size:13px;color:var(--muted)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
-.offline .dot{background:var(--bad);box-shadow:0 0 8px var(--bad)}
-.pill.status{color:var(--text)}
-section{margin-top:32px}
-h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:0 0 12px;font-weight:600}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
-.grid.stats,.grid.cycles{grid-template-columns:repeat(3,minmax(0,1fr))}
-@media (max-width:560px){.grid.cycles{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:480px){.grid.stats .stat{font-size:22px}.grid.stats .card{padding:12px}}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;min-width:0}
-.stat{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
-.label{color:var(--muted);font-size:13px}
-.state{font-size:18px;font-weight:600;margin:2px 0}
-.note{color:var(--muted);font-size:12px;margin-top:4px;overflow-wrap:anywhere}
-.countdown{font-variant-numeric:tabular-nums;color:var(--accent)}
-.events{list-style:none;margin:0;padding:0;display:grid;gap:10px}
-.event{display:flex;justify-content:space-between;align-items:baseline;gap:4px 16px;flex-wrap:wrap}
-.event-title{font-weight:600;overflow-wrap:anywhere}
-.empty{color:var(--muted)}
-footer{margin-top:40px;color:var(--muted);font-size:12px;text-align:center}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,var(--bg2),var(--bg) 70%) fixed;color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1320px;margin:0 auto;padding:14px 16px 28px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.logo{width:44px;height:44px;border-radius:11px;box-shadow:0 0 22px var(--glow)}
+h1{margin:0;font-size:19px;letter-spacing:.01em}
+.sub{color:var(--muted);font-size:12.5px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--muted);white-space:nowrap}
+.pill b{color:var(--text);font-variant-numeric:tabular-nums}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok)}
+.off .dot{background:var(--bad);box-shadow:0 0 7px var(--bad)}
+.tiles{columns:290px 4;column-gap:12px}
+.tile{break-inside:avoid;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 12px 8px;margin:0 0 12px}
+.tile h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 4px;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.tile h2 .cd,.tile h2 .x{text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
+.r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0;border-top:1px solid var(--line)}
+.r:first-of-type{border-top:0}
+.k{min-width:0;overflow-wrap:anywhere}
+.v{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.n{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.u{color:var(--muted);font-size:12px}
+.lead{font-weight:600;margin:1px 0 3px}
+.cd{color:var(--accent);font-variant-numeric:tabular-nums}
+.star{color:var(--gold)}
+.tag{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:4px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:2px 4px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px;color:var(--muted);font-weight:600}
+td.z{color:rgba(143,167,189,.35)}
+.empty{color:var(--muted);font-size:13px}
+s{color:var(--muted)}
+footer{margin-top:4px;color:var(--muted);font-size:12px;text-align:center}
 footer a{color:var(--accent)}
 `;
 
@@ -139,37 +276,124 @@ tick();setInterval(tick,1000);
 
 export function renderStatusPage(s: StatusData, nonce: string): string {
   const e = escapeHtml;
-  const statusPill = s.online
-    ? `<span class="pill status"><span class="dot"></span>Online${s.pingMs !== null ? ` · ${s.pingMs} ms` : ''}</span>`
-    : '<span class="pill status offline"><span class="dot"></span>Offline</span>';
+  const w = s.world;
+  const row = (k: string, v = '', note = '') => `<div class="r"><span class="k">${k}${note ? `<span class="n">${note}</span>` : ''}</span><span class="v">${v}</span></div>`;
+  const tile = (title: string, aside: string, body: string) => `<section class="tile"><h2><span>${title}</span>${aside}</h2>${body}</section>`;
+  const none = (text: string) => `<p class="empty">${e(text)}</p>`;
+  const unavailable = none('World state unavailable right now.');
+  const more = (n: number) => (n > 0 ? row(`<span class="n">…and ${n} more</span>`) : '');
 
-  const stats = [
-    { label: 'Discord members', value: s.server?.memberCount ?? '—' },
-    { label: 'Registered Tenno', value: s.registeredMembers },
-    { label: 'Upcoming events', value: s.upcomingEvents.length },
-  ]
-    .map((x) => `<div class="card"><div class="stat">${e(String(x.value))}</div><div class="label">${e(x.label)}</div></div>`)
-    .join('');
+  const pills = [
+    s.online ? `<span class="pill"><span class="dot"></span><b>Online</b>${s.pingMs !== null ? ` ${s.pingMs} ms` : ''}</span>` : '<span class="pill off"><span class="dot"></span><b>Offline</b></span>',
+    `<span class="pill">up <b>${e(formatDuration(s.uptimeSeconds * 1000))}</b></span>`,
+    `<span class="pill"><b>${e(String(s.server?.memberCount ?? '—'))}</b> members</span>`,
+    `<span class="pill"><b>${s.registeredMembers}</b> registered</span>`,
+  ].join('');
 
-  const cycles = s.cycles
-    ? `<div class="grid cycles">${s.cycles
-        .map(
-          (c) =>
-            `<div class="card"><div class="label">${e(c.name)}</div><div class="state">${c.icon} ${e(c.state)}</div>` +
-            `<div class="label">ends ${countdown(c.endsAt)}</div>${c.note ? `<div class="note">${e(c.note)}</div>` : ''}</div>`,
+  const clan = tile(
+    'Clan events',
+    `<span class="x">${s.upcomingEvents.length} upcoming</span>`,
+    s.upcomingEvents.length
+      ? s.upcomingEvents
+          .map((ev) => row(e(ev.title), countdown(ev.startsAt), `<time datetime="${ev.startsAt}" data-local>${e(utc(ev.startsAt))}</time> · ${ev.going} going${ev.maybe ? `, ${ev.maybe} maybe` : ''}`))
+          .join('')
+      : none('Nothing scheduled. Create one with /event create.'),
+  );
+
+  const cycles = tile(
+    'Open worlds',
+    '',
+    s.cycles ? s.cycles.map((c) => row(`${c.icon} ${e(c.name)} <b>${e(c.state)}</b>`, countdown(c.endsAt), c.note ? e(c.note) : '')).join('') : unavailable,
+  );
+
+  const fissures = tile(
+    'Void fissures',
+    w ? `<span class="x">${w.fissures.reduce((n, f) => n + f.normal + f.steelPath + f.storm, 0)} active</span>` : '',
+    !w
+      ? unavailable
+      : w.fissures.length
+        ? `<table><tr><th>Tier</th><th>Normal</th><th>Steel Path</th><th>Storm</th></tr>${w.fissures
+            .map((f) => `<tr><td>${e(f.tier)}</td>${[f.normal, f.steelPath, f.storm].map((n) => `<td class="${n ? '' : 'z'}">${n}</td>`).join('')}</tr>`)
+            .join('')}</table>`
+        : none('No fissures right now.'),
+  );
+
+  const sortie = !w
+    ? tile('Sortie', '', unavailable)
+    : w.sortie
+      ? tile(
+          'Sortie',
+          countdown(w.sortie.endsAt),
+          `<div class="lead">${e(w.sortie.boss)}${w.sortie.faction ? ` · ${e(w.sortie.faction)}` : ''}</div>${w.sortie.missions
+            .map((m, i) => row(`${i + 1}. ${e(m.type)}`, e(m.node), e(m.modifier)))
+            .join('')}`,
         )
-        .join('')}</div>`
-    : '<p class="empty">The Warframe worldstate is unavailable right now.</p>';
+      : '';
 
-  const events = s.upcomingEvents.length
-    ? `<ul class="events">${s.upcomingEvents
-        .map(
-          (ev) =>
-            `<li class="card event"><span class="event-title">${e(ev.title)}</span>` +
-            `<span class="label"><time datetime="${ev.startsAt}" data-local>${e(utc(ev.startsAt))}</time> · ${countdown(ev.startsAt)} · ${ev.going} going${ev.maybe ? `, ${ev.maybe} maybe` : ''}</span></li>`,
-        )
-        .join('')}</ul>`
-    : '<p class="empty">Nothing scheduled. Create one in Discord with <code>/event create</code>.</p>';
+  const archon = w?.archon
+    ? tile('Archon Hunt', countdown(w.archon.endsAt), `<div class="lead">${e(w.archon.boss)}</div>${w.archon.missions.map((m, i) => row(`${i + 1}. ${e(m.type)}`, e(m.node))).join('')}`)
+    : '';
+
+  const baro = w?.baro
+    ? tile(
+        "Baro Ki'Teer",
+        countdown(w.baro.at),
+        `<div class="lead">${w.baro.here ? `Here at ${e(w.baro.location)}` : `Arrives at ${e(w.baro.location)}`}</div>${w.baro.items
+          .slice(0, 8)
+          .map((i) => row(e(i.name), `${i.ducats} <span class="u">ducats</span>`))
+          .join('')}${more(w.baro.items.length - 8)}`,
+      )
+    : '';
+
+  const steel = w?.steelPath
+    ? tile('Steel Path honors', countdown(w.steelPath.endsAt), row(`<b>${e(w.steelPath.current)}</b>`, `${w.steelPath.cost} essence`) + (w.steelPath.next ? row(`Next week: ${e(w.steelPath.next)}`) : ''))
+    : '';
+
+  const darvo = w?.darvo
+    ? tile(
+        "Darvo's deal",
+        countdown(w.darvo.endsAt),
+        row(`<b>${e(w.darvo.item)}</b>`, `<b>${w.darvo.price}p</b> <s>${w.darvo.original}p</s>`, `-${w.darvo.discount}% · ${w.darvo.left > 0 ? `${w.darvo.left} of ${w.darvo.total} left` : 'sold out'}`),
+      )
+    : '';
+
+  const invasions = w?.invasions.length
+    ? tile(
+        'Invasions',
+        `<span class="x">${w.invasions.length} active</span>`,
+        w.invasions
+          .slice(0, 6)
+          .map((i) => row(`${i.notable ? '<span class="star">★</span> ' : ''}${e(i.node)}`, `${i.completion}%`, e(i.rewards)))
+          .join('') + more(w.invasions.length - 6),
+      )
+    : '';
+
+  const events = w?.events.length
+    ? tile('Events', '', w.events.map((ev) => row(e(ev.name), countdown(ev.endsAt), [ev.progress !== null ? `${ev.progress}% done` : '', e(ev.rewards)].filter(Boolean).join(' · '))).join(''))
+    : '';
+
+  const nightwave = w?.nightwave
+    ? tile(
+        `Nightwave · S${w.nightwave.season}`,
+        countdown(w.nightwave.endsAt),
+        w.nightwave.challenges
+          .slice(0, 8)
+          .map((c) => row(`${e(c.title)}<span class="tag">${c.kind}</span>`, c.reputation.toLocaleString('en-US')))
+          .join('') + more(w.nightwave.challenges.length - 8),
+      )
+    : '';
+
+  const archimedea = w?.archimedea.length
+    ? tile('Archimedea', '', w.archimedea.map((a) => row(`<b>${e(a.name)}</b>`, countdown(a.endsAt), e(a.missions.join(' · ')))).join(''))
+    : '';
+
+  const resurgence = w?.resurgence
+    ? tile(
+        'Prime Resurgence',
+        countdown(w.resurgence.endsAt),
+        `<p class="n">${e(w.resurgence.items.slice(0, 12).join(' · '))}${w.resurgence.items.length > 12 ? ` · …and ${w.resurgence.items.length - 12} more` : ''}</p>`,
+      )
+    : '';
 
   return `<!doctype html>
 <html lang="en">
@@ -184,16 +408,13 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
 <body>
 <main>
 <header>
-<img class="logo" src="/logo.png" alt="" width="96" height="96">
-<div>
-<h1>${e(s.botName)}</h1>
-<div class="sub">Companion of ${e(s.clanName)}${s.server && s.server.name !== s.clanName ? ` · ${e(s.server.name)}` : ''}</div>
-<div class="meta">${statusPill}<span class="pill">Up ${e(formatDuration(s.uptimeSeconds * 1000))}</span></div>
-</div>
+<img class="logo" src="/logo.png" alt="" width="44" height="44">
+<div><h1>${e(s.botName)}</h1><div class="sub">Companion of ${e(s.clanName)}${s.server && s.server.name !== s.clanName ? ` · ${e(s.server.name)}` : ''}</div></div>
+<div class="pills">${pills}</div>
 </header>
-<section aria-label="Clan stats"><h2>Clan</h2><div class="grid stats">${stats}</div></section>
-<section aria-label="Open world cycles"><h2>Current cycles</h2>${cycles}</section>
-<section aria-label="Upcoming events"><h2>Upcoming events</h2>${events}</section>
+<div class="tiles">
+${clan}${cycles}${fissures}${sortie}${archon}${baro}${steel}${darvo}${invasions}${events}${nightwave}${archimedea}${resurgence}
+</div>
 <footer>World state from Digital Extremes · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
 </main>
 <script nonce="${nonce}">${SCRIPT}</script>

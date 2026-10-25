@@ -38,6 +38,9 @@ export async function getWorldState(): Promise<WorldState> {
 
 export const FISSURE_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'] as const;
 
+/** Invasion/alert rewards worth a clan's attention. */
+export const NOTABLE_REWARD = /orokin (catalyst|reactor)|forma|exilus|wraith|vandal|umbra|aura/i;
+
 export interface FissureFilter {
   tier?: string;
   steelPath?: boolean;
@@ -62,9 +65,11 @@ interface RewardLike {
 /** "3x Fieldron, Orokin Catalyst Blueprint, 5,000 cr" */
 export function rewardText(r: RewardLike | undefined | null): string {
   if (!r) return '—';
+  // Event rewards list most items twice: once counted, once plain. Keep the counted form.
+  const counted = new Set((r.countedItems ?? []).map((c) => c.type.toLowerCase()));
   const parts = [
     ...(r.countedItems ?? []).map((c) => `${c.count}x ${c.type}`),
-    ...(r.items ?? []),
+    ...(r.items ?? []).filter((i) => !counted.has(i.toLowerCase())),
     ...(r.credits ? [`${r.credits.toLocaleString('en-US')} cr`] : []),
   ];
   return parts.join(', ') || '—';

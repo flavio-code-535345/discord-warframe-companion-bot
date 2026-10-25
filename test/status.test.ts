@@ -66,3 +66,31 @@ test('renderStatusPage escapes user-provided text and applies the nonce', async 
   assert.ok(html.includes('Offline'));
   assert.ok(html.includes('Zariman'));
 });
+
+test('world tiles come from the worldstate and tolerate missing sections', async () => {
+  const later = new Date(Date.now() + 3_600_000);
+  const ws = {
+    ...fakeWorldState(),
+    sortie: { boss: 'Alad V', faction: 'Corpus', expiry: later, variants: [{ missionType: 'Survival', node: 'Mot (Void)', modifier: 'Eximus Stronghold' }] },
+    fissures: [
+      { tier: 'Axi', isHard: true, isStorm: false, expiry: later },
+      { tier: 'Axi', isHard: false, isStorm: false, expiry: later },
+      { tier: 'Lith', isHard: false, isStorm: true, expiry: later },
+    ],
+    dailyDeals: [{ item: 'Mire', salePrice: 45, originalPrice: 150, discount: 70, total: 10, sold: 4, expiry: later }],
+    invasions: [{ completed: false, node: 'Pallas', vsInfestation: true, completion: 40, defender: { reward: { items: ['Orokin Catalyst Blueprint'] } } }],
+  } as unknown as WorldState;
+  const s = await buildStatus(ctx(), async () => ws);
+  assert.equal(s.world?.sortie?.boss, 'Alad V');
+  assert.deepEqual(s.world?.fissures, [
+    { tier: 'Lith', normal: 0, steelPath: 0, storm: 1 },
+    { tier: 'Axi', normal: 1, steelPath: 1, storm: 0 },
+  ]);
+  assert.equal(s.world?.darvo?.left, 6);
+  assert.equal(s.world?.invasions[0]?.notable, true);
+  // Sections the worldstate didn't include are simply absent rather than breaking the page.
+  assert.equal(s.world?.archon, null);
+  assert.deepEqual(s.world?.events, []);
+  const html = renderStatusPage(s, 'n');
+  for (const text of ['Sortie', 'Alad V', 'Void fissures', "Darvo's deal", 'Invasions', '★']) assert.ok(html.includes(text), text);
+});
