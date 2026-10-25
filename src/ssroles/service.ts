@@ -259,7 +259,7 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
   // The example card is public, so its mastery total is reserved for Ordis: posting a copy of the example gets nobody roles.
   ctx.store.claimSs(ctx.config.DISCORD_GUILD_ID, 'points', EXAMPLE_POINTS, ctx.client.user!.id);
-  const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png` : null;
+  const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png?v=2` : null;
   // The instructions are the channel's sticky message: always the last thing posted, so new members see them.
   await saveSticky(ctx, {
     channelId,
