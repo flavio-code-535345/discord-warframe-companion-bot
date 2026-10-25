@@ -127,10 +127,11 @@ export function deniedPage(pc: PageContext, userId: string): string {
   );
 }
 
-export function notConfiguredPage(pc: PageContext): string {
+/** Names the missing settings (never their values) so a misconfigured stack is easy to spot. */
+export function notConfiguredPage(pc: PageContext, missing: string[]): string {
   return layout(
     'Not configured',
-    `<div class="center"><img src="/logo.png" alt=""><h1>Admin panel is off</h1><p class="muted">Set <code>DISCORD_CLIENT_SECRET</code> and <code>PUBLIC_URL</code> in the bot's environment, and add <code>PUBLIC_URL/admin/callback</code> as a redirect in the Discord Developer Portal.</p></div>`,
+    `<div class="center"><img src="/logo.png" alt=""><h1>Admin panel is off</h1><p class="muted">The bot's environment is missing ${missing.map((m) => `<code>${e(m)}</code>`).join(' and ')}. Add ${missing.length > 1 ? 'them' : 'it'} to the bot's <code>environment:</code> block in the stack and redeploy, and add <code>PUBLIC_URL/admin/callback</code> as a redirect in the Discord Developer Portal.</p></div>`,
     pc,
   );
 }

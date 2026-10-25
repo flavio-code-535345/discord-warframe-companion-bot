@@ -67,7 +67,9 @@ export function adminRouter(ctx: AppContext): Router {
   };
 
   if (!enabled) {
-    router.use((_req, res) => html(res, notConfiguredPage(pc(res)), 503));
+    const missing = [!config.DISCORD_CLIENT_SECRET && 'DISCORD_CLIENT_SECRET', !config.PUBLIC_URL && 'PUBLIC_URL'].filter((m): m is string => Boolean(m));
+    console.warn(`[admin] panel disabled: missing ${missing.join(', ')}`);
+    router.use((_req, res) => html(res, notConfiguredPage(pc(res), missing), 503));
     return router;
   }
 
