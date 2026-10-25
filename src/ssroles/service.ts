@@ -47,9 +47,9 @@ const roleInfos = (guild: Guild): RoleInfo[] =>
 const reserveExample = (ctx: AppContext): void => void ctx.store.claimSs(ctx.config.DISCORD_GUILD_ID, 'points', EXAMPLE_POINTS, ctx.client.user!.id);
 
 /** Clears who has used which in-game name, screenshot and mastery total, so every card is accepted again. */
-export function resetSsClaims(ctx: AppContext): number {
+export function resetSsClaims(ctx: AppContext, keepExample = false): number {
   const cleared = ctx.store.resetSsClaims(ctx.config.DISCORD_GUILD_ID);
-  reserveExample(ctx);
+  if (keepExample) reserveExample(ctx);
   lastTry.clear();
   return cleared;
 }

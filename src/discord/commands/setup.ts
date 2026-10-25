@@ -95,7 +95,11 @@ export const setup: Command = {
         .addChannelOption((o) => o.setName('channel').setDescription('Channel for screenshots').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
         .addAttachmentOption((o) => o.setName('reference').setDescription('A clan profile screenshot (PNG/JPG) to learn the emblem from; not saved')),
     )
-    .addSubcommand((s) => s.setName('ssreset').setDescription('Forget which cards were used, so every screenshot is accepted again'))
+    .addSubcommand((s) =>
+      s
+        .setName('ssreset')
+        .setDescription('Forget which cards were used, so every screenshot is accepted again')
+        .addBooleanOption((o) => o.setName('keep_example').setDescription('Keep refusing a copy of the example card (default: no, so you can test with it)')))
     .addSubcommand((s) =>
       s
         .setName('levels')
@@ -210,8 +214,9 @@ export const setup: Command = {
         });
         break;
       case 'ssreset': {
-        const cleared = resetSsClaims(ctx);
-        await interaction.reply({ content: `Screenshot roles reset: ${cleared} used names, images and totals forgotten. Every card is accepted again (the example card stays reserved).`, flags: MessageFlags.Ephemeral });
+        const keep = interaction.options.getBoolean('keep_example') ?? false;
+        const cleared = resetSsClaims(ctx, keep);
+        await interaction.reply({ content: `Screenshot roles reset: ${cleared} used names, images and totals forgotten. Every card is accepted again${keep ? ' (a copy of the example card is still refused)' : ', the example card too until /setup ssroles runs again'}.`, flags: MessageFlags.Ephemeral });
         return;
       }
       case 'levels':
