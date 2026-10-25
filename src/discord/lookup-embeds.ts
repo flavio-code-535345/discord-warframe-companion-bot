@@ -150,16 +150,17 @@ export function lookupEmbed(result: LookupResult, drops?: DropLocation[]): Embed
   return withDrops(baseEmbed(item), item, drops);
 }
 
-export function wikiEmbed(query: string, results: WikiResult[]): EmbedBuilder {
+/** `sourceOnly`: a written answer already went above the embed, so this just names where it came from. */
+export function wikiEmbed(query: string, results: WikiResult[], sourceOnly = false): EmbedBuilder {
   const direct = answerFrom(query, results);
   const ordered = direct ? [direct.source, ...results.filter((r) => r !== direct.source)] : results;
   const [top, ...rest] = ordered;
   if (!top) return new EmbedBuilder().setColor(COLORS.warn).setTitle('Wiki').setDescription(`Nothing on the wiki matches "${query}".`);
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
-    .setTitle(top.title)
+    .setTitle(sourceOnly ? `Read more: ${top.title}` : top.title)
     .setURL(top.url)
-    .setDescription(direct ? direct.text : top.extract.length > 1500 ? `${top.extract.slice(0, 1500)}…` : top.extract)
+    .setDescription(sourceOnly ? null : direct ? direct.text : top.extract.length > 1500 ? `${top.extract.slice(0, 1500)}…` : top.extract)
     .setFooter({ text: 'wiki.warframe.com · CC BY-SA' });
   if (rest.length) embed.addFields({ name: 'Also see', value: rest.map((r) => `[${r.title}](${r.url})`).join(' · ') });
   return embed;

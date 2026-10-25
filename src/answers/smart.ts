@@ -26,6 +26,7 @@ import { searchDrops } from '../warframe/drops.js';
 import { lookupItem } from '../warframe/items.js';
 import { priceCheck } from '../warframe/market.js';
 import { searchWiki } from '../warframe/wiki.js';
+import { composeAnswer } from './compose.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
 
@@ -88,7 +89,7 @@ function worldEmbed(ws: WorldState, view: WorldView): EmbedBuilder {
   }
 }
 
-async function wikiAnswer(query: string): Promise<SmartAnswer> {
+async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> {
   const results = await searchWiki(query, 3).catch(() => []);
   if (!results.length) {
     return {
@@ -97,12 +98,15 @@ async function wikiAnswer(query: string): Promise<SmartAnswer> {
       found: false,
     };
   }
+  // With a free-tier model configured, the excerpts are worded into a real answer; the source stays below it.
+  const written = await composeAnswer(ctx.config, query, results);
+  if (written) return { content: written, embeds: [wikiEmbed(query, results, true)], found: true };
   return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true };
 }
 
-async function itemAnswer(name: string, line: string, fallbackQuery: string): Promise<SmartAnswer> {
+async function itemAnswer(name: string, line: string, fallbackQuery: string, ctx: AppContext): Promise<SmartAnswer> {
   const result = await lookupItem(name).catch(() => null);
-  if (!result) return wikiAnswer(fallbackQuery);
+  if (!result) return wikiAnswer(fallbackQuery, ctx);
   let drops;
   if (showsDrops(result) && result.kind === 'item') {
     const groups = await searchDrops(result.item.name, 6, 10).catch(() => []);
@@ -130,13 +134,13 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
       const groups = await searchDrops(intent.item).catch(() => []);
       if (groups.length) return { content: pick(LINES.drops!), embeds: [dropsEmbed(intent.item, groups)], found: true };
       // Not in the drop tables (e.g. a Warframe or a place): the item card or the wiki explains how to get it.
-      return itemAnswer(intent.item, pick(LINES.item!), fallback);
+      return itemAnswer(intent.item, pick(LINES.item!), fallback, ctx);
     }
 
     case 'relic': {
       const result = await lookupItem(intent.name).catch(() => null);
       if (result?.kind === 'relic') return { content: pick(LINES.relic!), embeds: [relicEmbed(result.relic)], found: true };
-      return wikiAnswer(fallback);
+      return wikiAnswer(fallback, ctx);
     }
 
     case 'world': {
@@ -177,7 +181,7 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
     }
 
     case 'build': {
-      const answer = await itemAnswer(intent.item, pick(LINES.build!), fallback);
+      const answer = await itemAnswer(intent.item, pick(LINES.build!), fallback, ctx);
       if (answer.found) {
         const q = encodeURIComponent(intent.item);
         answer.content += `\nCommunity builds: <https://overframe.gg/search/?q=${q}> · wiki: <https://wiki.warframe.com/index.php?search=${q}>`;
@@ -186,10 +190,10 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
     }
 
     case 'item':
-      return itemAnswer(intent.name, pick(LINES.item!), fallback);
+      return itemAnswer(intent.name, pick(LINES.item!), fallback, ctx);
 
     case 'wiki':
-      return wikiAnswer(intent.query);
+      return wikiAnswer(intent.query, ctx);
   }
 }
 

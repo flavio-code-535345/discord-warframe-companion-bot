@@ -30,6 +30,11 @@ const EnvSchema = z.object({
   /** Keep a local searchable copy of the Warframe wiki so Ordis can answer most questions from it. */
   WIKI_INDEX: bool.default(true),
   /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
+  /** Optional free-tier LLM (any OpenAI-compatible API) that words wiki answers. Off without a key. */
+  FREE_AI_KEY: z.string().min(8).optional(),
+  FREE_AI_URL: z.string().url().default('https://api.groq.com/openai/v1'),
+  FREE_AI_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  FREE_AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(500),
   WATCHTOWER_URL: z.string().url().optional(),
   WATCHTOWER_TOKEN: z.string().min(8).optional(),
   // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.
