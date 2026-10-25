@@ -16,6 +16,7 @@ import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
 import { validImageUrl } from '../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
+import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
@@ -497,6 +498,31 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     tool(async ({ label }) => {
       const stored = await takeBackup(ctx, label ?? null, false);
       return { id: stored.id, createdAt: new Date(stored.createdAt).toISOString(), ...summaryOf(stored) };
+    }),
+  );
+
+  server.registerTool(
+    'update_bot',
+    {
+      title: 'Update the bot',
+      description: 'Makes Watchtower check Docker Hub now and, if a newer bot image exists, pull it and restart the bot on it. Use after a push once CI has finished building the image. The bot is briefly offline.',
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    tool(async () => ({ message: await requestUpdate(ctx.config) })),
+  );
+
+  server.registerTool(
+    'restart_bot',
+    {
+      title: 'Restart the bot',
+      description: 'Restarts the bot process on the image it already runs (it does not fetch a newer image: use update_bot for that). The bot is briefly offline.',
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    tool(async () => {
+      scheduleRestart();
+      return { message: 'Restarting in a moment. Docker brings the bot back within seconds.' };
     }),
   );
 

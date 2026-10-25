@@ -29,6 +29,9 @@ const EnvSchema = z.object({
   ENABLE_MESSAGE_CONTENT: bool.default(false),
   /** Keep a local searchable copy of the Warframe wiki so Ordis can answer most questions from it. */
   WIKI_INDEX: bool.default(true),
+  /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
+  WATCHTOWER_URL: z.string().url().optional(),
+  WATCHTOWER_TOKEN: z.string().min(8).optional(),
   // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.
   DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
   PUBLIC_URL: z
