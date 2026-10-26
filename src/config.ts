@@ -69,6 +69,8 @@ const EnvSchema = z.object({
     .string()
     .default('220147375786688512,603293720061935626')
     .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
+  /** A self-hosted SearXNG (JSON format enabled), e.g. http://192.168.178.45:8888: adds fresh Warframe web results to answers. */
+  SEARXNG_URL: z.string().url().optional(),
   MCP_ALLOWED_HOSTS: z
     .string()
     .optional()

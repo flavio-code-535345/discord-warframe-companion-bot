@@ -10,6 +10,7 @@ import { lookupItem, summarizeLookup } from '../warframe/items.js';
 import { readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { priceCheck } from '../warframe/market.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
+import { webSearch } from '../warframe/websearch.js';
 import { registerAdminTools } from './admin.js';
 import { registerCodeTools } from './code.js';
 import { registerInsightTools } from './insights.js';
@@ -110,6 +111,22 @@ export function createMcpServer(ctx: AppContext): McpServer {
       const result = await lookupItem(name);
       if (!result) throw new UserError(`No item matches "${name}".`);
       return summarizeLookup(result);
+    }),
+  );
+
+  server.registerTool(
+    'search_web',
+    {
+      title: 'Fresh Warframe web search',
+      description: 'Searches the open web through the clan\'s SearXNG, limited to Warframe sources (official site and forums, the wiki, r/Warframe, warframe.market, overframe, warframestat). Use it for patch notes, news and anything newer than the wiki. Needs SEARXNG_URL.',
+      inputSchema: { query: z.string().min(2).max(200), limit: z.number().int().min(1).max(10).default(5) },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ query, limit }) => {
+      if (!config.SEARXNG_URL) throw new UserError('SEARXNG_URL is not set on the bot, so there is no web search.');
+      const results = await webSearch(config.SEARXNG_URL, query, limit);
+      if (!results.length) throw new UserError('No Warframe web results (or SearXNG is unreachable or has no json format enabled).');
+      return results;
     }),
   );
 

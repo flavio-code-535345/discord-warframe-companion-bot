@@ -55,6 +55,7 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       PANEL_OWNER_IDS: ${PANEL_OWNER_IDS:-603293720061935626}
       OPERATOR_IDS: ${OPERATOR_IDS:-220147375786688512,603293720061935626}
+      SEARXNG_URL: ${SEARXNG_URL:-}
     volumes:
       - bot-data:/app/data
     ports:

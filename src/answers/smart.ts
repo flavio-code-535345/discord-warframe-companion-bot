@@ -25,6 +25,7 @@ import { discordTime } from '../time.js';
 import { searchDrops } from '../warframe/drops.js';
 import { lookupItem } from '../warframe/items.js';
 import { priceCheck } from '../warframe/market.js';
+import { asPassages, webSearch } from '../warframe/websearch.js';
 import { searchWiki } from '../warframe/wiki.js';
 import type { AiSource } from '../db.js';
 import { composeDetailed } from './compose.js';
@@ -97,8 +98,8 @@ function worldEmbed(ws: WorldState, view: WorldView): EmbedBuilder {
 }
 
 async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> {
-  const results = await searchWiki(query, 3).catch(() => []);
-  if (!results.length) {
+  const [results, web] = await Promise.all([searchWiki(query, 3).catch(() => []), webSearch(ctx.config.SEARXNG_URL, query, 2)]);
+  if (!results.length && !web.length) {
     return {
       content: `Ordis searched everywhere, Operator, but found nothing on "${query}". Try rephrasing, or ask Ordis "help".`,
       embeds: [],
@@ -106,8 +107,9 @@ async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> 
     };
   }
   // With a free-tier model configured, the excerpts are worded into a real answer; the source stays below it.
-  const written = await composeDetailed(ctx.config, query, results);
-  if (written) return { content: written.text, embeds: [wikiEmbed(query, results, true)], found: true, source: written.via, model: written.model };
+  const written = await composeDetailed(ctx.config, query, [...results, ...asPassages(web)]);
+  if (written) return { content: written.text, embeds: [wikiEmbed(query, results.length ? results : asPassages(web), true)], found: true, source: written.via, model: written.model };
+  if (!results.length) return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, asPassages(web))], found: true, source: 'excerpt' };
   return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true, source: 'excerpt' };
 }
 
