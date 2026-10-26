@@ -40,8 +40,8 @@ export interface GuildSettings {
   statusChannelId: string | null;
 }
 
-/** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, or a direct lookup (prices, drops, world state...). */
-export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup';
+/** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, a direct lookup (prices, drops, world state...), or a saved, verified answer (the cache). */
+export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup' | 'cache';
 
 export interface AiLogEntry {
   id: number;
@@ -57,6 +57,22 @@ export interface AiLogEntry {
   found: boolean;
   ms: number;
   answer: string | null;
+}
+
+/** A saved answer to a frequently asked question. `verifiedAt` is null for a row that only records failed refreshes (such a row is never served). */
+export interface CachedAnswer {
+  key: string;
+  question: string;
+  answer: string;
+  model: string | null;
+  tools: string[];
+  verifiedAt: number | null;
+  refreshedAt: number;
+  hits: number;
+  lastAskedAt: number | null;
+  fails: number;
+  lastError: string | null;
+  lastAttemptAt: number | null;
 }
 
 /** One member's XP. The level is derived from it (see leveling/xp.ts). */
@@ -451,9 +467,51 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX ai_log_at ON ai_log (guild_id, at);
   `,
+  `
+  CREATE TABLE answer_cache (
+    guild_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL DEFAULT '',
+    model TEXT,
+    tools TEXT NOT NULL DEFAULT '[]',
+    verified_at INTEGER,
+    refreshed_at INTEGER NOT NULL DEFAULT 0,
+    hits INTEGER NOT NULL DEFAULT 0,
+    last_asked_at INTEGER,
+    fails INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    last_attempt_at INTEGER,
+    PRIMARY KEY (guild_id, key)
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+function toCached(r: Row): CachedAnswer {
+  let tools: string[] = [];
+  try {
+    const t: unknown = JSON.parse(String(r.tools));
+    if (Array.isArray(t)) tools = t.filter((x): x is string => typeof x === 'string');
+  } catch {
+    // Unreadable list: leave it empty.
+  }
+  return {
+    key: String(r.key),
+    question: String(r.question),
+    answer: String(r.answer),
+    model: str(r.model),
+    tools,
+    verifiedAt: r.verified_at === null ? null : Number(r.verified_at),
+    refreshedAt: Number(r.refreshed_at),
+    hits: Number(r.hits),
+    lastAskedAt: r.last_asked_at === null ? null : Number(r.last_asked_at),
+    fails: Number(r.fails),
+    lastError: str(r.last_error),
+    lastAttemptAt: r.last_attempt_at === null ? null : Number(r.last_attempt_at),
+  };
+}
 
 function toSticky(r: Row): Sticky {
   return {
@@ -808,6 +866,56 @@ export class Store {
   aiLogStats(guildId: string, since: number): Record<string, number> {
     const rows = this.db.prepare('SELECT source, COUNT(*) AS n FROM ai_log WHERE guild_id = ? AND at >= ? GROUP BY source').all(guildId, since) as Row[];
     return Object.fromEntries(rows.map((r) => [String(r.source), Number(r.n)]));
+  }
+
+  // --- answer cache (see answers/cache.ts) ---
+
+  getCacheRow(guildId: string, key: string): CachedAnswer | null {
+    const r = this.db.prepare('SELECT * FROM answer_cache WHERE guild_id = ? AND key = ?').get(guildId, key) as Row | undefined;
+    return r ? toCached(r) : null;
+  }
+
+  listCacheRows(guildId: string): CachedAnswer[] {
+    return (this.db.prepare('SELECT * FROM answer_cache WHERE guild_id = ? ORDER BY hits DESC, refreshed_at DESC').all(guildId) as Row[]).map(toCached);
+  }
+
+  /** Saves a verified answer (replacing the previous one) and clears the failure count. */
+  saveCachedAnswer(guildId: string, e: { key: string; question: string; answer: string; model: string | null; tools: string[]; now: number }): void {
+    this.db
+      .prepare(
+        `INSERT INTO answer_cache (guild_id, key, question, answer, model, tools, verified_at, refreshed_at, fails, last_error, last_attempt_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
+         ON CONFLICT (guild_id, key) DO UPDATE SET question = excluded.question, answer = excluded.answer, model = excluded.model, tools = excluded.tools,
+           verified_at = excluded.verified_at, refreshed_at = excluded.refreshed_at, fails = 0, last_error = NULL, last_attempt_at = excluded.last_attempt_at`,
+      )
+      .run(guildId, e.key, e.question, e.answer, e.model, JSON.stringify(e.tools), e.now, e.now, e.now);
+  }
+
+  /** Notes a failed refresh. A saved answer stays untouched; a question with none gets a row with no answer (never served). */
+  recordCacheFailure(guildId: string, e: { key: string; question: string; reason: string; now: number }): void {
+    this.db
+      .prepare(
+        `INSERT INTO answer_cache (guild_id, key, question, fails, last_error, last_attempt_at) VALUES (?, ?, ?, 1, ?, ?)
+         ON CONFLICT (guild_id, key) DO UPDATE SET fails = fails + 1, last_error = excluded.last_error, last_attempt_at = excluded.last_attempt_at`,
+      )
+      .run(guildId, e.key, e.question, e.reason.slice(0, 300), e.now);
+  }
+
+  touchCacheHit(guildId: string, key: string, now: number): void {
+    this.db.prepare('UPDATE answer_cache SET hits = hits + 1, last_asked_at = ? WHERE guild_id = ? AND key = ?').run(now, guildId, key);
+  }
+
+  deleteCacheRow(guildId: string, key: string): boolean {
+    return Number(this.db.prepare('DELETE FROM answer_cache WHERE guild_id = ? AND key = ?').run(guildId, key).changes) > 0;
+  }
+
+  /** Drops answers nobody refreshed since `before`, and failure-only rows that old. */
+  pruneCache(guildId: string, before: number): number {
+    return Number(
+      this.db
+        .prepare('DELETE FROM answer_cache WHERE guild_id = ? AND ((verified_at IS NOT NULL AND refreshed_at < ?) OR (verified_at IS NULL AND COALESCE(last_attempt_at, 0) < ?))')
+        .run(guildId, before, before).changes,
+    );
   }
 
   countXpMembers(guildId: string): number {

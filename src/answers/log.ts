@@ -42,6 +42,7 @@ const SOURCE_LABEL: Record<AiSource, string> = {
   cloud: '☁️ cloud',
   excerpt: '📄 wiki excerpt',
   lookup: '🔎 lookup',
+  cache: '💾 saved answer',
 };
 
 export const sourceLabel = (e: Pick<AiLogEntry, 'source' | 'model'>): string => `${SOURCE_LABEL[e.source]}${e.model ? ` (${e.model})` : ''}`;

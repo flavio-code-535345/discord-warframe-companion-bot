@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { chooseModel, setToggle } from '../ai/control.js';
 import { localModelOf } from '../ai/ollama.js';
 import { TOGGLE_KEYS, TOGGLES, aiToggle } from '../ai/settings.js';
+import { normalizeQuestion } from '../answers/cache.js';
 import { localAvailable } from '../answers/compose.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
@@ -18,11 +19,11 @@ import { READ_ONLY, snowflake, tool } from './util.js';
  * its models are healthy, and member levels (with a way to lift people to a level, e.g. when a level unlocks a permission).
  */
 
-const SOURCES = ['local', 'cloud', 'excerpt', 'lookup'] as const satisfies readonly AiSource[];
+const SOURCES = ['local', 'cloud', 'excerpt', 'lookup', 'cache'] as const satisfies readonly AiSource[];
 const iso = (ms: number | null): string | null => (ms ? new Date(ms).toISOString() : null);
 
 /** Lower-cased, punctuation-free question, so "How do I unlock Venus?" and "how do i unlock venus" count as one. */
-export const normalizeQuestion = (q: string): string => q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+export { normalizeQuestion } from '../answers/cache.js';
 
 export interface AiLogSummary {
   count: number;

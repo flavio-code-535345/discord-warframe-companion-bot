@@ -6,7 +6,7 @@ import type { Store } from '../db.js';
  * effect immediately, with no redeploy.
  */
 
-export type AiToggle = 'local' | 'thinking' | 'websearch' | 'operators' | 'log';
+export type AiToggle = 'local' | 'thinking' | 'websearch' | 'operators' | 'log' | 'cache';
 
 export interface ToggleInfo {
   label: string;
@@ -19,6 +19,7 @@ export const TOGGLES: Record<AiToggle, ToggleInfo> = {
   thinking: { label: 'Thinking', help: 'Let the local model reason before answering. Slower (30 s or more on a CPU) and only for models that support it.', default: false },
   websearch: { label: 'Web search', help: 'Add fresh Warframe web results from SearXNG to answers.', default: true },
   operators: { label: 'Operator mode', help: 'Let the two operators give Ordis free-form instructions.', default: true },
+  cache: { label: 'Answer cache', help: 'Serve saved, verified answers to repeat questions, and let the daily refresh keep them current.', default: true },
   log: { label: 'Question log', help: 'Record the questions members ask, for /ailog (kept 30 days).', default: true },
 };
 

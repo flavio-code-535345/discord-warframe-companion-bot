@@ -4,7 +4,7 @@ import type { AiSource } from '../../db.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 
-const STAT_ORDER: AiSource[] = ['local', 'cloud', 'excerpt', 'lookup'];
+const STAT_ORDER: AiSource[] = ['local', 'cloud', 'excerpt', 'lookup', 'cache'];
 
 /** Staff: what members asked Ordis and which model answered. */
 export const ailog: Command = {

@@ -33,7 +33,7 @@ describe('switches', () => {
     const store = new Store(':memory:');
     assert.deepEqual(
       TOGGLE_KEYS.map((k) => [k, aiToggle(k)]),
-      [['local', true], ['thinking', false], ['websearch', true], ['operators', true], ['log', true]],
+      [['local', true], ['thinking', false], ['websearch', true], ['operators', true], ['cache', true], ['log', true]],
     );
     setAiToggle(store, 'thinking', true);
     setAiToggle(store, 'websearch', false);

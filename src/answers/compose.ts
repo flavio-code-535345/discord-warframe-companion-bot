@@ -96,6 +96,8 @@ async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher)
         body: JSON.stringify({
           model,
           temperature: 0.2,
+          // The same excerpts and question give the same answer, instead of a differently worded (or differently wrong) one each time.
+          ...(ep.local ? { seed: 7 } : {}),
           // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
           max_tokens: ep.thinking ? 3000 : 1200,
           // Ollama's thinking models (Gemma 4...) otherwise reason for ~400 tokens first: 30+ s on a CPU instead of a few.

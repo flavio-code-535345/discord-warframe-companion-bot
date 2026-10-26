@@ -31,7 +31,8 @@ import type { AiSource } from '../db.js';
 import { composeDetailed } from './compose.js';
 import { agentAnswer, useAgent } from '../agent/answer.js';
 import { brain } from '../agent/brain.js';
-import { operatorAnswer, useOperatorMode } from './operator.js';
+import { cacheAllowedFor, getCachedAnswer, noteCacheHit } from './cache.js';
+import { isOperatorId, operatorAnswer, useOperatorMode } from './operator.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
 
@@ -214,6 +215,15 @@ export async function smartAnswer(question: string, ctx: AppContext, asker?: { i
   const intent = detectIntent(question);
   const started = Date.now();
   // Prices, drops, relics, world state and the clan schedule stay plain API lookups for everyone, operators included.
+  // A saved, verified answer to a repeat question (see answers/cache.ts): same answer every time, no model call. Operators always get a fresh one.
+  if (!(asker && isOperatorId(ctx.config, asker.id)) && cacheAllowedFor(intent.kind)) {
+    const hit = getCachedAnswer(ctx, question);
+    if (hit) {
+      noteCacheHit(ctx, hit);
+      const sources = await searchWiki(cleanQuestion(question), 3).catch(() => []);
+      return { content: hit.answer, embeds: sources.length ? [wikiEmbed(question, sources, true)] : [], found: true, source: 'cache', model: hit.model, intent: intent.kind, ms: Date.now() - started };
+    }
+  }
   // The agent (tools it picks itself, see src/agent) comes first where it is switched on; the operator answer and the plain lookups are the fallbacks.
   const who = asker ?? { id: '', name: 'a clan member' };
   const agent = useAgent(ctx, who.id, intent.kind) ? await agentAnswer(ctx, question, who) : null;
