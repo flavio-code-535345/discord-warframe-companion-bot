@@ -41,8 +41,8 @@ export function registerAiRoutes({ router, ctx, pc, html, action, audit }: Deps)
       : o.reachable
         ? `<div class="grid">
 <div class="card"><div class="stat">🟢 Online</div><div class="muted">Ollama ${e(o.version ?? '')}</div></div>
-<div class="card"><div class="stat" style="font-size:16px">${e(o.model ?? '—')}</div><div class="muted">${o.chosen ? 'chosen here or with /ai model' : 'the bot\'s default'}${o.thinkingCapable ? ' · can think' : ''}${o.skippedAfterFailure ? ' · ⚠️ skipped after a failure' : ''}</div></div>
-<div class="card"><div class="stat" style="font-size:16px">${o.loaded.length ? e(o.loaded.map((m) => `${m.name} (${gb(m.size)})`).join(', ')) : 'nothing loaded'}</div><div class="muted">in memory right now</div></div>
+<div class="card"><div class="stat small">${e(o.model ?? '—')}</div><div class="muted">${o.chosen ? 'chosen here or with /ai model' : 'the bot\'s default'}${o.thinkingCapable ? ' · can think' : ''}${o.skippedAfterFailure ? ' · ⚠️ skipped after a failure' : ''}</div></div>
+<div class="card"><div class="stat small">${o.loaded.length ? e(o.loaded.map((m) => `${m.name} (${gb(m.size)})`).join(', ')) : 'nothing loaded'}</div><div class="muted">in memory right now</div></div>
 </div>`
         : `<div class="flash err">The AI server is not reachable: ${e(o.error ?? 'unknown error')}</div>`;
 

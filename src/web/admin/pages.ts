@@ -45,7 +45,11 @@ h1{font-size:22px;margin:0 0 16px}
 h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:28px 0 10px;font-weight:600}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px}
 .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
-.stat{font-size:24px;font-weight:700}
+.stat{font-size:24px;font-weight:700;overflow-wrap:anywhere}
+.stat.small{font-size:14px;line-height:1.35;font-weight:600}
+.grid .card{min-width:0}
+.flush{margin:0}
+textarea.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px;min-height:360px}
 .muted{color:var(--muted);font-size:13px}
 .flash{padding:10px 14px;border-radius:10px;margin-bottom:16px;border:1px solid}
 .flash.ok{border-color:var(--ok);background:rgba(34,197,94,.08)}

@@ -89,7 +89,7 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
     }).join('');
 
     const body = `<h1>Brain</h1>
-<div class="card"><p class="muted" style="margin:0">Who gets the agent: <strong>${e(s.agentFor)}</strong> · questions: <strong>${s.scope === 'all' ? 'all except help' : 'open-ended (wiki and builds)'}</strong> · ${modelLine} · tools on: ${enabledTools(ctx).length}/${TOOL_NAMES.length}</p></div>
+<div class="card"><p class="muted flush">Who gets the agent: <strong>${e(s.agentFor)}</strong> · questions: <strong>${s.scope === 'all' ? 'all except help' : 'open-ended (wiki and builds)'}</strong> · ${modelLine} · tools on: ${enabledTools(ctx).length}/${TOOL_NAMES.length}</p></div>
 
 <form class="stack" method="post" action="/admin/brain/save">${csrfField(p.session)}
 <h2>Persona</h2>
@@ -98,14 +98,14 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
 <input type="range" name="ordisness" min="${LIMITS.ordisness.min}" max="${LIMITS.ordisness.max}" step="${LIMITS.ordisness.step}" value="${s.ordisness}" list="ticks">
 <datalist id="ticks">${[0, 25, 50, 75, 100].map((v) => `<option value="${v}"></option>`).join('')}</datalist>
 <span class="muted">${PERSONA_BANDS.map((b) => `${b.upTo === 0 ? '0' : b.upTo} ${b.name}`).join(' · ')}</span></label>
-<p class="muted" style="margin:0">Now: ${e(band.text)}</p>
+<p class="muted flush">Now: ${e(band.text)}</p>
 </div>
 
 <h2>System prompt</h2>
 <div class="card stack">
 <label>The instructions the model gets (empty or unchanged = the built-in default)
-<textarea name="prompt" rows="22" style="font-family:ui-monospace,monospace;font-size:13px;min-height:360px">${e(s.prompt || DEFAULT_PROMPT)}</textarea></label>
-<p class="muted" style="margin:0">Placeholders: <code>{{bot}}</code> <code>{{clan}}</code> <code>{{date}}</code> <code>{{persona}}</code> (where the Ordis-ness text goes; added at the end when missing). The operators' extra paragraph and the tool list are added by the bot.</p>
+<textarea name="prompt" rows="22" class="mono">${e(s.prompt || DEFAULT_PROMPT)}</textarea></label>
+<p class="muted flush">Placeholders: <code>{{bot}}</code> <code>{{clan}}</code> <code>{{date}}</code> <code>{{persona}}</code> (where the Ordis-ness text goes; added at the end when missing). The operators' extra paragraph and the tool list are added by the bot.</p>
 </div>
 
 <h2>Tuning</h2>
