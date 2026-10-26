@@ -16,6 +16,7 @@ import { WikiIndex, setWikiIndex } from './wiki/index.js';
 import { OrdisBrain } from './ai/ordis.js';
 import { loadConfig } from './config.js';
 import { initRuntimeConfig, onSettingChange } from './runtime-config.js';
+import { configureApi } from './warframe/fetch.js';
 import { syncIdentity } from './discord/identity.js';
 import type { AppContext } from './context.js';
 import { Store } from './db.js';
@@ -29,6 +30,19 @@ const config = loadConfig();
 const store = new Store(join(config.DATA_DIR, 'bot.db'));
 // Values saved on the panel's Config page win over the environment (src/runtime-config.ts); apply them before anything reads the config.
 initRuntimeConfig(config, store);
+const applyApiConfig = () =>
+  configureApi({
+    store,
+    limits: {
+      minIntervalMs: config.API_MIN_INTERVAL_MS,
+      perMinute: config.API_RATE_LIMIT_PER_MINUTE,
+      cooldownMs: config.API_COOLDOWN_MINUTES * 60_000,
+      maxRetries: config.API_MAX_RETRIES,
+      priceTtlMs: config.API_PRICE_CACHE_SECONDS * 1000,
+      stableTtlMs: config.API_STABLE_CACHE_HOURS * 3_600_000,
+    },
+  });
+applyApiConfig();
 const client = createClient(config);
 const ai = config.ANTHROPIC_API_KEY
   ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
@@ -41,6 +55,7 @@ loadBrain(store);
 const ctx: AppContext = { config, store, client, ai };
 // A few settings need more than a changed value when they change at runtime.
 onSettingChange((key) => {
+  if (key.startsWith('API_')) applyApiConfig();
   if (key.startsWith('WORLDSTATE_')) configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
   if (key === 'BOT_NAME' && client.isReady()) void syncIdentity(ctx).catch((err) => console.warn('[identity] could not update the bot name:', err));
 });

@@ -1,4 +1,4 @@
-import { apiFetch } from '../warframe/fetch.js';
+import { ApiBlockedError, ApiBusyError, apiFetch } from '../warframe/fetch.js';
 import { chunkWikitext } from './clean.js';
 import type { WikiIndex } from './index.js';
 
@@ -45,7 +45,8 @@ export class WikiCrawler {
 
   constructor(
     private readonly index: WikiIndex,
-    private readonly fetcher: Fetcher = apiFetch,
+    // Background priority: the crawl may only use half of the request budget, so members' commands are never starved.
+    private readonly fetcher: Fetcher = (url) => apiFetch(url, {}, { background: true }),
     private readonly gapMs = REQUEST_GAP_MS,
   ) {}
 
@@ -81,6 +82,8 @@ export class WikiCrawler {
         if (data.error) throw new Error(`${data.error.code}: ${data.error.info}`);
         return data;
       } catch (err) {
+        // A blocked or rate-limited host is left alone: retrying here would only be noise.
+        if (err instanceof ApiBlockedError || err instanceof ApiBusyError) throw err;
         lastError = err;
         await sleep(this.gapMs * 4 * (attempt + 1));
       }

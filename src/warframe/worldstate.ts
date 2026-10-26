@@ -4,13 +4,14 @@ import WorldStateParser from 'warframe-worldstate-parser';
 import { readFile, writeFile } from 'node:fs/promises';
 import { toMs } from '../time.js';
 import { UserError } from '../services/clan.js';
-import { apiFetch } from './fetch.js';
+import { ApiBlockedError, api, apiFetch } from './fetch.js';
 
 /** Official, cross-platform worldstate feed published by Digital Extremes. */
 const DE_URL = 'https://api.warframe.com/cdn/worldState.php';
-/** After a failed call (e.g. HTTP 403) the feed is left alone at least this long, so a block isn't made worse by retrying. */
-const FAILURE_COOLDOWN_MS = 30 * 60_000;
+/** After a temporary failure the feed is left alone this long; a 403 or 429 pauses it for the cooldown / Retry-After the API client decided (see fetch.ts). */
+const FAILURE_COOLDOWN_MS = 5 * 60_000;
 const META_KEY = 'worldstate_last_call';
+const VALIDATORS_KEY = 'worldstate_validators';
 
 export type WorldState = Awaited<ReturnType<typeof WorldStateParser.build>>;
 export type Fissure = WorldState['fissures'][number];
@@ -20,6 +21,8 @@ interface LastCall {
   ok: boolean;
   /** "HTTP 200", or the error message. */
   detail: string;
+  /** Not before this time is the feed called again (set after a failure). */
+  retryAt?: number;
 }
 
 interface MetaStore {
@@ -53,6 +56,23 @@ export function configureWorldState(opts: { url?: string | undefined; enabled: b
 
 export const worldStateEnabled = (): boolean => enabled;
 
+/** When the data being served was fetched, and whether it is outdated because the last call failed. */
+export function worldStateFreshness(now = Date.now()): { at: number | null; stale: boolean } {
+  const at = cached?.at ?? (lastCall?.ok ? lastCall.at : null);
+  return { at, stale: Boolean(lastCall && !lastCall.ok && at !== null && now - at > ttlMs) };
+}
+
+/** A sentence for answers when the live data may be outdated (the API is unavailable), else null. */
+export function worldStateStaleNote(now = Date.now()): string | null {
+  const f = worldStateFreshness(now);
+  if (!f.stale || f.at === null) return null;
+  const mins = Math.max(1, Math.round((now - f.at) / 60_000));
+  return `Live data may be outdated: last updated ${mins >= 120 ? `${Math.round(mins / 60)} h` : `${mins} min`} ago, the Warframe API is not answering right now.`;
+}
+
+/** The API client's view of the feed's host, for the status displays. */
+export const feedHostBlockedMs = (): number => api.blockedFor(new URL(feedUrl).host);
+
 /** What the status page shows about the Warframe API: whether it is on, when it was last called and what came back. */
 export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null } {
   return { enabled, intervalSeconds: Math.round(ttlMs / 1000), lastCallAt: lastCall?.at ?? null, lastOk: lastCall?.ok ?? null, lastDetail: lastCall?.detail ?? null };
@@ -76,15 +96,36 @@ function record(call: LastCall): void {
 
 async function fetchWorldState(): Promise<WorldState> {
   try {
-    const res = await apiFetch(feedUrl);
+    // Ask only for what changed when the server gave validators last time (an unchanged feed answers 304 without a body).
+    let validators: { etag?: string; lastModified?: string } = {};
+    try {
+      validators = JSON.parse(meta?.getMeta(VALIDATORS_KEY) ?? '{}') as typeof validators;
+    } catch {
+      validators = {};
+    }
+    const saved = cacheFile && (validators.etag || validators.lastModified) ? await readFile(cacheFile, 'utf8').catch(() => null) : null;
+    const conditional: Record<string, string> = saved ? (validators.etag ? { 'If-None-Match': validators.etag } : { 'If-Modified-Since': validators.lastModified! }) : {};
+    const res = await apiFetch(feedUrl, conditional);
+    if (res.status === 304 && saved) {
+      const ws = await parse(saved);
+      record({ at: Date.now(), ok: true, detail: 'HTTP 304 (unchanged)' });
+      return ws;
+    }
     if (!res.ok) throw new Error(`Worldstate request failed: HTTP ${res.status}`);
     const text = await res.text();
     const ws = await parse(text);
     record({ at: Date.now(), ok: true, detail: `HTTP ${res.status}` });
+    try {
+      meta?.setMeta(VALIDATORS_KEY, JSON.stringify({ etag: res.headers.get('etag') ?? undefined, lastModified: res.headers.get('last-modified') ?? undefined }));
+    } catch {
+      // Validators only save bandwidth.
+    }
     if (cacheFile) await writeFile(cacheFile, text).catch(() => {});
     return ws;
   } catch (err) {
-    record({ at: Date.now(), ok: false, detail: err instanceof Error ? err.message : String(err) });
+    const now = Date.now();
+    // A 403 or 429 already put the host on hold in the API client; remember when it may be called again.
+    record({ at: now, ok: false, detail: err instanceof Error ? err.message : String(err), retryAt: err instanceof ApiBlockedError ? err.until : now + FAILURE_COOLDOWN_MS });
     throw err;
   }
 }
@@ -95,7 +136,7 @@ export async function getWorldState(): Promise<WorldState> {
   const now = Date.now();
   if (cached && now - cached.at < ttlMs) return cached.ws;
   // Too soon for another call: serve what we have (after a restart, the saved answer), or repeat the last failure.
-  const wait = lastCall ? (lastCall.ok ? ttlMs : Math.max(FAILURE_COOLDOWN_MS, ttlMs)) : 0;
+  const wait = lastCall ? (lastCall.ok ? ttlMs : Math.max((lastCall.retryAt ?? lastCall.at + FAILURE_COOLDOWN_MS) - lastCall.at, 0)) : 0;
   if (lastCall && now - lastCall.at < wait) {
     if (cached) return cached.ws;
     if (lastCall.ok && cacheFile) {

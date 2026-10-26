@@ -33,6 +33,13 @@ export const SETTINGS: SettingDef[] = [
   { key: 'WORLDSTATE_POLL_SECONDS', group: 'Warframe data', kind: 'int', label: 'World state poll interval (seconds)', help: 'Minimum time between calls to the feed. At least 60.' },
   { key: 'WARFRAME_PLATFORM', group: 'Warframe data', kind: 'select', options: ['pc', 'ps4', 'xbox', 'switch', 'mobile'], label: 'Platform for prices', help: 'Which warframe.market platform /price and Ordis look at.' },
 
+  { key: 'API_MIN_INTERVAL_MS', group: 'API limits and cache', kind: 'int', label: 'Minimum gap between requests (ms)', help: 'Between two requests to the same host (warframestat.us, warframe.market, the wiki, DE). 0 to 10000.' },
+  { key: 'API_RATE_LIMIT_PER_MINUTE', group: 'API limits and cache', kind: 'int', label: 'Requests per minute (all hosts)', help: 'Global cap. Background work (the wiki crawler) may only use half of it. 5 to 600.' },
+  { key: 'API_COOLDOWN_MINUTES', group: 'API limits and cache', kind: 'int', label: 'Cooldown after a 403 (minutes)', help: 'A host that answers 403 is left completely alone this long. A 429 follows its Retry-After header instead.' },
+  { key: 'API_MAX_RETRIES', group: 'API limits and cache', kind: 'int', label: 'Retries for temporary failures', help: 'Server errors and timeouts, with exponential backoff and jitter. 0 to 5.' },
+  { key: 'API_PRICE_CACHE_SECONDS', group: 'API limits and cache', kind: 'int', label: 'Price cache (seconds)', help: 'How long a warframe.market price answer is reused. 10 to 3600.' },
+  { key: 'API_STABLE_CACHE_HOURS', group: 'API limits and cache', kind: 'int', label: 'Item, drop and wiki cache (hours)', help: 'How long item stats, drop tables and live wiki answers are reused. 1 to 720.' },
+
   { key: 'CLAN_NAME', group: 'Identity', kind: 'text', label: 'Clan name', help: 'Used in answers and as the name the screenshot roles check against.' },
   { key: 'BOT_NAME', group: 'Identity', kind: 'text', label: 'Bot name', help: "The bot's Discord username and the name it uses for itself." },
   { key: 'OPERATOR_IDS', group: 'Operators', kind: 'ids', ownerOnly: true, label: 'Operator Discord IDs', help: 'Comma-separated user IDs that may give Ordis free-form instructions. Only panel owners can change this.' },

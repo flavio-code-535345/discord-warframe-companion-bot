@@ -29,8 +29,8 @@ describe('worldstate pacing', () => {
     }) as typeof fetch;
     const store = new Store(':memory:');
     configureWorldState({ enabled: true, intervalSeconds: 600, store });
-    await assert.rejects(getWorldState(), /HTTP 403/);
-    await assert.rejects(getWorldState(), /HTTP 403/);
+    await assert.rejects(getWorldState(), /403/);
+    await assert.rejects(getWorldState(), /403/);
     assert.equal(calls, 1);
     const info = worldStateInfo();
     assert.equal(info.lastOk, false);
@@ -39,7 +39,7 @@ describe('worldstate pacing', () => {
 
     // A restart reads the last call back from the database and still holds off.
     configureWorldState({ enabled: true, intervalSeconds: 600, store });
-    await assert.rejects(getWorldState(), /HTTP 403/);
+    await assert.rejects(getWorldState(), /403/);
     assert.equal(calls, 1);
   });
 });

@@ -1,6 +1,6 @@
 import { getWikiIndex } from '../wiki/index.js';
 import { titleCandidates } from '../wiki/terms.js';
-import { apiFetch } from './fetch.js';
+import { apiJson } from './fetch.js';
 
 // The official community wiki (MediaWiki, with the TextExtracts extension for plain-text summaries).
 const API = 'https://wiki.warframe.com/api.php';
@@ -23,9 +23,10 @@ export const pageUrl = (title: string) => `https://wiki.warframe.com/w/${encodeU
 
 async function api<T>(params: Record<string, string>): Promise<T> {
   const qs = new URLSearchParams({ format: 'json', formatversion: '1', ...params });
-  const res = await apiFetch(`${API}?${qs}`);
-  if (!res.ok) throw new Error(`Wiki request failed: HTTP ${res.status}`);
-  return (await res.json()) as T;
+  // The local wiki copy answers most questions; this live fallback is cached for the stable lifetime.
+  const { data } = await apiJson<T>(`${API}?${qs}`, { kind: 'stable' });
+  if (data === null) throw new Error('Wiki request failed: HTTP 404');
+  return data;
 }
 
 async function extracts(titles: string[], intro: boolean, maxChars?: number): Promise<WikiResult[]> {

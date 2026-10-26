@@ -485,6 +485,17 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (guild_id, key)
   );
   `,
+  `
+  CREATE TABLE api_cache (
+    key TEXT PRIMARY KEY,
+    body TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    etag TEXT,
+    last_modified TEXT,
+    fetched_at INTEGER NOT NULL
+  );
+  CREATE INDEX api_cache_at ON api_cache (fetched_at);
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -866,6 +877,31 @@ export class Store {
   aiLogStats(guildId: string, since: number): Record<string, number> {
     const rows = this.db.prepare('SELECT source, COUNT(*) AS n FROM ai_log WHERE guild_id = ? AND at >= ? GROUP BY source').all(guildId, since) as Row[];
     return Object.fromEntries(rows.map((r) => [String(r.source), Number(r.n)]));
+  }
+
+  // --- third-party API response cache (see warframe/fetch.ts) ---
+
+  getApiCache(key: string): { body: string; status: number; etag: string | null; lastModified: string | null; fetchedAt: number } | null {
+    const r = this.db.prepare('SELECT * FROM api_cache WHERE key = ?').get(key) as Row | undefined;
+    return r ? { body: String(r.body), status: Number(r.status), etag: str(r.etag), lastModified: str(r.last_modified), fetchedAt: Number(r.fetched_at) } : null;
+  }
+
+  putApiCache(key: string, e: { body: string; status: number; etag: string | null; lastModified: string | null; fetchedAt: number }): void {
+    this.db
+      .prepare(
+        `INSERT INTO api_cache (key, body, status, etag, last_modified, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (key) DO UPDATE SET body = excluded.body, status = excluded.status, etag = excluded.etag, last_modified = excluded.last_modified, fetched_at = excluded.fetched_at`,
+      )
+      .run(key, e.body, e.status, e.etag, e.lastModified, e.fetchedAt);
+  }
+
+  pruneApiCache(before: number): void {
+    this.db.prepare('DELETE FROM api_cache WHERE fetched_at < ?').run(before);
+  }
+
+  apiCacheSize(): { entries: number; bytes: number } {
+    const r = this.db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(body)), 0) AS b FROM api_cache').get() as Row;
+    return { entries: Number(r.n), bytes: Number(r.b) };
   }
 
   // --- answer cache (see answers/cache.ts) ---

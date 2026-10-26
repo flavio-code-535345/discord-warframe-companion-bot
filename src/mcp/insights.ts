@@ -11,6 +11,7 @@ import { levelOf, xpForLevel } from '../leveling/xp.js';
 import { syncLevelRoles } from '../leveling/service.js';
 import { UserError } from '../services/clan.js';
 import { getWikiIndex } from '../wiki/index.js';
+import { api } from '../warframe/fetch.js';
 import { worldStateInfo } from '../warframe/worldstate.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
@@ -120,6 +121,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           stoppedAt: iso(Number(store.getMeta('lifecycle_stopped_at')) || null),
         },
         warframeApi: { enabled: ws.enabled, everySeconds: ws.intervalSeconds, lastCall: iso(ws.lastCallAt), lastOk: ws.lastOk, detail: ws.lastDetail },
+        apiClient: { ...api.stats, limits: api.limits, pausedHosts: api.cooldowns().map((c) => ({ host: c.host, until: new Date(c.until).toISOString(), reason: c.reason })) },
         ai: {
           localModel: config.LOCAL_AI_URL ? (localModelOf(config) ?? null) : null,
           localSkippedAfterFailure: config.LOCAL_AI_URL ? !localAvailable() : null,

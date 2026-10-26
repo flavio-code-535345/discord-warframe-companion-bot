@@ -1,8 +1,7 @@
-import { apiFetch } from './fetch.js';
+import { apiJson } from './fetch.js';
 
 // Item database served by the community warframestat.us API (generated from DE's public export).
 const BASE = 'https://api.warframestat.us';
-const SEARCH_TTL_MS = 10 * 60 * 1000;
 const REFINEMENTS = ['Intact', 'Exceptional', 'Flawless', 'Radiant'] as const;
 /** Cosmetic categories rank below gameplay items when a search is ambiguous. */
 const COSMETIC = new Set(['Skins', 'Glyphs', 'Sigils', 'Misc', 'Fish']);
@@ -44,20 +43,11 @@ export interface RelicInfo {
 
 export type LookupResult = { kind: 'relic'; relic: RelicInfo } | { kind: 'item'; item: WfItem };
 
-const cache = new Map<string, { at: number; items: WfItem[] }>();
-
 async function search(query: string, fields?: string): Promise<WfItem[]> {
-  const key = `${fields ?? '*'}|${query.toLowerCase()}`;
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < SEARCH_TTL_MS) return hit.items;
   const url = `${BASE}/items/search/${encodeURIComponent(query)}${fields ? `?only=${fields}` : ''}`;
-  const res = await apiFetch(url);
-  if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`Item database request failed: HTTP ${res.status}`);
-  const items = (await res.json()) as WfItem[];
-  if (cache.size > 500) cache.clear();
-  cache.set(key, { at: Date.now(), items });
-  return items;
+  // Item stats rarely change: cached for the stable lifetime (memory + database), shared by every asker.
+  const { data } = await apiJson<WfItem[]>(url, { kind: 'stable' });
+  return data ?? [];
 }
 
 /** "Neo N16 Radiant" / "Neo N16 Relic" / "neo n16" → "Neo N16"; null when the name isn't a relic name. */

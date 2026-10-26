@@ -73,6 +73,13 @@ export const EnvSchema = z.object({
   ANSWER_REFRESH_ENABLED: bool.default(true),
   ANSWER_REFRESH_MAX: z.coerce.number().int().min(1).max(30).default(8),
   ANSWER_REFRESH_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(4),
+  /** Third-party API etiquette (warframe/fetch.ts): the gap between requests to one host, a global cap, the pause after a 403, retries, and cache lifetimes. */
+  API_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(10_000).default(500),
+  API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(5).max(600).default(60),
+  API_COOLDOWN_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
+  API_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  API_PRICE_CACHE_SECONDS: z.coerce.number().int().min(10).max(3600).default(120),
+  API_STABLE_CACHE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
   /** A self-hosted SearXNG (JSON format enabled), e.g. http://192.168.178.45:8888: adds fresh Warframe web results to answers. */
   SEARXNG_URL: z.string().url().optional(),
   MCP_ALLOWED_HOSTS: z

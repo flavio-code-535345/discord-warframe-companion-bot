@@ -1,5 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import type { DropGroup } from '../warframe/drops.js';
+import { projectCycles } from '../warframe/cycles.js';
 import type { PriceCheck } from '../warframe/market.js';
 import {
   type Fissure,
@@ -9,6 +10,7 @@ import {
   resurgenceItemName,
   bountyStanding,
   rewardText,
+  worldStateStaleNote,
 } from '../warframe/worldstate.js';
 import { discordTime, toMs } from '../time.js';
 
@@ -37,13 +39,15 @@ export function clampLines(lines: string[], limit = DESCRIPTION_LIMIT): string {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function cyclesEmbed(ws: WorldState): EmbedBuilder {
-  const c = ws.cetusCycle;
-  const v = ws.vallisCycle;
-  const cam = ws.cambionCycle;
+export function cyclesEmbed(ws: WorldState, now = Date.now()): EmbedBuilder {
+  // Cetus, Vallis, Earth and Cambion follow fixed schedules: if the cached feed is older than a phase, roll it forward locally.
+  const p = projectCycles(ws, now);
+  const c = { isDay: p.cetus.isDay, expiry: p.cetus.expiry };
+  const v = { isWarm: p.vallis.isWarm, expiry: p.vallis.expiry };
+  const cam = { state: p.cambion.state, expiry: p.cambion.expiry };
   const z = ws.zarimanCycle;
   const d = ws.duviriCycle;
-  const e = ws.earthCycle;
+  const e = { isDay: p.earth.isDay, expiry: p.earth.expiry };
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
     .setTitle('Open world cycles')
@@ -55,6 +59,8 @@ export function cyclesEmbed(ws: WorldState): EmbedBuilder {
       { name: 'Earth', value: `${e.isDay ? '☀️ Day' : '🌙 Night'}\nends ${discordTime(e.expiry)}`, inline: true },
       { name: 'Duviri', value: `${cap(d.state)}\nends ${discordTime(d.expiry)}`, inline: true },
     );
+  const stale = worldStateStaleNote(now);
+  if (stale) embed.setFooter({ text: stale });
   const normal = d.choices?.find((x) => x.category === 'normal')?.choices ?? [];
   const hard = d.choices?.find((x) => x.category === 'hard')?.choices ?? [];
   if (normal.length || hard.length) {
@@ -177,7 +183,9 @@ export function priceEmbed(p: PriceCheck): EmbedBuilder {
     .setTitle(p.item.name)
     .setURL(p.url)
     .addFields({ name: 'Cheapest sellers', value: fmt(p.sell), inline: true }, { name: 'Top buyers', value: fmt(p.buy), inline: true })
-    .setFooter({ text: 'warframe.market · online and in-game traders only' });
+    .setFooter({
+      text: p.staleMs !== undefined ? `warframe.market · cached ${Math.max(1, Math.round(p.staleMs / 60_000))} min ago, may be outdated (warframe.market is not answering)` : 'warframe.market · online and in-game traders only',
+    });
   const first = p.sell[0];
   if (first) {
     embed.setDescription(

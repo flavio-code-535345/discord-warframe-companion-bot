@@ -4,6 +4,8 @@ import type { PanelSession } from '../../db.js';
 import { ENV_ONLY, SETTINGS, type SettingDef, type SettingState, adoptEnvironment, parseSetting, resetSetting, setSetting, settingStates, show } from '../../runtime-config.js';
 import { UserError } from '../../services/clan.js';
 import { scheduleRestart } from '../../selfupdate.js';
+import { api } from '../../warframe/fetch.js';
+import { formatDuration } from '../../time.js';
 import { escapeHtml as e } from '../status.js';
 import { type PageContext, csrfField, layout } from './pages.js';
 
@@ -63,8 +65,14 @@ ${pending.length ? `<div class="flash err">Needs a restart to take effect: ${pen
       })
       .join('');
 
+    const st = api.stats;
+    const size = store.apiCacheSize();
+    const holds = api.cooldowns();
+    const activity = `<h2>API activity</h2><div class="card stack"><p class="flush muted">Since the last restart. Cached responses are kept in the bot's database (${size.entries} entries, ${Math.round(size.bytes / 1024)} KB) so they survive restarts.</p>
+<p class="flush">Requests sent <strong>${st.requests}</strong> · cache hits <strong>${st.cacheHits}</strong> · shared with an identical in-flight request <strong>${st.deduped}</strong> · revalidated (304) <strong>${st.revalidated}</strong> · stale answers served <strong>${st.staleServed}</strong> · retries <strong>${st.retries}</strong> · failures <strong>${st.failures}</strong> · 429s <strong>${st.rateLimited}</strong> · refused during a pause <strong>${st.blocked}</strong></p>
+${holds.length ? holds.map((h) => `<p class="flush">⏸ <code>${e(h.host)}</code> paused for ${e(formatDuration(h.until - Date.now()))}: ${e(h.reason)}</p>`).join('') : '<p class="flush">No host is paused.</p>'}</div>`;
     const envOnly = `<h2>Still environment-only</h2><div class="card">${ENV_ONLY.map((o) => `<p class="flush"><code>${o.names.map(e).join('</code> <code>')}</code><br><span class="muted">${e(o.why)}</span></p>`).join('<hr>')}</div>`;
-    html(res, layout('Config', `<h1>Config</h1>${intro}${forms}${envOnly}`, p));
+    html(res, layout('Config', `<h1>Config</h1>${intro}${forms}${activity}${envOnly}`, p));
   });
 
   router.post(

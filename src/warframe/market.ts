@@ -1,4 +1,4 @@
-import { apiFetch } from './fetch.js';
+import { type CacheKind, apiJson } from './fetch.js';
 
 // warframe.market v2 API. v1 has been retired and answers 403 "Deprecated".
 const BASE = 'https://api.warframe.market/v2';
@@ -22,6 +22,8 @@ export interface PriceCheck {
   url: string;
   sell: MarketOrder[];
   buy: MarketOrder[];
+  /** Set when the prices come from the cache because warframe.market could not be used: they may be outdated (age in ms). */
+  staleMs?: number;
 }
 
 interface ItemsResponse {
@@ -32,11 +34,10 @@ interface TopOrdersResponse {
   data: { sell: MarketOrder[]; buy: MarketOrder[] };
 }
 
-async function getJson<T>(path: string, platform = 'pc'): Promise<T> {
-  const res = await apiFetch(`${BASE}${path}`, { Accept: 'application/json', Language: 'en', Platform: platform, Crossplay: 'true' });
-  if (res.status === 404) throw new Error('Item not found on warframe.market.');
-  if (!res.ok) throw new Error(`warframe.market request failed: HTTP ${res.status}`);
-  return (await res.json()) as T;
+async function getJson<T>(path: string, kind: CacheKind, platform = 'pc'): Promise<{ data: T; stale: boolean; ageMs: number }> {
+  const r = await apiJson<T>(`${BASE}${path}`, { kind, headers: { Accept: 'application/json', Language: 'en', Platform: platform, Crossplay: 'true' } });
+  if (r.data === null) throw new Error('Item not found on warframe.market.');
+  return { data: r.data, stale: r.stale, ageMs: r.ageMs };
 }
 
 let index: { at: number; items: MarketItem[] } | null = null;
@@ -44,8 +45,8 @@ let indexInflight: Promise<MarketItem[]> | null = null;
 
 export async function getItemIndex(): Promise<MarketItem[]> {
   if (index && Date.now() - index.at < ITEM_INDEX_TTL_MS) return index.items;
-  indexInflight ??= getJson<ItemsResponse>('/items')
-    .then((r) => {
+  indexInflight ??= getJson<ItemsResponse>('/items', 'stable')
+    .then(({ data: r }) => {
       const items = r.data
         .filter((i) => i.i18n.en?.name)
         .map((i) => ({ slug: i.slug, name: i.i18n.en!.name, maxRank: i.maxRank }))
@@ -87,12 +88,15 @@ export async function resolveItem(query: string): Promise<MarketItem | null> {
 export async function priceCheck(query: string, platform = 'pc', limit = 5): Promise<PriceCheck> {
   const item = await resolveItem(query);
   if (!item) throw new Error(`No tradable item matches "${query}".`);
-  const { data } = await getJson<TopOrdersResponse>(`/orders/item/${encodeURIComponent(item.slug)}/top`, platform);
+  // Prices move, so they have their own short lifetime; everyone asking for the same item in that time shares one request.
+  const { data: orders, stale, ageMs } = await getJson<TopOrdersResponse>(`/orders/item/${encodeURIComponent(item.slug)}/top`, 'price', platform);
+  const { data } = orders;
   const active = (o: MarketOrder) => o.user.status === 'ingame' || o.user.status === 'online';
   return {
     item,
     url: `https://warframe.market/items/${item.slug}`,
     sell: data.sell.filter(active).sort((a, b) => a.platinum - b.platinum).slice(0, limit),
     buy: data.buy.filter(active).sort((a, b) => b.platinum - a.platinum).slice(0, limit),
+    ...(stale ? { staleMs: ageMs } : {}),
   };
 }

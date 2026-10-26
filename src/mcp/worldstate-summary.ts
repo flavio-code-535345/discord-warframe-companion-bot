@@ -7,7 +7,9 @@ import {
   isBaroHere,
   resurgenceItemName,
   rewardText,
+  worldStateStaleNote,
 } from '../warframe/worldstate.js';
+import { projectCycles } from '../warframe/cycles.js';
 
 export const SECTIONS = [
   'cycles',
@@ -36,16 +38,19 @@ const when = (date: TimeInput, now: number) => {
 /** Plain-JSON view of the worldstate for AI clients: no Discord markup, explicit ISO times plus "in 2h 5m". */
 export function summarizeWorldState(ws: WorldState, sections: readonly Section[] = SECTIONS, now = Date.now()) {
   const out: Record<string, unknown> = { fetchedAt: new Date(now).toISOString() };
+  const stale = worldStateStaleNote(now);
+  if (stale) out.warning = stale;
   const want = new Set(sections);
 
   if (want.has('cycles')) {
     const d = ws.duviriCycle;
+    const p = projectCycles(ws, now);
     out.cycles = {
-      cetus: { state: ws.cetusCycle.isDay ? 'day' : 'night', ends: when(ws.cetusCycle.expiry, now) },
-      orbVallis: { state: ws.vallisCycle.isWarm ? 'warm' : 'cold', ends: when(ws.vallisCycle.expiry, now) },
-      cambionDrift: { state: ws.cambionCycle.state, ends: when(ws.cambionCycle.expiry, now) },
+      cetus: { state: p.cetus.isDay ? 'day' : 'night', ends: when(p.cetus.expiry, now), ...(p.cetus.projected ? { calculated: true } : {}) },
+      orbVallis: { state: p.vallis.isWarm ? 'warm' : 'cold', ends: when(p.vallis.expiry, now), ...(p.vallis.projected ? { calculated: true } : {}) },
+      cambionDrift: { state: p.cambion.state, ends: when(p.cambion.expiry, now), ...(p.cambion.projected ? { calculated: true } : {}) },
       zariman: { state: ws.zarimanCycle.state, ends: when(ws.zarimanCycle.expiry, now) },
-      earth: { state: ws.earthCycle.isDay ? 'day' : 'night', ends: when(ws.earthCycle.expiry, now) },
+      earth: { state: p.earth.isDay ? 'day' : 'night', ends: when(p.earth.expiry, now), ...(p.earth.projected ? { calculated: true } : {}) },
       duviri: {
         state: d.state,
         ends: when(d.expiry, now),

@@ -1,5 +1,6 @@
 import type { AppContext } from '../context.js';
 import { getWikiIndex } from '../wiki/index.js';
+import { projectCycles } from '../warframe/cycles.js';
 import { formatDuration, relative, toMs } from '../time.js';
 import {
   FISSURE_TIERS,
@@ -60,10 +61,11 @@ const ICONS: Record<string, string> = {
   joy: '😊', anger: '😠', envy: '💚', sorrow: '😢', fear: '😨',
 };
 
-const iso = (d: Date | string | undefined | null) => (Number.isNaN(toMs(d)) ? null : new Date(toMs(d)).toISOString());
+const iso = (d: Date | string | number | undefined | null) => (Number.isNaN(toMs(d)) ? null : new Date(toMs(d)).toISOString());
 
-function cyclesOf(ws: WorldState): CycleStatus[] {
-  const cycle = (name: string, key: string, expiry: Date | string | undefined, extra: { suffix?: string; note?: string } = {}): CycleStatus => ({
+function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
+  const p = projectCycles(ws, now);
+  const cycle = (name: string, key: string, expiry: Date | string | number | undefined, extra: { suffix?: string; note?: string } = {}): CycleStatus => ({
     name,
     state: key.charAt(0).toUpperCase() + key.slice(1) + (extra.suffix ?? ''),
     icon: ICONS[key.toLowerCase()] ?? '◆',
@@ -72,11 +74,11 @@ function cyclesOf(ws: WorldState): CycleStatus[] {
   });
   const circuit = ws.duviriCycle.choices?.find((c) => c.category === 'normal')?.choices ?? [];
   return [
-    cycle('Cetus', ws.cetusCycle.isDay ? 'day' : 'night', ws.cetusCycle.expiry),
-    cycle('Orb Vallis', ws.vallisCycle.isWarm ? 'warm' : 'cold', ws.vallisCycle.expiry),
-    cycle('Cambion Drift', ws.cambionCycle.state, ws.cambionCycle.expiry),
+    cycle('Cetus', p.cetus.isDay ? 'day' : 'night', p.cetus.expiry),
+    cycle('Orb Vallis', p.vallis.isWarm ? 'warm' : 'cold', p.vallis.expiry),
+    cycle('Cambion Drift', p.cambion.state, p.cambion.expiry),
     cycle('Zariman', ws.zarimanCycle.state, ws.zarimanCycle.expiry, { suffix: ' control' }),
-    cycle('Earth', ws.earthCycle.isDay ? 'day' : 'night', ws.earthCycle.expiry),
+    cycle('Earth', p.earth.isDay ? 'day' : 'night', p.earth.expiry),
     cycle('Duviri', ws.duviriCycle.state, ws.duviriCycle.expiry, { note: circuit.length ? `Circuit: ${circuit.join(', ')}` : undefined }),
   ];
 }
