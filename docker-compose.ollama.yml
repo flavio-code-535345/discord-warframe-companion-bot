@@ -1,0 +1,71 @@
+# Self-hosted Ollama for Cephalon Ordis. Deploy this on the machine with the RAM (about 20 GB free for a 26B-A4B model
+# at 4-bit), NOT necessarily on the bot's host: e.g. as its own Portainer stack on your laptop (Docker Desktop).
+#
+# Reaching it: the bot and this machine must share a private network. The tailscale service below puts Ollama on your
+# tailnet (key from https://login.tailscale.com/admin/settings/keys, reusable, tagged); install Tailscale on the bot's
+# host too. Then on the bot:  LOCAL_AI_URL=http://ollama:11434/v1  (MagicDNS name) or the 100.x address.
+# Never publish 11434 to the internet: Ollama has no authentication.
+#
+# As with the bot's stack, write the values inline when pasting this into Portainer.
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ollama
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?create a Tailscale auth key}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    # Shares the tailscale container's network, so port 11434 is reachable on the tailnet only.
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Keep the model in memory between questions; loading 16 GB takes a while.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-24h}
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-2}
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # NVIDIA GPU? Uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # One-shot: downloads the model once Ollama is up (a no-op when it is already there). You can also pull from Claude
+  # with the bot's ollama_pull MCP tool.
+  pull-model:
+    image: ollama/ollama:latest
+    network_mode: service:tailscale
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://127.0.0.1:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:?the model tag, e.g. gemma4:26b}"]
+    restart: "no"
+
+volumes:
+  ollama:
+  tailscale:
