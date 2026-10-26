@@ -149,7 +149,7 @@ export function registerOllamaTools(server: McpServer, ctx: AppContext, fetcher:
         url.replace(/\/+$/, ''),
         '/chat/completions',
         fetcher,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.config.LOCAL_AI_KEY || 'ollama'}` }, body: JSON.stringify({ model, max_tokens: 200, messages: [{ role: 'user', content: prompt }] }) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.config.LOCAL_AI_KEY || 'ollama'}` }, body: JSON.stringify({ model, max_tokens: 200, reasoning_effort: 'none', messages: [{ role: 'user', content: prompt }] }) },
         ctx.config.LOCAL_AI_TIMEOUT_SECONDS * 1000,
       );
       const ms = Date.now() - t0;

@@ -87,3 +87,15 @@ test('a clean "not covered" from the local model is final', async () => {
   assert.equal(out, null);
   assert.equal(cloud, 0);
 });
+
+test('turns thinking off for the local model only', async () => {
+  resetLocalAi();
+  const efforts: Record<string, unknown> = {};
+  await composeAnswer({ ...local, FREE_AI_FALLBACK_MODEL: undefined }, 'q', passages, async (url, init) => {
+    efforts[url.startsWith('http://100.') ? 'local' : 'cloud'] = JSON.parse(String(init.body)).reasoning_effort;
+    throw new Error('down');
+  });
+  assert.equal(efforts.local, 'none');
+  assert.equal(efforts.cloud, undefined);
+  resetLocalAi();
+});

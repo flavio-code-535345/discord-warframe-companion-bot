@@ -84,7 +84,8 @@ async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher)
           temperature: 0.2,
           // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
           max_tokens: 1200,
-          ...(/gpt-oss|gemini/.test(model) ? { reasoning_effort: 'low' } : {}),
+          // Ollama's thinking models (Gemma 4...) otherwise reason for ~400 tokens first: 30+ s on a CPU instead of a few.
+          ...(ep.local ? { reasoning_effort: 'none' } : /gpt-oss|gemini/.test(model) ? { reasoning_effort: 'low' } : {}),
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
