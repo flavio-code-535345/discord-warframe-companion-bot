@@ -20,6 +20,8 @@ import { saveSticky } from '../sticky/service.js';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const COOLDOWN_MS = 30_000;
+/** A message can carry a profile card and a clan roster row together. */
+const MAX_IMAGES = 2;
 /** Mastery points on the example card in assets/ss-roles-example.png (normalized, no separators). */
 const EXAMPLE_POINTS = '2692721';
 
@@ -158,8 +160,7 @@ async function handleRankRow(
   me: GuildMember,
   bytes: Uint8Array,
   row: RankRow,
-  finish: (payload: { content: string; embeds?: EmbedBuilder[] }, ttlMs?: number) => Promise<void>,
-): Promise<void> {
+): Promise<Outcome> {
   const { store, config } = ctx;
   const guild = message.guild;
   const problems: string[] = [];
@@ -181,9 +182,8 @@ async function handleRankRow(
 
   if (problems.length || !plan) {
     embed.setColor(COLORS.warn).setTitle('🚫 Clan rank not verified').setDescription(problems.map((p) => `• ${p}`).join('\n'));
-    await finish({ content: `<@${message.author.id}>`, embeds: [embed] }, 60_000);
     await modLog(ctx, { action: 'Screenshot rejected', moderator: ctx.client.user!, target: message.author, reason: problems.join(' '), fields: [{ name: 'Clan rank screenshot', value: `${rankName} · ${row.name ?? 'name not read'}` }] });
-    return;
+    return { embed, ttl: 60_000 };
   }
 
   const failed: string[] = [];
@@ -200,7 +200,6 @@ async function handleRankRow(
         ...nicknameLine(await syncNickname(member, row.name)),
       ].join('\n'),
     );
-  await finish({ content: `<@${message.author.id}>`, embeds: [embed] }, 20_000);
   await modLog(ctx, {
     action: 'Screenshot roles',
     moderator: ctx.client.user!,
@@ -213,6 +212,90 @@ async function handleRankRow(
       { name: 'Reader', value: 'OCR' },
     ],
   });
+  return { embed, ttl: 20_000 };
+}
+
+/** What one screenshot of a message came to: the embed to show and how long it stays up. */
+interface Outcome {
+  embed: EmbedBuilder;
+  ttl: number;
+}
+
+/** A profile card: checks the clan, reserves the card, and gives the roles and nickname it earns. */
+async function handleCard(
+  ctx: AppContext,
+  message: Message<true>,
+  member: GuildMember,
+  me: GuildMember,
+  bytes: Uint8Array,
+  read: CardRead,
+  reference: Reference | null,
+): Promise<Outcome> {
+  const { config, store } = ctx;
+  const guild = message.guild;
+  const reading = read.reading;
+  const mr = masteryRank(reading);
+  const clan = checkClan(reading, config.CLAN_NAME, reference !== null);
+
+  const problems = [...clan.problems];
+  console.log(`[ssroles] ${message.author.username}: read by ${read.reader}, ${reading.mastery_rank_title ?? 'no rank'}, clan ${reading.clan_name ?? 'none'}, ${problems.length ? `rejected (${problems.length})` : 'accepted'}`);
+  if (clan.ok) {
+    // The same card, or the same in-game name, can't be used by two Discord accounts.
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    const ign = reading.in_game_name ? norm(reading.in_game_name) : null;
+    // An exact mastery point total belongs to one account, so a card copied from someone else is refused.
+    const points = reading.mastery_points ? norm(reading.mastery_points) : null;
+    const takenBy =
+      store.claimSs(guild.id, 'image', hash, message.author.id) ??
+      (ign ? store.claimSs(guild.id, 'ign', ign, message.author.id) : null) ??
+      (points ? store.claimSs(guild.id, 'points', points, message.author.id) : null);
+    if (takenBy) problems.push('This screenshot, in-game name or exact mastery total was already used by another member. If that is a mistake, ask a moderator.');
+  }
+
+  if (problems.length) {
+    await modLog(ctx, {
+      action: 'Screenshot rejected',
+      moderator: ctx.client.user!,
+      target: message.author,
+      reason: problems.join(' '),
+      fields: [{ name: 'Reader', value: read.reader }],
+    });
+    return { embed: resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`)), ttl: 60_000 };
+  }
+
+  const earned = earnedNames(reading, mr, config.CLAN_NAME);
+  const plan = planRoles(roleInfos(guild), earned, new Set(member.roles.cache.keys()), me.roles.highest.position);
+  const reason = 'Screenshot roles: verified profile card';
+  const failed: string[] = [];
+  const apply = async (m: GuildMember, ids: string[], add: boolean) => {
+    for (const id of ids) await (add ? m.roles.add(id, reason) : m.roles.remove(id, reason)).catch(() => failed.push(id));
+  };
+  await apply(member, plan.add.map((r) => r.id), true);
+  await apply(member, plan.remove.map((r) => r.id), false);
+
+  const lines = [
+    plan.add.length ? `**Roles added:** ${plan.add.filter((r) => !failed.includes(r.id)).map((r) => `<@&${r.id}>`).join(' ') || '—'}` : 'No new roles to add: you already have everything this card earns.',
+    ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
+    ...(plan.skipped.length ? [`Skipped: ${plan.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}`] : []),
+    ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
+    ...nicknameLine(await syncNickname(member, reading.in_game_name?.split('#')[0] ?? null)),
+  ];
+  await modLog(ctx, {
+    action: 'Screenshot roles',
+    moderator: ctx.client.user!,
+    target: message.author,
+    reason: `Verified: ${reading.mastery_rank_title ?? 'rank unknown'}${mr !== null ? ` (MR ${mr})` : ''}`,
+    fields: [
+      { name: 'Mastery points', value: reading.mastery_points ?? '—' },
+      { name: 'Clan', value: `${reading.clan_name ?? '—'}${reading.clan_tag ? `#${reading.clan_tag}` : ''}${reading.clan_tier_rank ? ` · ${reading.clan_tier_rank}` : ''}` },
+      { name: 'In-game name', value: reading.in_game_name ?? 'not shown' },
+      { name: 'Accolades', value: reading.accolades.join(', ') || '—' },
+      { name: 'Roles added', value: plan.add.map((r) => r.name).join(', ') || '—' },
+      { name: 'Roles removed', value: plan.remove.map((r) => r.name).join(', ') || '—' },
+      { name: 'Reader', value: read.reader === 'ocr' ? 'OCR' : 'Gemini (OCR could not read it; emblem not compared)' },
+    ],
+  });
+  return { embed: resultEmbed(ctx, reading, mr, true, lines), ttl: 20_000 };
 }
 
 /** Handles a message in the screenshot-roles channel. Returns true when the message belonged to it. */
@@ -227,8 +310,8 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   const mention = { users: [message.author.id] };
 
   // Only screenshots belong here: anything else is removed, and the member is told why for a moment.
-  const image = message.attachments.find((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES) ?? null;
-  if (!image) {
+  const images = [...message.attachments.filter((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES).values()].slice(0, MAX_IMAGES);
+  if (!images.length) {
     if (message.member?.permissions.has(PermissionFlagsBits.ManageMessages)) return true;
     await message.delete().catch(() => {});
     const notice = await channel.send({ content: `<@${message.author.id}> this channel is only for profile screenshots (PNG, JPG or WebP under 8 MB).`, allowedMentions: mention }).catch(() => null);
@@ -254,80 +337,22 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   const work = async () => {
     const guild = message.guild;
     const [member, me] = await Promise.all([message.member ?? guild.members.fetch(message.author.id), guild.members.fetchMe()]);
-    const bytes = await download(image.url);
-    // The screenshot is in memory now; take it off Discord straight away, whatever happens next.
+    // Every screenshot is in memory now; take the message off Discord straight away, whatever happens next.
+    const downloads = await Promise.all(images.map(async (image) => ({ bytes: await download(image.url), mime: mimeOf(image.contentType) })));
     await message.delete().catch(() => {});
 
+    // Read them all first, then handle profile cards before clan rows: the row's name has to be one a card just verified.
     const reference = store.getSsReference(guild.id);
-    const read = await readCard(ctx, bytes, mimeOf(image.contentType), reference);
-    if (read.rankRow) {
-      await handleRankRow(ctx, message, member, me, bytes, read.rankRow, finish);
-      return;
+    const reads = [];
+    for (const d of downloads) reads.push({ ...d, read: await readCard(ctx, d.bytes, d.mime, reference) });
+    reads.sort((a, b) => Number(Boolean(a.read.rankRow)) - Number(Boolean(b.read.rankRow)));
+
+    const outcomes: Outcome[] = [];
+    for (const { bytes, read } of reads) {
+      outcomes.push(read.rankRow ? await handleRankRow(ctx, message, member, me, bytes, read.rankRow) : await handleCard(ctx, message, member, me, bytes, read, reference));
     }
-    const reading = read.reading;
-    const mr = masteryRank(reading);
-    const clan = checkClan(reading, config.CLAN_NAME, reference !== null);
-
-    const problems = [...clan.problems];
-    console.log(`[ssroles] ${message.author.username}: read by ${read.reader}, ${reading.mastery_rank_title ?? 'no rank'}, clan ${reading.clan_name ?? 'none'}, ${problems.length ? `rejected (${problems.length})` : 'accepted'}`);
-    if (clan.ok) {
-      // The same card, or the same in-game name, can't be used by two Discord accounts.
-      const hash = createHash('sha256').update(bytes).digest('hex');
-      const ign = reading.in_game_name ? norm(reading.in_game_name) : null;
-      // An exact mastery point total belongs to one account, so a card copied from someone else is refused.
-      const points = reading.mastery_points ? norm(reading.mastery_points) : null;
-      const takenBy =
-        store.claimSs(guild.id, 'image', hash, message.author.id) ??
-        (ign ? store.claimSs(guild.id, 'ign', ign, message.author.id) : null) ??
-        (points ? store.claimSs(guild.id, 'points', points, message.author.id) : null);
-      if (takenBy) problems.push('This screenshot, in-game name or exact mastery total was already used by another member. If that is a mistake, ask a moderator.');
-    }
-
-    if (problems.length) {
-      await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`))] }, 60_000);
-      await modLog(ctx, {
-        action: 'Screenshot rejected',
-        moderator: ctx.client.user!,
-        target: message.author,
-        reason: problems.join(' '),
-        fields: [{ name: 'Reader', value: read.reader }],
-      });
-      return true;
-    }
-
-    const earned = earnedNames(reading, mr, config.CLAN_NAME);
-    const plan = planRoles(roleInfos(guild), earned, new Set(member.roles.cache.keys()), me.roles.highest.position);
-    const reason = 'Screenshot roles: verified profile card';
-    const failed: string[] = [];
-    const apply = async (m: GuildMember, ids: string[], add: boolean) => {
-      for (const id of ids) await (add ? m.roles.add(id, reason) : m.roles.remove(id, reason)).catch(() => failed.push(id));
-    };
-    await apply(member, plan.add.map((r) => r.id), true);
-    await apply(member, plan.remove.map((r) => r.id), false);
-
-    const lines = [
-      plan.add.length ? `**Roles added:** ${plan.add.filter((r) => !failed.includes(r.id)).map((r) => `<@&${r.id}>`).join(' ') || '—'}` : 'No new roles to add: you already have everything this card earns.',
-      ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
-      ...(plan.skipped.length ? [`Skipped: ${plan.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}`] : []),
-      ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
-      ...nicknameLine(await syncNickname(member, reading.in_game_name?.split('#')[0] ?? null)),
-    ];
-    await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)] }, 20_000);
-    await modLog(ctx, {
-      action: 'Screenshot roles',
-      moderator: ctx.client.user!,
-      target: message.author,
-      reason: `Verified: ${reading.mastery_rank_title ?? 'rank unknown'}${mr !== null ? ` (MR ${mr})` : ''}`,
-      fields: [
-        { name: 'Mastery points', value: reading.mastery_points ?? '—' },
-        { name: 'Clan', value: `${reading.clan_name ?? '—'}${reading.clan_tag ? `#${reading.clan_tag}` : ''}${reading.clan_tier_rank ? ` · ${reading.clan_tier_rank}` : ''}` },
-        { name: 'In-game name', value: reading.in_game_name ?? 'not shown' },
-        { name: 'Accolades', value: reading.accolades.join(', ') || '—' },
-        { name: 'Roles added', value: plan.add.map((r) => r.name).join(', ') || '—' },
-        { name: 'Roles removed', value: plan.remove.map((r) => r.name).join(', ') || '—' },
-        { name: 'Reader', value: read.reader === 'ocr' ? 'OCR' : 'Gemini (OCR could not read it; emblem not compared)' },
-      ],
-    });
+    const extra = message.attachments.size > images.length ? 'Only the first two pictures of a message are read.' : '';
+    await finish({ content: `<@${message.author.id}>${extra ? ` ${extra}` : ''}`, embeds: outcomes.map((o) => o.embed) }, Math.max(...outcomes.map((o) => o.ttl)));
   };
   try {
     await Promise.race([work(), new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("that took too long, so I gave up. Try again in a minute.")), 90_000).unref())]);
@@ -407,7 +432,7 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     imageUrl: exampleUrl,
     content: [
       `**① Profile card** (first picture): open the in-game **Profile** and post a screenshot. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. You get your Mastery Rank role, the clan role and accolades such as Ten Year Supporter, and your server nickname becomes your in-game name.`,
-      '**② Clan rank** (second picture): to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list. Do ① first: the name on the row has to be the one on your profile. Rat Knight needs MR 16+. Higher ranks are handed out by leadership.',
+      '**② Clan rank** (second picture): to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list. Attach both pictures to the same message and Ordis handles them together; the name on the row has to be the one on your profile. Rat Knight needs MR 16+. Higher ranks are handed out by leadership.',
       'This channel is for clan members only and edited screenshots are rejected. Your screenshots are deleted right after they are read and are never saved. Post a new one after you rank up and your roles are updated.',
     ].join('\n\n'),
   });
