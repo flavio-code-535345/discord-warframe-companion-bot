@@ -649,7 +649,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log and the honeypot trap channel (+ its action). null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel and the honeypot trap channel (+ its action). null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
@@ -657,6 +657,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         welcome_channel_id: snowflake.nullable().optional(),
         chat_channel_id: snowflake.nullable().optional(),
         mod_log_channel_id: snowflake.nullable().optional(),
+        audit_log_channel_id: snowflake.nullable().optional().describe('Audit log: deleted/edited messages, role and channel changes, voice. Falls back to the moderation log when null'),
+        status_channel_id: snowflake.nullable().optional().describe('Staff channel for the bot\'s start / shutdown / restart reports'),
+        level_channel_id: snowflake.nullable().optional().describe('Where level-ups are announced; null announces where the member is talking'),
         honeypot_channel_id: snowflake.nullable().optional().describe('Trap channel: anyone without moderator powers who posts there is removed. Posts a "do not post" notice in it.'),
         honeypot_action: z.enum(HONEYPOT_ACTIONS).optional().describe('softban (default: remove + clear the last hour of messages, can rejoin), ban or kick'),
         lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
@@ -678,6 +681,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.welcome_channel_id !== undefined ? { welcomeChannelId: args.welcome_channel_id } : {}),
         ...(args.chat_channel_id !== undefined ? { chatChannelId: args.chat_channel_id } : {}),
         ...(args.mod_log_channel_id !== undefined ? { modLogChannelId: args.mod_log_channel_id } : {}),
+        ...(args.audit_log_channel_id !== undefined ? { auditLogChannelId: args.audit_log_channel_id } : {}),
+        ...(args.status_channel_id !== undefined ? { statusChannelId: args.status_channel_id } : {}),
+        ...(args.level_channel_id !== undefined ? { levelChannelId: args.level_channel_id } : {}),
         ...(args.lfg_voice_category_id !== undefined ? { lfgVoiceCategoryId: args.lfg_voice_category_id } : {}),
         ...(args.auto_vc_hub_channel_id !== undefined ? { autoVcHubChannelId: args.auto_vc_hub_channel_id } : {}),
         ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
