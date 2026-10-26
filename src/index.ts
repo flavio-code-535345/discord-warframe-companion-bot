@@ -13,6 +13,7 @@ import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { Store } from './db.js';
 import { attachHandlers, createClient } from './discord/bot.js';
+import { attachAuditLogging } from './logging/service.js';
 import { Notifier } from './discord/notifier.js';
 import { startHttpServer } from './http.js';
 import { getItemIndex } from './warframe/market.js';
@@ -28,6 +29,7 @@ configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENA
 const ctx: AppContext = { config, store, client, ai };
 
 attachHandlers(ctx);
+attachAuditLogging(ctx);
 const notifier = new Notifier(ctx);
 const backups = new BackupScheduler(ctx);
 const squadVoice = new LfgVoiceSweeper(ctx);

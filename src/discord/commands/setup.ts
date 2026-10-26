@@ -28,6 +28,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: `${ch(s.welcomeChannelId)}${flags.ENABLE_WELCOME ? '' : ' · ⚠️ disabled (set ENABLE_WELCOME=true and enable the Server Members intent)'}`,
       },
       { name: 'Moderation log', value: ch(s.modLogChannelId) },
+      { name: 'Audit log', value: s.auditLogChannelId ? ch(s.auditLogChannelId) : s.modLogChannelId ? `${ch(s.modLogChannelId)} (same as the moderation log)` : '*off*' },
       { name: 'Join-to-create lobby', value: s.autoVcHubChannelId ? `<#${s.autoVcHubChannelId}>` : '*off*' },
       {
         name: 'Squad voice',
@@ -86,6 +87,12 @@ export const setup: Command = {
       s
         .setName('modlog')
         .setDescription('Channel where purges, warnings, timeouts, kicks and bans are logged')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('auditlog')
+        .setDescription('Channel for the audit log: deleted and edited messages, role and channel changes, voice')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
     )
     .addSubcommand((s) =>
@@ -157,6 +164,7 @@ export const setup: Command = {
               { name: 'Welcome messages', value: 'welcome' },
               { name: 'Ordis chat channel', value: 'chat' },
               { name: 'Moderation log', value: 'modlog' },
+              { name: 'Audit log', value: 'auditlog' },
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
               { name: 'Screenshot roles', value: 'ssroles' },
@@ -193,6 +201,9 @@ export const setup: Command = {
         break;
       case 'modlog':
         settings = ctx.store.updateSettings(guildId, { modLogChannelId: channelId() });
+        break;
+      case 'auditlog':
+        settings = ctx.store.updateSettings(guildId, { auditLogChannelId: channelId() });
         break;
       case 'verification': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -286,6 +297,8 @@ export const setup: Command = {
                 ? { chatChannelId: null }
                 : feature === 'modlog'
                   ? { modLogChannelId: null }
+                  : feature === 'auditlog'
+                    ? { auditLogChannelId: null }
                   : { welcomeChannelId: null },
         );
         break;

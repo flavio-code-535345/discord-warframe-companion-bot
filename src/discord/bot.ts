@@ -40,16 +40,18 @@ import { drops, price, wf } from './commands/warframe.js';
 
 export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, activity, vc, sticky, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
-export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT'>): Client {
+export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ENABLE_MEMBER_LOGGING'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
   // text of messages that mention it and of DMs, which is all mention-based chat needs.
   // GuildVoiceStates is also unprivileged: squad voice upkeep needs to see who is in a channel.
   const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates];
+  // GuildModeration (not privileged) delivers audit log entries: who changed which role, channel or member.
+  intents.push(GatewayIntentBits.GuildModeration);
   // These two are privileged: they must also be switched on in the Developer Portal, or login fails.
-  if (config.ENABLE_WELCOME) intents.push(GatewayIntentBits.GuildMembers);
+  if (config.ENABLE_WELCOME || config.ENABLE_MEMBER_LOGGING) intents.push(GatewayIntentBits.GuildMembers);
   if (config.ENABLE_MESSAGE_CONTENT) intents.push(GatewayIntentBits.MessageContent);
   // DM channels aren't cached up front; the Channel partial lets their first message through.
-  return new Client({ intents, partials: [Partials.Channel] });
+  return new Client({ intents, partials: [Partials.Channel, Partials.Message] });
 }
 
 async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {

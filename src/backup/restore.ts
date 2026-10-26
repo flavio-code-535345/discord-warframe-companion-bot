@@ -257,7 +257,7 @@ export async function restoreBackup(
   if (backup.botSettings) {
     const live = store.getSettings(guild.id);
     const patch: Partial<Omit<GuildSettings, 'guildId'>> = {};
-    for (const key of ['alertsChannelId', 'announcementsChannelId', 'welcomeChannelId', 'chatChannelId', 'modLogChannelId', 'verifyChannelId', 'honeypotChannelId', 'lfgVoiceCategoryId', 'autoVcHubChannelId', 'ssRolesChannelId', 'levelChannelId'] as const) {
+    for (const key of ['alertsChannelId', 'announcementsChannelId', 'welcomeChannelId', 'chatChannelId', 'modLogChannelId', 'verifyChannelId', 'honeypotChannelId', 'lfgVoiceCategoryId', 'autoVcHubChannelId', 'ssRolesChannelId', 'levelChannelId', 'auditLogChannelId'] as const) {
       const mapped = mapCh(backup.botSettings[key]);
       const current = live[key];
       if (mapped && (opts.mode === 'sync' || !current || !guild.channels.cache.has(current))) patch[key] = mapped;

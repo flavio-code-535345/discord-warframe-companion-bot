@@ -34,6 +34,8 @@ export interface GuildSettings {
   levelingOff: number | null;
   /** Where level-ups are announced; null announces in the channel the member was talking in. */
   levelChannelId: string | null;
+  /** Audit log: deleted/edited messages, role and channel changes, voice, joins. Falls back to the moderation log channel. */
+  auditLogChannelId: string | null;
 }
 
 /** One member's XP. The level is derived from it (see leveling/xp.ts). */
@@ -87,6 +89,7 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['ssRolesChannelId', 'ss_roles_channel_id'],
   ['levelingOff', 'leveling_off'],
   ['levelChannelId', 'level_channel_id'],
+  ['auditLogChannelId', 'audit_log_channel_id'],
 ];
 const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
 
@@ -400,6 +403,9 @@ const MIGRATIONS: string[] = [
   );
   ALTER TABLE guild_settings ADD COLUMN leveling_off INTEGER;
   ALTER TABLE guild_settings ADD COLUMN level_channel_id TEXT;
+  `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN audit_log_channel_id TEXT;
   `,
 ];
 
