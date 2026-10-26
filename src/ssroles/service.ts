@@ -8,7 +8,7 @@ import { UserError, getSendableChannel } from '../services/clan.js';
 import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEmblem, fingerprint } from './emblem.js';
 import { ocr } from './ocr.js';
 import { type RankRow, parseCard, parseRankRow, parseRankRows, rankFromTitle } from './parse.js';
-import { type CardReading, type RoleInfo, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
+import { type CardReading, type RoleInfo, SELF_SERVE_RANKS, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
 import { readProfileCard } from './vision.js';
 import { saveSticky } from '../sticky/service.js';
 
@@ -166,9 +166,15 @@ async function handleRankRow(
   const { store, config } = ctx;
   const guild = message.guild;
   const problems: string[] = [];
-  if (!row.name) problems.push("I couldn't read the in-game name next to the rank.");
-  else if (!ownsName(store.ssNamesOf(guild.id, message.author.id), row.name)) {
-    problems.push(`"${row.name}" is not an in-game name you verified. Post your profile card first (it shows your name), then this screenshot.`);
+  const verified = store.ssNamesOf(guild.id, message.author.id);
+  if (!SELF_SERVE_RANKS.includes(row.rank)) problems.push(`${clanRankRoleName(row.rank)} is given out by clan leadership, not from a screenshot.`);
+  else if (!row.name) problems.push("I couldn't read the in-game name next to the rank.");
+  else if (!ownsName(verified, row.name)) {
+    problems.push(
+      verified.length
+        ? `"${row.name}" is not one of the in-game names you verified.`
+        : `None of your profile cards showed your in-game name, so I can't match "${row.name}" to you. Post a profile screenshot that includes the top of the Profile screen, where your name (Name#1234) is.`,
+    );
   }
   const hash = createHash('sha256').update(bytes).digest('hex');
   if (!problems.length && store.claimSs(guild.id, 'image', hash, message.author.id)) problems.push('This screenshot was already used by another member.');
