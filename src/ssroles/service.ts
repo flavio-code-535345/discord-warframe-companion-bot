@@ -155,7 +155,7 @@ export function ownsName(verified: string[], rosterName: string): boolean {
 }
 
 /** A clan roster screenshot: gives Rat Squire or Rat Knight to the member whose verified in-game name is on the row. */
-async function handleRankRow(
+export async function handleRankRow(
   ctx: AppContext,
   message: Message<true>,
   member: GuildMember,
@@ -194,15 +194,18 @@ async function handleRankRow(
     return { embed, ttl: 60_000 };
   }
 
+  // A row of the clan member list proves clan membership, so the clan roles come along with the rank.
+  const clanRoles = planRoles(roleInfos(guild), new Set(['clan', norm(config.CLAN_NAME)]), new Set(member.roles.cache.keys()), me.roles.highest.position).add;
+  const added = [...(plan.add ? [plan.add] : []), ...clanRoles];
   const failed: string[] = [];
-  if (plan.add) await member.roles.add(plan.add.id, 'Screenshot roles: clan rank').catch(() => failed.push(plan.add!.id));
+  for (const r of added) await member.roles.add(r.id, 'Screenshot roles: clan rank').catch(() => failed.push(r.id));
   for (const r of plan.remove) await member.roles.remove(r.id, 'Screenshot roles: clan rank').catch(() => failed.push(r.id));
   embed
     .setColor(COLORS.success)
     .setTitle('✅ Clan rank verified')
     .setDescription(
       [
-        plan.add ? `**Role added:** <@&${plan.add.id}>` : 'You already have this role.',
+        added.length ? `**Roles added:** ${added.filter((r) => !failed.includes(r.id)).map((r) => `<@&${r.id}>`).join(' ') || '—'}` : 'You already have all of these roles.',
         ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
         ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
         ...nicknameLine(await syncNickname(member, row.name)),
@@ -215,7 +218,7 @@ async function handleRankRow(
     reason: `Verified clan rank: ${rankName}`,
     fields: [
       { name: 'In-game name', value: row.name ?? '—' },
-      { name: 'Roles added', value: plan.add?.name ?? '—' },
+      { name: 'Roles added', value: added.map((r) => r.name).join(', ') || '—' },
       { name: 'Roles removed', value: plan.remove.map((r) => r.name).join(', ') || '—' },
       { name: 'Reader', value: 'OCR' },
     ],

@@ -4,7 +4,7 @@ import { after, afterEach, describe, it } from 'node:test';
 import { Collection } from 'discord.js';
 import { Store } from '../src/db.js';
 import { ocr } from '../src/ssroles/ocr.js';
-import { handleSsMessage } from '../src/ssroles/service.js';
+import { handleRankRow, handleSsMessage } from '../src/ssroles/service.js';
 
 const asset = (name: string) => readFileSync(new URL(`../assets/${name}`, import.meta.url));
 const realFetch = globalThis.fetch;
@@ -75,5 +75,16 @@ describe('profile card and clan row in one message', () => {
     const t = setup(['ss-roles-example.png'], 'u2');
     await handleSsMessage(t.message as never, t.ctx as never);
     assert.equal(t.sent.at(-1)!.embeds?.length, 1);
+  });
+});
+
+describe('clan rank also gives the clan role', () => {
+  it('adds Clan together with Rat Squire', async () => {
+    const t = setup([], 'u3');
+    const me = { roles: { highest: { position: 50 } } };
+    const out = await handleRankRow(t.ctx as never, t.message as never, t.member as never, me as never, new Uint8Array([1, 2, 3]), { rank: 'squire', name: 'TheRareGamer' });
+    assert.match(out.embed.data.title!, /Clan rank verified/);
+    assert.deepEqual([...t.held.keys()].sort(), ['clan', 'squire']);
+    assert.match(out.embed.data.description!, /Roles added/);
   });
 });
