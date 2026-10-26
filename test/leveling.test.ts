@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Store } from '../src/db.js';
 import { levelOf, levelTier, mayEarnMessageXp, planLevelRoles, progressOf, rollMessageXp, xpForLevel, xpForNextLevel, type LevelRole } from '../src/leveling/xp.js';
+import { levelUpText } from '../src/leveling/service.js';
 
 const role = (id: string, name: string, position: number, managed = false): LevelRole => ({ id, name, position, managed });
 
@@ -113,5 +114,13 @@ describe('screenshot claims reset', () => {
     assert.equal(s.claimSs('g', 'image', 'hash', 'u2'), 'u1');
     assert.equal(s.resetSsClaims('g'), 1);
     assert.equal(s.claimSs('g', 'image', 'hash', 'u2'), null);
+  });
+});
+
+describe('level 10 unlock', () => {
+  it('mentions images and embeds only when level 10 is crossed', () => {
+    assert.match(levelUpText('@a', 10, 9, 'Level 10+'), /images and embed links/);
+    assert.doesNotMatch(levelUpText('@a', 9, 8, null), /images/);
+    assert.doesNotMatch(levelUpText('@a', 11, 10, null), /images/);
   });
 });

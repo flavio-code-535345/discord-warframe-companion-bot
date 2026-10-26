@@ -18,11 +18,19 @@ export async function syncLevelRoles(guild: Guild, member: GuildMember, level: n
   return plan.add;
 }
 
-async function announce(ctx: AppContext, member: GuildMember, level: number, fallback: Message | null, role: LevelRole | null): Promise<void> {
+/** Level at which members may post images and embed links (the role permissions are set on the server). */
+export const MEDIA_LEVEL = 10;
+
+export function levelUpText(member: string, level: number, previous: number, roleName: string | null): string {
+  const unlocked = previous < MEDIA_LEVEL && level >= MEDIA_LEVEL ? ' You can now post images and embed links!' : '';
+  return `🎉 ${member} reached **level ${level}**!${roleName ? ` New role: **${roleName}**.` : ''}${unlocked}`;
+}
+
+async function announce(ctx: AppContext, member: GuildMember, level: number, previous: number, fallback: Message | null, role: LevelRole | null): Promise<void> {
   const channelId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).levelChannelId;
   const channel = channelId ? await ctx.client.channels.fetch(channelId).catch(() => null) : fallback?.channel;
   if (!channel || !channel.isTextBased() || !('send' in channel)) return;
-  const text = `🎉 ${member} reached **level ${level}**!${role ? ` New role: **${role.name}**.` : ''}`;
+  const text = levelUpText(String(member), level, previous, role?.name ?? null);
   await channel.send({ content: text, allowedMentions: { users: [member.id] } }).catch(() => {});
 }
 
@@ -30,9 +38,10 @@ async function announce(ctx: AppContext, member: GuildMember, level: number, fal
 async function award(ctx: AppContext, member: GuildMember, amount: number, now: number, message: Message | null): Promise<void> {
   const { before, after } = ctx.store.addXp(member.guild.id, member.id, amount, now, message !== null);
   const level = levelOf(after);
-  if (level === levelOf(before)) return;
+  const previous = levelOf(before);
+  if (level === previous) return;
   const role = await syncLevelRoles(member.guild, member, level);
-  await announce(ctx, member, level, message, role);
+  await announce(ctx, member, level, previous, message, role);
 }
 
 /** Called for every message in the server. */
