@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { composeAnswer } from '../src/answers/compose.js';
+import { LOCAL_COOLDOWN_MS, composeAnswer, resetLocalAi } from '../src/answers/compose.js';
 
 const config = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1/', FREE_AI_MODEL: 'm', FREE_AI_DAILY_LIMIT: 100 };
 const passages = [{ title: 'The Steel Path', url: 'u', extract: 'Talk to Teshin on any Relay to unlock the mode.' }];
@@ -44,4 +44,46 @@ test('falls back to the backup model when the main one is overloaded', async () 
   });
   assert.deepEqual(models, ['m', 'backup']);
   assert.equal(out, 'Answer from the backup.');
+});
+
+const local = { ...config, LOCAL_AI_URL: 'http://100.64.0.1:11434/v1', LOCAL_AI_MODEL: 'gemma' };
+
+test('asks the local model first, without the cloud key or daily limit', async () => {
+  resetLocalAi();
+  const urls: string[] = [];
+  const out = await composeAnswer({ ...local, FREE_AI_KEY: undefined, FREE_AI_DAILY_LIMIT: 1 }, 'q', passages, async (url, init) => {
+    urls.push(url);
+    assert.equal(JSON.parse(String(init.body)).model, 'gemma');
+    return reply('Local answer.')();
+  });
+  assert.equal(out, 'Local answer.');
+  assert.deepEqual(urls, ['http://100.64.0.1:11434/v1/chat/completions']);
+});
+
+test('falls back to the cloud when the local server is down, then skips it for a while', async () => {
+  resetLocalAi();
+  const urls: string[] = [];
+  const f = async (url: string) => {
+    urls.push(url);
+    if (url.startsWith('http://100.')) throw new Error('timeout');
+    return reply('Cloud answer.')();
+  };
+  const t = Date.now();
+  assert.equal(await composeAnswer(local, 'q', passages, f, t), 'Cloud answer.');
+  assert.equal(await composeAnswer(local, 'q', passages, f, t + 1000), 'Cloud answer.');
+  assert.equal(urls.filter((u) => u.startsWith('http://100.')).length, 1);
+  await composeAnswer(local, 'q', passages, f, t + LOCAL_COOLDOWN_MS + 1);
+  assert.equal(urls.filter((u) => u.startsWith('http://100.')).length, 2);
+  resetLocalAi();
+});
+
+test('a clean "not covered" from the local model is final', async () => {
+  resetLocalAi();
+  let cloud = 0;
+  const out = await composeAnswer(local, 'q', passages, async (url) => {
+    if (!url.startsWith('http://100.')) cloud++;
+    return reply('NOT_COVERED')();
+  });
+  assert.equal(out, null);
+  assert.equal(cloud, 0);
 });

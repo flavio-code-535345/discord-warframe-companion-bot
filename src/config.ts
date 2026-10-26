@@ -43,6 +43,11 @@ const EnvSchema = z.object({
   FREE_AI_MODEL: z.string().default('gemini-flash-latest'),
   FREE_AI_FALLBACK_MODEL: z.string().default('gemini-3.5-flash-lite'),
   FREE_AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(150),
+  /** Self-hosted Ollama (OpenAI-compatible, e.g. http://100.64.0.1:11434/v1), tried before the free cloud endpoint. */
+  LOCAL_AI_URL: z.string().url().optional(),
+  LOCAL_AI_MODEL: z.string().optional(),
+  LOCAL_AI_KEY: z.string().optional(),
+  LOCAL_AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
   /** Lets the MCP patch the bot's compiled code live (overlay in the data volume). Remote code execution for whoever holds MCP_AUTH_TOKEN: off by default. */
   ALLOW_CODE_EDIT: bool.default(false),
   WATCHTOWER_URL: z.string().url().optional(),
