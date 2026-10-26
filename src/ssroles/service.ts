@@ -7,7 +7,7 @@ import { modLog } from '../moderation/service.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
 import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEmblem, fingerprint } from './emblem.js';
 import { ocr } from './ocr.js';
-import { type RankRow, parseCard, parseRankRow } from './parse.js';
+import { type RankRow, parseCard, parseRankRow, parseRankRows, rankFromTitle } from './parse.js';
 import { type CardReading, type RoleInfo, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
 import { readProfileCard } from './vision.js';
 import { saveSticky } from '../sticky/service.js';
@@ -72,8 +72,8 @@ export interface CardRead {
   reader: 'ocr' | 'gemini';
   /** The emblem as a fingerprint, when the OCR reader found it. */
   emblem: Uint8Array | null;
-  /** Set when the image is a clan roster row (name and clan rank) instead of a profile card. */
-  rankRow?: RankRow | null;
+  /** Set when the image shows clan roster rows (name and clan rank) instead of a profile card. */
+  rankRows?: RankRow[];
 }
 
 /** OCR first; Gemini only when OCR can't make sense of the image (unsupported format, unusual layout, unreadable). */
@@ -83,11 +83,11 @@ export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string,
     try {
       const lines = await ocr.recognize(bytes);
       const parsed = parseCard(lines);
-      const rankRow = parsed.complete ? null : parseRankRow(lines);
-      if (rankRow) return { reading: parsed.reading, reader: 'ocr', emblem: null, rankRow };
+      const rankRows = parsed.complete ? [] : parseRankRows(lines);
+      if (rankRows.length) return { reading: parsed.reading, reader: 'ocr', emblem: null, rankRows };
       if (!parsed.complete || !parsed.clanLine) {
         const r = parsed.reading;
-        console.log(`[ssroles] OCR incomplete (${pixels.width}x${pixels.height}, ${lines.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name}`);
+        console.log(`[ssroles] OCR incomplete (${pixels.width}x${pixels.height}, ${lines.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name} | text: ${lines.map((l) => l.text.trim()).filter(Boolean).join(' / ').slice(0, 300)}`);
       } else {
         const box = findEmblem(pixels, parsed.clanLine);
         const emblem = box ? fingerprint(pixels, box) : null;
@@ -100,6 +100,8 @@ export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string,
     }
   }
   const reading = await readProfileCard(ctx.config, { mime, data: bytes });
+  const rankRows = reading.is_profile_card ? [] : (reading.roster_rows ?? []).flatMap((r) => { const rank = rankFromTitle(r.rank); return rank ? [{ rank, name: r.name }] : []; });
+  if (rankRows.length) return { reading, reader: 'gemini', emblem: null, rankRows };
   return { reading: withReference(reading, reference, null), reader: 'gemini', emblem: null };
 }
 
@@ -345,11 +347,16 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     const reference = store.getSsReference(guild.id);
     const reads = [];
     for (const d of downloads) reads.push({ ...d, read: await readCard(ctx, d.bytes, d.mime, reference) });
-    reads.sort((a, b) => Number(Boolean(a.read.rankRow)) - Number(Boolean(b.read.rankRow)));
+    reads.sort((a, b) => Number(Boolean(a.read.rankRows?.length)) - Number(Boolean(b.read.rankRows?.length)));
 
     const outcomes: Outcome[] = [];
     for (const { bytes, read } of reads) {
-      outcomes.push(read.rankRow ? await handleRankRow(ctx, message, member, me, bytes, read.rankRow) : await handleCard(ctx, message, member, me, bytes, read, reference));
+      if (read.rankRows?.length) {
+        // On a picture of the whole member list, take the row whose name this member verified.
+        const mine = store.ssNamesOf(guild.id, message.author.id);
+        const row = read.rankRows.find((r) => r.name && ownsName(mine, r.name)) ?? read.rankRows[0]!;
+        outcomes.push(await handleRankRow(ctx, message, member, me, bytes, row));
+      } else outcomes.push(await handleCard(ctx, message, member, me, bytes, read, reference));
     }
     const extra = message.attachments.size > images.length ? 'Only the first two pictures of a message are read.' : '';
     await finish({ content: `<@${message.author.id}>${extra ? ` ${extra}` : ''}`, embeds: outcomes.map((o) => o.embed) }, Math.max(...outcomes.map((o) => o.ttl)));

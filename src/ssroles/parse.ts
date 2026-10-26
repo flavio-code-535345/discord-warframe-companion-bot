@@ -135,20 +135,53 @@ function distance(a: string, b: string): number {
   return row[b.length]!;
 }
 
-/**
- * Reads the clan roster row ("<emblem> Name ......... Rat King"): the rank title is the last two words of the line and the
- * name is the word before them. Returns null when no line ends in a clan rank title.
- */
-export function parseRankRow(lines: OcrLine[]): RankRow | null {
-  for (const line of lines) {
-    const words = clean(line.text).split(' ').filter(Boolean);
-    if (words.length < 2) continue;
-    const last2 = words.slice(-2).map((w) => w.replace(/[^A-Za-z]/g, '').toLowerCase()).join('');
-    const rank = CLAN_RANKS.find((r) => distance(last2, `rat${r}`) <= (r.length >= 5 ? 1 : 0));
-    if (!rank) continue;
-    const before = words.slice(0, -2).reverse().find((w) => /^[A-Za-z0-9_.-]{3,}$/.test(w.replace(/^[^A-Za-z0-9_.-]+|[^A-Za-z0-9_.-]+$/g, '')));
-    const name = before ? before.replace(/^[^A-Za-z0-9_.-]+|[^A-Za-z0-9_.-]+$/g, '') : null;
-    return { rank, name };
+const NAME_WORD = /^[A-Za-z0-9_.-]{3,}$/;
+const trimWord = (w: string) => w.replace(/^[^A-Za-z0-9_.-]+|[^A-Za-z0-9_.-]+$/g, '');
+const letters = (w: string) => w.replace(/[^A-Za-z]/g, '').toLowerCase();
+const rankOf = (text: string): ClanRank | undefined => CLAN_RANKS.find((r) => distance(text, `rat${r}`) <= (r.length >= 5 ? 1 : 0));
+
+/** Lines that sit on the same row of the picture ("Name" on the left, "Rat King" on the right) joined left to right. */
+function sameRowText(lines: OcrLine[]): string[] {
+  const sorted = [...lines].sort((a, b) => a.y0 + a.y1 - (b.y0 + b.y1));
+  const groups: OcrLine[][] = [];
+  for (const line of sorted) {
+    const group = groups.find((g) => {
+      const top = Math.max(line.y0, ...g.map((l) => l.y0));
+      const bottom = Math.min(line.y1, ...g.map((l) => l.y1));
+      const height = Math.min(line.y1 - line.y0, ...g.map((l) => l.y1 - l.y0));
+      return bottom - top > 0.4 * height;
+    });
+    if (group) group.push(line);
+    else groups.push([line]);
   }
-  return null;
+  return groups.filter((g) => g.length > 1).map((g) => g.sort((a, b) => a.x0 - b.x0).map((l) => clean(l.text)).join(' '));
+}
+
+/**
+ * Reads clan roster rows ("<emblem> Name ......... Rat King"): a clan rank title anywhere in a line (or in lines that share
+ * a row of the picture) and the nearest name-like word before it. A screenshot of the whole list gives several rows.
+ */
+export function parseRankRows(lines: OcrLine[]): RankRow[] {
+  const found: RankRow[] = [];
+  for (const text of [...sameRowText(lines), ...lines.map((l) => clean(l.text))]) {
+    const words = text.split(' ').filter(Boolean);
+    for (let i = 0; i < words.length; i++) {
+      const rank = rankOf(letters(words[i]! + (words[i + 1] ?? ''))) ?? rankOf(letters(words[i]!));
+      if (!rank || letters(words[i]!).length < 3) continue;
+      const name = words.slice(0, i).reverse().map(trimWord).find((w) => NAME_WORD.test(w)) ?? null;
+      if (!found.some((f) => f.rank === rank && f.name === name)) found.push({ rank, name });
+      break;
+    }
+  }
+  // A bare rank title is only worth keeping when no row of the same rank came with a name.
+  return found.filter((r) => r.name !== null || !found.some((o) => o.rank === r.rank && o.name !== null));
+}
+
+/** The first roster row on a picture, or null when none shows a clan rank title. */
+export const parseRankRow = (lines: OcrLine[]): RankRow | null => parseRankRows(lines)[0] ?? null;
+
+/** "Rat Squire", "rat knight" or just "Knight" as a clan rank, or null. */
+export function rankFromTitle(title: string): ClanRank | null {
+  const t = letters(title);
+  return CLAN_RANKS.find((r) => t === r || t === `rat${r}`) ?? null;
 }

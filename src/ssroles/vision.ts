@@ -31,6 +31,7 @@ const prompt = () =>
     '- mastery_points (string|null), next_rank (string|null, e.g. "Legendary 4"), points_to_next_rank (string|null).',
     '- clan_name (string|null, WITHOUT the #number), clan_tag (string|null, digits after the #), clan_tier_rank (string|null, e.g. "GHOST CLAN RANK 10").',
     '- accolades (string[]): the titles in the Accolades panel, e.g. ["Ten Year Supporter"]; [] if none.',
+    "- clan_roster_rows (array of {name, rank}): if the image instead shows rows of the in-game clan member list, each row's player name and clan rank title exactly as written (e.g. 'Rat Squire', 'Rat Knight', 'Rat King'); [] when it does not.",
     '- looks_edited_or_fake (bool): signs of editing, pasted text, mismatched fonts or a recreated UI; false when unsure. notes (string): one short sentence on anything unusual.',
   ].join('\n');
 
@@ -60,6 +61,12 @@ export function parseReading(text: string): CardReading | null {
       clan_text_matches_reference: null,
       looks_edited_or_fake: o.looks_edited_or_fake === true,
       notes: s(o.notes) ?? '',
+      roster_rows: Array.isArray(o.clan_roster_rows)
+        ? o.clan_roster_rows
+            .map((r) => (r && typeof r === 'object' ? { name: s((r as Record<string, unknown>).name), rank: s((r as Record<string, unknown>).rank) } : null))
+            .filter((r): r is { name: string | null; rank: string } => r !== null && r.rank !== null)
+            .slice(0, 30)
+        : [],
     };
   } catch {
     return null;

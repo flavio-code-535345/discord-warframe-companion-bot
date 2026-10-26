@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, after } from 'node:test';
 import { Store } from '../src/db.js';
 import { ocr } from '../src/ssroles/ocr.js';
-import { type OcrLine, parseCard, parseRankRow } from '../src/ssroles/parse.js';
+import { type OcrLine, parseCard, parseRankRow, parseRankRows, rankFromTitle } from '../src/ssroles/parse.js';
 import { type RoleInfo, masteryOfRoleName, planClanRank } from '../src/ssroles/roles.js';
 import { FINGERPRINT_BYTES, bestSimilarity, splitFingerprints } from '../src/ssroles/emblem.js';
 import { learnReferences, ownsName, syncNickname } from '../src/ssroles/service.js';
@@ -162,4 +162,27 @@ describe('two reference pictures', () => {
     assert.ok(bestSimilarity(a, blob) > 0.99);
   });
   after(() => ocr.release());
+});
+
+describe('roster rows on a whole member list or split columns', () => {
+  const at = (text: string, x0: number, y0: number): OcrLine => ({ text, x0, y0, x1: x0 + 100, y1: y0 + 20, confidence: 90 });
+
+  it('finds the rank anywhere in the line, not only at its end', () => {
+    assert.deepEqual(parseRankRow([line('TheRareGamer Rat Knight  2 days ago')]), { rank: 'knight', name: 'TheRareGamer' });
+  });
+
+  it('joins a name and a rank that OCR returned as separate boxes on the same row', () => {
+    assert.deepEqual(parseRankRow([at('TheRareGamer', 100, 10), at('Rat Squire', 500, 12)]), { rank: 'squire', name: 'TheRareGamer' });
+  });
+
+  it('returns every row of a whole member list', () => {
+    const rows = parseRankRows([at('Alpha Rat Squire', 0, 0), at('Bravo Rat Knight', 0, 40), at('TheRareGamer Rat King', 0, 80)]);
+    assert.deepEqual(rows.map((r) => `${r.name}:${r.rank}`), ['Alpha:squire', 'Bravo:knight', 'TheRareGamer:king']);
+  });
+
+  it('turns a title into a rank', () => {
+    assert.equal(rankFromTitle('Rat Squire'), 'squire');
+    assert.equal(rankFromTitle('KNIGHT'), 'knight');
+    assert.equal(rankFromTitle('Warlord'), null);
+  });
 });

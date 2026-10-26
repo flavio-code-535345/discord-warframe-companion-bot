@@ -17,6 +17,8 @@ export interface CardReading {
   clan_text_matches_reference: boolean | null;
   looks_edited_or_fake: boolean;
   notes: string;
+  /** Rows of the in-game clan member list, when the fallback reader sees them instead of a profile card. */
+  roster_rows?: { name: string | null; rank: string }[];
 }
 
 /** Lowercase letters and digits only, so "Rat's Den 69", "rats den 69" and "🐀 Rats-Den-69" compare equal. */
