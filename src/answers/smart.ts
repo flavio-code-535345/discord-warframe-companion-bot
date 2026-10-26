@@ -30,6 +30,7 @@ import { searchWiki } from '../warframe/wiki.js';
 import type { AiSource } from '../db.js';
 import { composeDetailed } from './compose.js';
 import { agentAnswer, useAgent } from '../agent/answer.js';
+import { reportStatus, withStatus } from './status.js';
 import { brain } from '../agent/brain.js';
 import { cacheAllowedFor, getCachedAnswer, noteCacheHit } from './cache.js';
 import { isOperatorId, operatorAnswer, useOperatorMode } from './operator.js';
@@ -102,6 +103,7 @@ function worldEmbed(ws: WorldState, view: WorldView): EmbedBuilder {
 }
 
 async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> {
+  reportStatus('🔎 Searching the wiki');
   const [results, web] = await Promise.all([searchWiki(query, 3).catch(() => []), webSearch(ctx.config.SEARXNG_URL, query, 2)]);
   if (!results.length && !web.length) {
     return {
@@ -110,6 +112,7 @@ async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> 
       found: false,
     };
   }
+  reportStatus('✍️ Writing the answer');
   // With a free-tier model configured, the excerpts are worded into a real answer; the source stays below it.
   const written = await composeDetailed(ctx.config, query, [...results, ...asPassages(web)]);
   if (written) return { content: written.text, embeds: [wikiEmbed(query, results.length ? results : asPassages(web), true)], found: true, source: written.via, model: written.model };
@@ -211,7 +214,11 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
 }
 
 /** Answers a chat question from live data and the wiki, without any AI model. */
-export async function smartAnswer(question: string, ctx: AppContext, asker?: { id: string; name: string }): Promise<SmartAnswer> {
+export function smartAnswer(question: string, ctx: AppContext, asker?: { id: string; name: string }, onStatus?: (status: string) => void): Promise<SmartAnswer> {
+  return withStatus(onStatus, () => smartAnswerInner(question, ctx, asker));
+}
+
+async function smartAnswerInner(question: string, ctx: AppContext, asker?: { id: string; name: string }): Promise<SmartAnswer> {
   const intent = detectIntent(question);
   const started = Date.now();
   // Prices, drops, relics, world state and the clan schedule stay plain API lookups for everyone, operators included.

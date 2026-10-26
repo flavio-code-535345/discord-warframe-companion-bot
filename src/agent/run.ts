@@ -15,8 +15,8 @@ import { type AgentRun, type StepTrace, newRun } from './traces.js';
  * report the `tools` capability and by Gemini), or, for models without it, tool calls written as `<tool_call>` text that
  * this loop parses. The local model (Ollama) goes first, then the free cloud model, like every other answer.
  *
- * With `onEvent` the model's reply is streamed and every token, tool call and speed reading is reported as it happens
- * (the Brain page's live chat). Without it (Discord answers) a single plain request is made per step.
+ * With `onEvent` every step and tool call is reported as it happens, and with `stream` the model's reply is streamed too and
+ * every token and speed reading is reported (the Brain page's live chat). Discord answers use plain requests per step.
  */
 
 type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
@@ -65,8 +65,10 @@ export interface AgentDeps {
   tools?: AgentTool[];
   /** Fill in this run instead of creating one (the panel starts it first, so it can show it live). */
   run?: AgentRun;
-  /** Live events; also switches the model calls to streaming. */
+  /** Live events (steps, tool calls). */
   onEvent?: (e: AgentEvent) => void;
+  /** Stream the model's reply token by token (the Brain page's live chat). Defaults to on when `onEvent` is set; Discord answers pass false. */
+  stream?: boolean;
   /** Stops the run (the browser's Stop button or a closed connection). */
   signal?: AbortSignal;
   /** Earlier turns of a conversation (the panel's chat), oldest first. */
@@ -375,7 +377,7 @@ export async function runAgent(ctx: AppContext, question: string, who: { id: str
   const deadline = started + TOTAL_BUDGET_MS;
   const user = `[${new Date(now).toISOString().slice(0, 16)} UTC · ${who.name}]\n${question}`;
   const errors: string[] = [];
-  const io = { emit, signal: deps.signal, stream: Boolean(deps.onEvent) };
+  const io = { emit, signal: deps.signal, stream: deps.stream ?? Boolean(deps.onEvent) };
   const finish = (): AgentRun => {
     run.ms = Date.now() - started;
     run.tokens = run.steps.reduce((n, st) => n + (st.tokens ?? 0), 0);

@@ -284,3 +284,15 @@ describe('live streaming', () => {
     assert.equal((await runAgent(ctxOf(), 'q', who, { fetcher: s.fetcher, tools: [echo] })).via, 'local');
   });
 });
+
+describe('progress events without streaming', () => {
+  it('reports steps and tool calls but keeps plain requests (how Discord answers run)', async () => {
+    const s = server(['tools'], [() => reply('', [toolCall('echo', { q: 'a' })]), () => reply('Answer.')]);
+    const events: any[] = [];
+    const run = await runAgent(ctxOf(), 'q', who, { fetcher: s.fetcher, tools: [echo], onEvent: (e) => events.push(e), stream: false });
+    assert.equal(run.text, 'Answer.');
+    assert.equal(s.bodies[0]!.stream, undefined);
+    assert.deepEqual(events.map((e) => e.t).filter((t, i, all) => all.indexOf(t) === i), ['start', 'step', 'stepend', 'tool', 'toolresult', 'done']);
+    assert.equal(events.filter((e) => e.t === 'step').length, 2);
+  });
+});

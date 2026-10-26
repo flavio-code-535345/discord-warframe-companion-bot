@@ -4,6 +4,7 @@ import { isOperatorId } from '../answers/operator.js';
 import type { SmartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { brain } from './brain.js';
+import { reportStatus, toolStatus } from '../answers/status.js';
 import { runAgent } from './run.js';
 
 /** Open-ended intents, where the agent can pick its own sources. Prices, drops, world state and clan lookups keep their exact answers unless the scope is "all". */
@@ -21,7 +22,7 @@ export function useAgent(ctx: AppContext, userId: string, intentKind: string): b
 
 /** The agent's answer as a chat answer, or null when it could not produce one (the normal answer path then takes over). */
 export async function agentAnswer(ctx: AppContext, question: string, asker: { id: string; name: string }): Promise<SmartAnswer | null> {
-  const run = await runAgent(ctx, question, { id: asker.id, name: asker.name, operator: isOperatorId(ctx.config, asker.id) });
+  const run = await runAgent(ctx, question, { id: asker.id, name: asker.name, operator: isOperatorId(ctx.config, asker.id) }, { stream: false, onEvent: (e) => reportStatus(e.t === 'tool' ? toolStatus(e.name) : e.t === 'step' ? (e.n === 1 ? '🧠 Thinking' : `🧠 Thinking (step ${e.n})`) : '') });
   if (!run.text) return null;
   const tools = [...new Set(run.steps.flatMap((st) => st.calls.map((c) => c.name)))];
   return {

@@ -7,6 +7,7 @@ import { isOperatorId } from '../answers/operator.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
+import { startProgress } from './progress.js';
 
 const HISTORY_TURNS = 8;
 const TYPING_INTERVAL_MS = 8_000;
@@ -81,12 +82,16 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
 
   // Without an AI key, Ordis answers from its own live data and the wiki (free).
   if (!ctx.ai) {
+    // A slow answer (model, tools) shows a "thinking" notice with a progress bar; it is removed before the answer is posted.
+    const progress = startProgress((text) => message.reply({ content: text, allowedMentions: { parse: [], repliedUser: false } }));
     try {
-      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName }));
+      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName }, progress.set));
+      await progress.discard();
       if (!answer.found && inChatChannel && !mentioned) return;
       await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
       logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer);
     } catch (err) {
+      await progress.discard();
       console.error('[chat] answer failed:', err);
       await reply('Ordis encountered a -- CRITICAL ERROR -- small hiccup, Operator. Please try again shortly.').catch(() => {});
     }
