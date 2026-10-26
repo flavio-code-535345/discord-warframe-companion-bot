@@ -69,7 +69,7 @@ interface Endpoint {
 }
 
 /** One endpoint, its models in order. `failed` means no model gave a usable reply (unreachable, timed out, error status). */
-async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher): Promise<{ text: string | null; failed: boolean }> {
+async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher): Promise<{ text: string | null; failed: boolean; model?: string }> {
   const base = new URL(ep.url);
   const where = `${base.host}${base.pathname}`;
   const label = ep.local ? 'local' : 'free';
@@ -101,7 +101,7 @@ async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher)
       }
       const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
       const text = data.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-      return { text: text && !/NOT_COVERED/i.test(text) ? text : null, failed: false };
+      return { text: text && !/NOT_COVERED/i.test(text) ? text : null, failed: false, model };
     } catch (err) {
       console.error(`[answers] ${label} AI failed (model ${model}):`, err instanceof Error ? err.message : err);
     }
@@ -109,8 +109,20 @@ async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher)
   return { text: null, failed: true };
 }
 
+export interface Composed {
+  text: string;
+  /** Which endpoint wrote it: the self-hosted model or the free cloud one. */
+  via: 'local' | 'cloud';
+  model: string;
+}
+
 /** A written answer grounded in the excerpts, or null (nothing configured, over budget, not covered, or any failure). */
 export async function composeAnswer(config: ComposeConfig, question: string, passages: WikiResult[], fetcher: Fetcher = fetch, now = Date.now()): Promise<string | null> {
+  return (await composeDetailed(config, question, passages, fetcher, now))?.text ?? null;
+}
+
+/** Same as composeAnswer, but also says which model answered (for the AI log). */
+export async function composeDetailed(config: ComposeConfig, question: string, passages: WikiResult[], fetcher: Fetcher = fetch, now = Date.now()): Promise<Composed | null> {
   if (!passages.length) return null;
   const excerpts = passages
     .slice(0, 3)
@@ -128,7 +140,7 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
   }
   for (const ep of endpoints) {
     if (!ep.local && !allow(config.FREE_AI_DAILY_LIMIT, now)) return null;
-    const { text, failed } = await ask(ep, SYSTEM, user, fetcher);
+    const { text, failed, model } = await ask(ep, SYSTEM, user, fetcher);
     if (ep.local && failed) {
       localDownUntil = now + LOCAL_COOLDOWN_MS;
       console.warn(`[answers] local AI unavailable, using the cloud endpoint for the next ${LOCAL_COOLDOWN_MS / 60_000} min`);
@@ -136,7 +148,7 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
     }
     // A clean reply from the local model is final, including "not covered"; only a failure moves on.
     if (!text) return null;
-    return text.length > 1500 ? `${text.slice(0, 1497)}…` : text;
+    return { text: text.length > 1500 ? `${text.slice(0, 1497)}…` : text, via: ep.local ? 'local' : 'cloud', model: model ?? ep.models[0]! };
   }
   return null;
 }

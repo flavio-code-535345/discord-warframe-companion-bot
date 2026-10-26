@@ -2,6 +2,7 @@ import { type Message, type SendableChannels } from 'discord.js';
 import type { ChatTurn } from '../ai/ordis.js';
 import { splitForDiscord } from '../ai/ordis.js';
 import { isChannelQuestion } from '../answers/intent.js';
+import { logAnswer } from '../answers/log.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
@@ -81,6 +82,7 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
       const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx));
       if (!answer.found && inChatChannel && !mentioned) return;
       await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
+      logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer);
     } catch (err) {
       console.error('[chat] answer failed:', err);
       await reply('Ordis encountered a -- CRITICAL ERROR -- small hiccup, Operator. Please try again shortly.').catch(() => {});

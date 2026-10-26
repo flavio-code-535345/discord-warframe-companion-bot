@@ -40,6 +40,25 @@ export interface GuildSettings {
   statusChannelId: string | null;
 }
 
+/** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, or a direct lookup (prices, drops, world state...). */
+export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup';
+
+export interface AiLogEntry {
+  id: number;
+  at: number;
+  userId: string;
+  userName: string;
+  channelId: string | null;
+  via: 'chat' | 'ask' | 'dm';
+  question: string;
+  intent: string | null;
+  source: AiSource;
+  model: string | null;
+  found: boolean;
+  ms: number;
+  answer: string | null;
+}
+
 /** One member's XP. The level is derived from it (see leveling/xp.ts). */
 export interface MemberXp {
   userId: string;
@@ -413,6 +432,25 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE guild_settings ADD COLUMN status_channel_id TEXT;
   `,
+  `
+  CREATE TABLE ai_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    channel_id TEXT,
+    via TEXT NOT NULL,
+    question TEXT NOT NULL,
+    intent TEXT,
+    source TEXT NOT NULL,
+    model TEXT,
+    found INTEGER NOT NULL,
+    ms INTEGER NOT NULL,
+    answer TEXT
+  );
+  CREATE INDEX ai_log_at ON ai_log (guild_id, at);
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -735,6 +773,41 @@ export class Store {
 
   topXp(guildId: string, limit: number, offset = 0): MemberXp[] {
     return (this.db.prepare('SELECT * FROM member_xp WHERE guild_id = ? AND xp > 0 ORDER BY xp DESC, user_id LIMIT ? OFFSET ?').all(guildId, limit, offset) as Row[]).map((r) => this.toXp(r));
+  }
+
+  /** Records one answered question and drops entries older than the retention window. */
+  addAiLog(guildId: string, e: Omit<AiLogEntry, 'id'>, retentionMs = 30 * 86_400_000): void {
+    this.db
+      .prepare('INSERT INTO ai_log (guild_id, at, user_id, user_name, channel_id, via, question, intent, source, model, found, ms, answer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(guildId, e.at, e.userId, e.userName, e.channelId, e.via, e.question, e.intent, e.source, e.model, e.found ? 1 : 0, e.ms, e.answer);
+    this.db.prepare('DELETE FROM ai_log WHERE guild_id = ? AND at < ?').run(guildId, e.at - retentionMs);
+  }
+
+  recentAiLog(guildId: string, limit: number, userId?: string): AiLogEntry[] {
+    const rows = (userId
+      ? this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND user_id = ? ORDER BY at DESC, id DESC LIMIT ?').all(guildId, userId, limit)
+      : this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? ORDER BY at DESC, id DESC LIMIT ?').all(guildId, limit)) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      at: Number(r.at),
+      userId: String(r.user_id),
+      userName: String(r.user_name),
+      channelId: str(r.channel_id),
+      via: r.via as AiLogEntry['via'],
+      question: String(r.question),
+      intent: str(r.intent),
+      source: r.source as AiSource,
+      model: str(r.model),
+      found: Number(r.found) === 1,
+      ms: Number(r.ms),
+      answer: str(r.answer),
+    }));
+  }
+
+  /** Answers per source since a point in time. */
+  aiLogStats(guildId: string, since: number): Record<string, number> {
+    const rows = this.db.prepare('SELECT source, COUNT(*) AS n FROM ai_log WHERE guild_id = ? AND at >= ? GROUP BY source').all(guildId, since) as Row[];
+    return Object.fromEntries(rows.map((r) => [String(r.source), Number(r.n)]));
   }
 
   countXpMembers(guildId: string): number {

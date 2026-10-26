@@ -26,7 +26,8 @@ import { searchDrops } from '../warframe/drops.js';
 import { lookupItem } from '../warframe/items.js';
 import { priceCheck } from '../warframe/market.js';
 import { searchWiki } from '../warframe/wiki.js';
-import { composeAnswer } from './compose.js';
+import type { AiSource } from '../db.js';
+import { composeDetailed } from './compose.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
 
@@ -35,6 +36,11 @@ export interface SmartAnswer {
   embeds: EmbedBuilder[];
   /** False when nothing useful was found, so a busy chat channel can stay quiet instead of replying "no idea". */
   found: boolean;
+  /** For the AI log: how the answer was produced. Filled in by smartAnswer. */
+  source?: AiSource;
+  model?: string | null;
+  intent?: string;
+  ms?: number;
 }
 
 const pick = <T>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
@@ -99,9 +105,9 @@ async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> 
     };
   }
   // With a free-tier model configured, the excerpts are worded into a real answer; the source stays below it.
-  const written = await composeAnswer(ctx.config, query, results);
-  if (written) return { content: written, embeds: [wikiEmbed(query, results, true)], found: true };
-  return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true };
+  const written = await composeDetailed(ctx.config, query, results);
+  if (written) return { content: written.text, embeds: [wikiEmbed(query, results, true)], found: true, source: written.via, model: written.model };
+  return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true, source: 'excerpt' };
 }
 
 async function itemAnswer(name: string, line: string, fallbackQuery: string, ctx: AppContext): Promise<SmartAnswer> {
@@ -199,5 +205,8 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
 
 /** Answers a chat question from live data and the wiki, without any AI model. */
 export async function smartAnswer(question: string, ctx: AppContext): Promise<SmartAnswer> {
-  return answerIntent(detectIntent(question), question, ctx);
+  const intent = detectIntent(question);
+  const started = Date.now();
+  const answer = await answerIntent(intent, question, ctx);
+  return { ...answer, source: answer.source ?? 'lookup', model: answer.model ?? null, intent: intent.kind, ms: Date.now() - started };
 }

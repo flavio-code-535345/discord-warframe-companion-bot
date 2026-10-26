@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { splitForDiscord } from '../../ai/ordis.js';
+import { logAnswer } from '../../answers/log.js';
 import { smartAnswer } from '../../answers/smart.js';
 import { UserError } from '../../services/clan.js';
 import { limitMessage } from '../chat.js';
@@ -22,6 +23,7 @@ export const ask: Command = {
       await interaction.deferReply();
       const answer = await smartAnswer(question, ctx);
       await interaction.editReply({ content: `${quote}\n${answer.content}`.slice(0, 2000), embeds: answer.embeds, allowedMentions: { parse: [] } });
+      logAnswer(ctx, { id: interaction.user.id, name: interaction.user.displayName, channelId: interaction.channelId, via: 'ask' }, question, answer);
       return;
     }
 
