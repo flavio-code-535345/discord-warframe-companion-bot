@@ -50,7 +50,7 @@ export function adminRouter(ctx: AppContext): Router {
     const nonce = randomBytes(16).toString('base64');
     res.locals.nonce = nonce;
     res.set({
-      'Content-Security-Policy': `default-src 'none'; img-src 'self' https:; style-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      'Content-Security-Policy': `default-src 'none'; img-src 'self' https:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'same-origin',

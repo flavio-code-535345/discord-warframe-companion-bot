@@ -2,12 +2,13 @@ import type { Request, RequestHandler, Response, Router } from 'express';
 import { DEFAULT_PROMPT, LIMITS, OPERATOR_NOTE, PERSONA_BANDS, brain, buildSystemPrompt, personaBand, resetBrain, updateBrain } from '../../agent/brain.js';
 import { runAgent } from '../../agent/run.js';
 import { AGENT_TOOLS, TOOL_NAMES, enabledTools } from '../../agent/tools.js';
-import { type AgentRun, getRun, newRun, recentRuns } from '../../agent/traces.js';
+import { type AgentRun, getRun, recentRuns } from '../../agent/traces.js';
 import { modelCapabilities, ollamaBase, localModelOf } from '../../ai/ollama.js';
 import type { AppContext } from '../../context.js';
 import type { PanelSession } from '../../db.js';
 import { UserError } from '../../services/clan.js';
 import { escapeHtml as e } from '../status.js';
+import { BRAIN_CHAT_JS } from './brain-client.js';
 import { type PageContext, csrfField, layout } from './pages.js';
 
 /**
@@ -45,7 +46,7 @@ function runDetail(run: AgentRun): string {
             `<details><summary>${c.error ? '⚠️' : '🔧'} <code>${e(c.name)}</code> ${e(clip(JSON.stringify(c.args), 90))} <span class="muted">${c.result ? secs(c.ms) : 'running…'}</span></summary><pre>${e(clip(pretty(c.args), 600))}</pre><pre>${e(clip(c.result, 2500))}</pre></details>`,
         )
         .join('');
-      return `<div class="step"><div class="muted">Step ${st.n} · ${st.endpoint} · ${e(st.model)} · ${secs(st.ms)}</div>${
+      return `<div class="step"><div class="muted">Step ${st.n} · ${st.endpoint} · ${e(st.model)} · ${secs(st.ms)}${st.tokens ? ` · ${st.tokens} tokens · ${st.tps.toFixed(1)} tok/s · first token ${secs(st.ttft)}` : ''}</div>${
         st.reasoning ? `<details><summary>💭 reasoning (${st.reasoning.length} chars)</summary><pre>${e(clip(st.reasoning, 3000))}</pre></details>` : ''
       }${st.content && st.calls.length ? `<div class="muted">said: ${e(clip(st.content, 300))}</div>` : ''}${calls}</div>`;
     })
@@ -55,7 +56,7 @@ function runDetail(run: AgentRun): string {
       ? '<p class="muted">⏳ Still working… this page refreshes by itself.</p>'
       : run.status === 'failed'
         ? `<div class="flash err">Failed: ${e(run.error ?? 'no answer')}</div>`
-        : `<div class="answer">${e(run.text ?? '')}</div><p class="muted">${e(run.via ?? '')} · ${e(run.model ?? '')} · ${run.mode === 'text' ? 'tool calls written as text' : 'native tool calls'} · ${secs(run.ms)}</p>`;
+        : `<div class="answer">${e(run.text ?? '')}</div><p class="muted">${e(run.via ?? '')} · ${e(run.model ?? '')} · ${run.mode === 'text' ? 'tool calls written as text' : 'native tool calls'} · ${secs(run.ms)}${run.tokens ? ` · ${run.tokens} tokens · ${run.tps.toFixed(1)} tok/s average` : ''}</p>`;
   return `<div class="card"><div class="muted">${e(when(run.at))} UTC · ${e(run.who)}${run.operator ? ' (operator)' : ''}</div><p><strong>${e(clip(run.question, 400))}</strong></p>${steps || '<p class="muted">No model call yet.</p>'}${outcome}<details><summary class="muted">System prompt this run used</summary><pre>${e(run.system)}</pre></details></div>`;
 }
 
@@ -68,7 +69,6 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
     const runs = recentRuns();
     const wanted = typeof req.query.run === 'string' ? getRun(req.query.run) : undefined;
     const shown = wanted ?? runs[0];
-    const working = runs.some((r) => r.status === 'running');
 
     const model = localModelOf(config);
     const caps = config.LOCAL_AI_URL && model ? await modelCapabilities(ollamaBase(config.LOCAL_AI_URL), model).catch(() => []) : [];
@@ -91,6 +91,18 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
     const body = `<h1>Brain</h1>
 <div class="card"><p class="muted flush">Who gets the agent: <strong>${e(s.agentFor)}</strong> · questions: <strong>${s.scope === 'all' ? 'all except help' : 'open-ended (wiki and builds)'}</strong> · ${modelLine} · tools on: ${enabledTools(ctx).length}/${TOOL_NAMES.length}</p></div>
 
+<h2>Live chat</h2>
+<div class="card">
+<div class="chatlog" id="chatlog"></div>
+<div class="tpsbox"><span class="tpsnum" id="tpsnum">–</span><span class="muted">tokens/s</span><meter id="tpsmeter" min="0" max="100" low="5" high="25" optimum="60" value="0"></meter></div>
+<div class="muted" id="tpsstat">Ask something: the agent's thinking, tool calls and answer stream in here as they happen, with the model's speed. Uses the saved settings below.</div>
+<form class="stack" id="chatform" method="post" action="/admin/brain/chat">${csrfField(p.session)}
+<textarea class="chatq" name="question" rows="2" maxlength="600" required placeholder="What is the best way to farm Kuva, and did anything change recently?  (Enter sends, Shift+Enter for a new line)"></textarea>
+<div class="row"><label class="check"><input type="checkbox" name="operator" value="1"> Answer as an operator (open-ended instructions allowed)</label><div><button id="chatsend">Send</button><button type="button" class="danger" id="chatstop" hidden>Stop</button></div></div>
+</form></div>
+<script nonce="${p.nonce}">${BRAIN_CHAT_JS}</script>
+
+<h2>Settings</h2>
 <form class="stack" method="post" action="/admin/brain/save">${csrfField(p.session)}
 <h2>Persona</h2>
 <div class="card stack">
@@ -137,11 +149,7 @@ ${number('toolResultChars', 'Tool result limit (characters)', s.toolResultChars,
 <div class="card"><details><summary class="muted">Show the assembled system prompt (for a member)</summary><pre>${e(buildSystemPrompt({ bot: config.BOT_NAME, clan: config.CLAN_NAME }))}</pre></details>
 <details><summary class="muted">Extra paragraph for the operators</summary><pre>${e(OPERATOR_NOTE)}</pre></details></div>
 
-<h2>Playground</h2>
-<div class="card"><form class="stack" method="post" action="/admin/brain/test">${csrfField(p.session)}
-<label>Ask the agent a question (uses the settings above, saved ones)<textarea name="question" rows="3" maxlength="600" required placeholder="What is the best way to farm Kuva, and did anything change recently?"></textarea></label>
-<label class="check"><input type="checkbox" name="operator" value="1"> Answer as an operator (open-ended instructions allowed)</label>
-<div><button>Run</button></div></form></div>
+
 
 <h2>Runs</h2>
 ${shown ? runDetail(shown) : '<p class="muted">No runs since the bot started. Ask a question in the playground, or in Discord once the agent is on.</p>'}
@@ -149,8 +157,7 @@ ${runs.length ? `<div class="card"><table><tr><th>When</th><th>Who</th><th>Quest
       .map((r) => `<tr><td><a href="/admin/brain?run=${e(r.id)}">${e(when(r.at))}</a></td><td>${e(r.who)}</td><td>${e(clip(r.question, 70))}</td><td>${r.status === 'running' ? '⏳' : r.status === 'failed' ? '❌' : '✅'} ${r.steps.length} step${r.steps.length === 1 ? '' : 's'}, ${r.steps.reduce((n, st) => n + st.calls.length, 0)} tool call${r.steps.reduce((n, st) => n + st.calls.length, 0) === 1 ? '' : 's'}${r.ms ? `, ${secs(r.ms)}` : ''}</td></tr>`)
       .join('')}</table><p class="muted">Kept in memory (last ${recentRuns().length}); cleared when the bot restarts.</p></div>` : ''}`;
 
-    const page = layout('Brain', body, p);
-    html(res, working && shown?.status === 'running' ? page.replace('</head>', '<meta http-equiv="refresh" content="4"></head>') : page);
+    html(res, layout('Brain', body, p));
   });
 
   router.post(
@@ -192,20 +199,38 @@ ${runs.length ? `<div class="card"><table><tr><th>When</th><th>Who</th><th>Quest
     }),
   );
 
-  router.post(
-    '/brain/test',
-    action('brain', async (req, session) => {
-      const question = typeof req.body.question === 'string' ? req.body.question.trim().slice(0, 600) : '';
-      if (!question) throw new UserError('Type a question first.');
-      if (recentRuns().some((r) => r.status === 'running')) throw new UserError('A run is still in progress. Wait for it to finish.');
-      const operator = req.body.operator === '1';
-      const who = { id: session.userId, name: session.username, operator };
-      const run = newRun({ who: who.name, operator, question, system: '' });
-      void runAgent(ctx, question, who, { run }).catch((err) => {
-        run.status = 'failed';
-        run.error = err instanceof Error ? err.message : String(err);
-      });
-      return 'Started. The result appears below as it works.';
-    }),
-  );
+  // The live chat: runs the agent and streams its events as they happen (one JSON object per line).
+  router.post('/brain/chat', async (req, res) => {
+    const session = res.locals.session as PanelSession;
+    const question = typeof req.body.question === 'string' ? req.body.question.trim().slice(0, 600) : '';
+    if (!question) return void res.status(400).json({ error: 'Type a question first.' });
+    if (recentRuns().some((r) => r.status === 'running')) return void res.status(409).json({ error: 'A run is still in progress.' });
+    const history: { role: 'user' | 'assistant'; content: string }[] = [];
+    try {
+      const raw: unknown = JSON.parse(typeof req.body.history === 'string' ? req.body.history : '[]');
+      for (const h of Array.isArray(raw) ? raw.slice(-8) : []) {
+        if (h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string') history.push({ role: h.role, content: h.content.slice(0, 2000) });
+      }
+    } catch {
+      // Bad history: start without it.
+    }
+    const operator = req.body.operator === '1';
+    const who = { id: session.userId, name: session.username, operator };
+
+    res.status(200).set({ 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
+    res.flushHeaders();
+    const stopper = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) stopper.abort();
+    });
+    // Keeps the connection alive through proxies while a slow model loads.
+    const ping = setInterval(() => res.write('{"t":"ping"}\n'), 10_000);
+    ping.unref();
+    try {
+      await runAgent(ctx, question, who, { onEvent: (e) => res.writable && res.write(`${JSON.stringify(e)}\n`), signal: stopper.signal, history });
+    } finally {
+      clearInterval(ping);
+      res.end();
+    }
+  });
 }

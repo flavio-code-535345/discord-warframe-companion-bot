@@ -49,6 +49,19 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--mute
 .stat.small{font-size:14px;line-height:1.35;font-weight:600}
 .grid .card{min-width:0}
 .flush{margin:0}
+.chatlog{max-height:560px;overflow:auto;padding-right:4px}
+.msg{margin:12px 0;padding:10px 12px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.user{background:rgba(59,154,199,.16);margin-left:12%}
+.msg.bot{background:var(--card);border:1px solid var(--border)}
+.think{font-size:13px;color:var(--muted)}
+.think pre.reason{opacity:.8}
+.answer{white-space:pre-wrap}
+.answer.error{color:#fca5a5}
+.tpsbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.tpsnum{font-size:30px;font-weight:700;min-width:3.2ch;text-align:right}
+meter{flex:1;min-width:160px;height:16px}
+textarea.chatq{min-height:64px}
+[hidden]{display:none!important}
 textarea.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px;min-height:360px}
 .muted{color:var(--muted);font-size:13px}
 .flash{padding:10px 14px;border-radius:10px;margin-bottom:16px;border:1px solid}

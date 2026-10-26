@@ -232,3 +232,55 @@ describe('who gets the agent', () => {
     assert.equal(useAgent(ctxOf({ LOCAL_AI_URL: undefined }), '2', 'wiki'), false, 'no model to run it');
   });
 });
+
+describe('live streaming', () => {
+  const sse = (...events: unknown[]) => new Response(`${events.map((e) => `data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join('')}data: [DONE]\n\n`);
+  const delta = (d: object) => ({ choices: [{ delta: d }] });
+
+  it('streams reasoning, tool calls and the answer, and reports tokens per second', async () => {
+    const s = server(
+      ['tools'],
+      [
+        () => sse(delta({ reasoning: 'hmm ' }), delta({ tool_calls: [{ index: 0, id: 'c1', function: { name: 'echo', arguments: '{"q":' } }] }), delta({ tool_calls: [{ index: 0, function: { arguments: '"a"}' } }] }), { choices: [], usage: { completion_tokens: 12, prompt_tokens: 100 } }),
+        () => sse(delta({ content: 'Hel' }), delta({ content: 'lo.' }), { choices: [], usage: { completion_tokens: 5, prompt_tokens: 140 } }),
+      ],
+    );
+    const events: any[] = [];
+    const run = await runAgent(ctxOf(), 'q', who, { fetcher: s.fetcher, tools: [echo], onEvent: (e) => events.push(e), history: [{ role: 'user', content: 'earlier' }, { role: 'assistant', content: 'reply' }] });
+    assert.equal(run.text, 'Hello.');
+    assert.deepEqual(events.map((e) => e.t).filter((t, i, all) => all.indexOf(t) === i), ['start', 'step', 'stats', 'reasoning', 'stepend', 'tool', 'toolresult', 'content', 'done']);
+    assert.deepEqual(events.find((e) => e.t === 'tool').args, { q: 'a' });
+    assert.equal(events.find((e) => e.t === 'stepend').tokens, 12);
+    assert.equal(events.find((e) => e.t === 'stepend').promptTokens, 100);
+    assert.equal(events.filter((e) => e.t === 'content').map((e) => e.d).join(''), 'Hello.');
+    const done = events.at(-1);
+    assert.equal(done.t, 'done');
+    assert.equal(done.tokens, 17);
+    assert.ok(done.tps > 0);
+    assert.equal(run.steps[0]!.tokens, 12);
+    assert.equal(run.tokens, 17);
+
+    assert.equal(s.bodies[0]!.stream, true);
+    assert.deepEqual(s.bodies[0]!.stream_options, { include_usage: true });
+    assert.deepEqual(s.bodies[0]!.messages.slice(1, 3), [{ role: 'user', content: 'earlier' }, { role: 'assistant', content: 'reply' }]);
+    const assistant = s.bodies[1]!.messages.find((m: any) => m.tool_calls);
+    assert.equal(assistant.tool_calls[0].function.arguments, '{"q":"a"}');
+    assert.deepEqual(s.bodies[1]!.messages.at(-1), { role: 'tool', tool_call_id: 'c1', content: '{"echoed":"a"}' });
+  });
+
+  it('stops when asked and does not blame the local server', async () => {
+    const ac = new AbortController();
+    const fetcher = async (url: string) => {
+      if (url.endsWith('/api/show')) return show('tools');
+      ac.abort();
+      throw new Error('aborted');
+    };
+    const events: any[] = [];
+    const run = await runAgent(ctxOf(), 'q', who, { fetcher, tools: [echo], onEvent: (e) => events.push(e), signal: ac.signal });
+    assert.equal(run.status, 'failed');
+    assert.equal(run.error, 'Stopped.');
+    assert.deepEqual(events.at(-1), { t: 'error', message: 'Stopped.' });
+    const s = server(['tools'], [() => reply('still local')]);
+    assert.equal((await runAgent(ctxOf(), 'q', who, { fetcher: s.fetcher, tools: [echo] })).via, 'local');
+  });
+});

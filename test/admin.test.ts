@@ -196,3 +196,27 @@ test('the Brain page shows the prompt and slider, and saving clamps and applies 
   assert.equal(brain().prompt, '');
   resetBrainState();
 });
+
+test('the Brain chat streams the run as JSON lines, and only the Brain page may run a script', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const page = await get('/admin/brain', cookie);
+  assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'nonce-[^']+'; connect-src 'self'/);
+  const html = await page.text();
+  assert.match(html, /<script nonce="[^"]+">/);
+  assert.match(html, /id="chatform"/);
+  assert.doesNotMatch(await (await get('/admin/ai', cookie)).text(), /<script/);
+
+  const noCsrf = await post('/admin/brain/chat', { question: 'hi' }, cookie);
+  assert.equal(noCsrf.status, 403);
+  const empty = await post('/admin/brain/chat', { question: ' ', _csrf: 'csrf-token' }, cookie);
+  assert.equal(empty.status, 400);
+
+  // The test bot has no model, so the run fails at once: a start line, then the reason.
+  const res = await post('/admin/brain/chat', { question: 'what is a Kuva Lich?', history: '[{"role":"user","content":"x"},{"bad":1}]', _csrf: 'csrf-token' }, cookie);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') ?? '', /x-ndjson/);
+  const lines = (await res.text()).trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(lines[0].t, 'start');
+  assert.equal(lines.at(-1).t, 'error');
+  assert.match(lines.at(-1).message, /No model is available/);
+});

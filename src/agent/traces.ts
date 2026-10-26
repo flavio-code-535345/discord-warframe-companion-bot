@@ -21,6 +21,11 @@ export interface StepTrace {
   reasoning: string;
   content: string;
   calls: ToolCallTrace[];
+  /** Tokens the model generated in this step, the speed while generating (tokens/s), the wait for the first token (ms; includes loading the model) and the prompt size when the server says. */
+  tokens: number;
+  tps: number;
+  ttft: number;
+  promptTokens: number | null;
 }
 
 export interface AgentRun {
@@ -37,6 +42,9 @@ export interface AgentRun {
   mode: 'native' | 'text' | null;
   steps: StepTrace[];
   ms: number;
+  /** Totals over all steps: generated tokens and the average generation speed. */
+  tokens: number;
+  tps: number;
   error: string | null;
   /** The system prompt this run used, so a result can be matched to the settings that produced it. */
   system: string;
@@ -47,7 +55,7 @@ const runs: AgentRun[] = [];
 let counter = 0;
 
 export function newRun(init: Pick<AgentRun, 'who' | 'operator' | 'question' | 'system'>): AgentRun {
-  const run: AgentRun = { id: `${Date.now().toString(36)}${(counter++).toString(36)}`, at: Date.now(), status: 'running', text: null, via: null, model: null, mode: null, steps: [], ms: 0, error: null, ...init };
+  const run: AgentRun = { id: `${Date.now().toString(36)}${(counter++).toString(36)}`, at: Date.now(), status: 'running', text: null, via: null, model: null, mode: null, steps: [], ms: 0, tokens: 0, tps: 0, error: null, ...init };
   runs.unshift(run);
   if (runs.length > KEEP) runs.length = KEEP;
   return run;
