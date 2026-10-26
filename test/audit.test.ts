@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { Store } from '../src/db.js';
 import { auditEntryEmbed, bulkDeleteEmbed, clip, describeChange, humanAction, memberLeaveEmbed, messageDeleteEmbed, messageEditEmbed, targetLabel, voiceEmbed } from '../src/logging/format.js';
 import { auditChannelId, skipMessage } from '../src/logging/service.js';
+import { startEmbed, startKind, stopEmbed } from '../src/lifecycle.js';
 
 const fields = (e: { data: { fields?: { name: string; value: string }[] } }) => Object.fromEntries((e.data.fields ?? []).map((f) => [f.name, f.value]));
 
@@ -98,5 +99,15 @@ describe('what is logged', () => {
     assert.equal(m({ channelId: 'audit' }), true);
     assert.equal(m({ channelId: 'mod' }), true);
     assert.equal(m({ channelId: 'clean' }), true);
+  });
+});
+
+describe('status reports', () => {
+  it('tells a restart from a crash from a first start', () => {
+    assert.equal(startKind('stopped'), 'restart');
+    assert.equal(startKind('running'), 'unclean');
+    assert.equal(startKind(null), 'first');
+    assert.match(String(startEmbed('unclean', null).data.description), /did not shut down cleanly/);
+    assert.match(String(stopEmbed('SIGTERM', 90 * 60_000).data.description), /SIGTERM.*1h 30m/);
   });
 });

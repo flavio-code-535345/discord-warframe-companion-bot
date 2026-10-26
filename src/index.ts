@@ -5,6 +5,7 @@ import { BackupScheduler } from './backup/service.js';
 import { LfgVoiceSweeper } from './lfg/voice.js';
 import { configureWorldState } from './warframe/worldstate.js';
 import { SAFE_BOOT_MS, markOverlayHealthy } from './overlay.js';
+import { reportStart, reportStop } from './lifecycle.js';
 import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
@@ -44,6 +45,7 @@ client.once('clientReady', () => {
   squadVoice.start();
   voiceXp.start();
   wikiCrawler?.start();
+  void reportStart(ctx);
   // A start with live code patches counts as good once it has stayed up this long (see overlay.ts).
   setTimeout(() => markOverlayHealthy(config.DATA_DIR), SAFE_BOOT_MS).unref();
 });
@@ -64,6 +66,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[app] ${signal} received, shutting down`);
+  await reportStop(ctx, signal);
   notifier.stop();
   backups.stop();
   squadVoice.stop();

@@ -50,6 +50,7 @@ function sampleBackup(): ServerBackup {
       levelingOff: null,
       levelChannelId: null,
       auditLogChannelId: null,
+      statusChannelId: null,
       lfgVoiceCategoryId: null,
       lfgVoiceGraceMinutes: null,
       autoVcHubChannelId: null,

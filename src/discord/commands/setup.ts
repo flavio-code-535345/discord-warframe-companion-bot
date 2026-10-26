@@ -29,6 +29,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       },
       { name: 'Moderation log', value: ch(s.modLogChannelId) },
       { name: 'Audit log', value: s.auditLogChannelId ? ch(s.auditLogChannelId) : s.modLogChannelId ? `${ch(s.modLogChannelId)} (same as the moderation log)` : '*off*' },
+      { name: 'Status reports', value: ch(s.statusChannelId) },
       { name: 'Join-to-create lobby', value: s.autoVcHubChannelId ? `<#${s.autoVcHubChannelId}>` : '*off*' },
       {
         name: 'Squad voice',
@@ -93,6 +94,12 @@ export const setup: Command = {
       s
         .setName('auditlog')
         .setDescription('Channel for the audit log: deleted and edited messages, role and channel changes, voice')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('status')
+        .setDescription('Staff channel where the bot reports that it started, shut down or restarted')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
     )
     .addSubcommand((s) =>
@@ -165,6 +172,7 @@ export const setup: Command = {
               { name: 'Ordis chat channel', value: 'chat' },
               { name: 'Moderation log', value: 'modlog' },
               { name: 'Audit log', value: 'auditlog' },
+              { name: 'Status reports', value: 'status' },
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
               { name: 'Screenshot roles', value: 'ssroles' },
@@ -204,6 +212,9 @@ export const setup: Command = {
         break;
       case 'auditlog':
         settings = ctx.store.updateSettings(guildId, { auditLogChannelId: channelId() });
+        break;
+      case 'status':
+        settings = ctx.store.updateSettings(guildId, { statusChannelId: channelId() });
         break;
       case 'verification': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -299,6 +310,8 @@ export const setup: Command = {
                   ? { modLogChannelId: null }
                   : feature === 'auditlog'
                     ? { auditLogChannelId: null }
+                    : feature === 'status'
+                      ? { statusChannelId: null }
                   : { welcomeChannelId: null },
         );
         break;
