@@ -136,8 +136,11 @@ export async function composeDetailed(config: ComposeConfig, question: string, p
     .slice(0, 3)
     .map((p, i) => `[${i + 1}] ${p.title}\n${p.extract.slice(0, 1500)}`)
     .join('\n\n');
-  const user = `Question: ${question}\n\nExcerpts:\n${excerpts}`;
+  return composeWith(config, SYSTEM, `Question: ${question}\n\nExcerpts:\n${excerpts}`, fetcher, now, 1500);
+}
 
+/** One model call with any system prompt, local model first, then the free cloud one. Used by the grounded answers and by operator mode. */
+export async function composeWith(config: ComposeConfig, system: string, user: string, fetcher: Fetcher = fetch, now = Date.now(), maxChars = 1500): Promise<Composed | null> {
   const endpoints: Endpoint[] = [];
   const localModel = localModelOf(config);
   if (config.LOCAL_AI_URL && localModel && now >= localDownUntil) {
@@ -149,7 +152,7 @@ export async function composeDetailed(config: ComposeConfig, question: string, p
   }
   for (const ep of endpoints) {
     if (!ep.local && !allow(config.FREE_AI_DAILY_LIMIT, now)) return null;
-    const { text, failed, model } = await ask(ep, SYSTEM, user, fetcher);
+    const { text, failed, model } = await ask(ep, system, user, fetcher);
     if (ep.local && failed) {
       localDownUntil = now + LOCAL_COOLDOWN_MS;
       console.warn(`[answers] local AI unavailable, using the cloud endpoint for the next ${LOCAL_COOLDOWN_MS / 60_000} min`);
@@ -157,7 +160,7 @@ export async function composeDetailed(config: ComposeConfig, question: string, p
     }
     // A clean reply from the local model is final, including "not covered"; only a failure moves on.
     if (!text) return null;
-    return { text: text.length > 1500 ? `${text.slice(0, 1497)}…` : text, via: ep.local ? 'local' : 'cloud', model: model ?? ep.models[0]! };
+    return { text: text.length > maxChars ? `${text.slice(0, maxChars - 3)}…` : text, via: ep.local ? 'local' : 'cloud', model: model ?? ep.models[0]! };
   }
   return null;
 }

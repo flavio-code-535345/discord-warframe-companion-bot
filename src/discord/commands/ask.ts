@@ -21,7 +21,7 @@ export const ask: Command = {
     // Without an AI key, Ordis answers from live data and the wiki (free).
     if (!ctx.ai) {
       await interaction.deferReply();
-      const answer = await smartAnswer(question, ctx);
+      const answer = await smartAnswer(question, ctx, { id: interaction.user.id, name: interaction.user.displayName });
       await interaction.editReply({ content: `${quote}\n${answer.content}`.slice(0, 2000), embeds: answer.embeds, allowedMentions: { parse: [] } });
       logAnswer(ctx, { id: interaction.user.id, name: interaction.user.displayName, channelId: interaction.channelId, via: 'ask' }, question, answer);
       return;

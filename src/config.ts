@@ -64,6 +64,11 @@ const EnvSchema = z.object({
     .string()
     .default('603293720061935626')
     .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
+  /** Discord IDs of the two clan owners ("Legion" and "Tumba"): the only people Ordis takes free-form instructions from (answers/operator.ts). */
+  OPERATOR_IDS: z
+    .string()
+    .default('220147375786688512,603293720061935626')
+    .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
   MCP_ALLOWED_HOSTS: z
     .string()
     .optional()

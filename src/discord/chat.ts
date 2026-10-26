@@ -3,6 +3,7 @@ import type { ChatTurn } from '../ai/ordis.js';
 import { splitForDiscord } from '../ai/ordis.js';
 import { isChannelQuestion } from '../answers/intent.js';
 import { logAnswer } from '../answers/log.js';
+import { isOperatorId } from '../answers/operator.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
@@ -63,7 +64,9 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   const reply = (content: string) => message.reply({ content, allowedMentions: { parse: [], repliedUser: true } });
   const question = stripMention(message.content, botId);
   // In the chat channel Ordis only picks up actual questions, so ordinary chatter ("good night all") is left alone.
-  if (inChatChannel && !mentioned && !isChannelQuestion(question)) return;
+  // The two operators can also address Ordis by name in the chat channel ("Ordis, design me a ...").
+  const operatorCall = inChatChannel && !mentioned && isOperatorId(config, message.author.id) && /^ordis\b/i.test(question);
+  if (inChatChannel && !mentioned && !operatorCall && !isChannelQuestion(question)) return;
 
   // Ordis is the clan's bot: DMs are for clan members only.
   if (isDM) {
@@ -79,7 +82,7 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   // Without an AI key, Ordis answers from its own live data and the wiki (free).
   if (!ctx.ai) {
     try {
-      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx));
+      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName }));
       if (!answer.found && inChatChannel && !mentioned) return;
       await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
       logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer);

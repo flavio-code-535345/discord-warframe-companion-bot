@@ -28,6 +28,7 @@ import { priceCheck } from '../warframe/market.js';
 import { searchWiki } from '../warframe/wiki.js';
 import type { AiSource } from '../db.js';
 import { composeDetailed } from './compose.js';
+import { operatorAnswer, useOperatorMode } from './operator.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
 
@@ -204,9 +205,11 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
 }
 
 /** Answers a chat question from live data and the wiki, without any AI model. */
-export async function smartAnswer(question: string, ctx: AppContext): Promise<SmartAnswer> {
+export async function smartAnswer(question: string, ctx: AppContext, asker?: { id: string; name: string }): Promise<SmartAnswer> {
   const intent = detectIntent(question);
   const started = Date.now();
-  const answer = await answerIntent(intent, question, ctx);
-  return { ...answer, source: answer.source ?? 'lookup', model: answer.model ?? null, intent: intent.kind, ms: Date.now() - started };
+  // Prices, drops, relics, world state and the clan schedule stay plain API lookups for everyone, operators included.
+  const operator = asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await operatorAnswer(ctx, question, asker.name) : null;
+  const answer = operator ?? (await answerIntent(intent, question, ctx));
+  return { ...answer, source: answer.source ?? 'lookup', model: answer.model ?? null, intent: answer.intent ?? intent.kind, ms: Date.now() - started };
 }
