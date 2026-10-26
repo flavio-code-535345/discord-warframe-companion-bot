@@ -40,6 +40,29 @@ export async function ollamaApi<T>(base: string, path: string, fetcher: Fetcher 
   return (await res.json()) as T;
 }
 
+const capabilityCache = new Map<string, { at: number; capabilities: string[] }>();
+const CAPABILITY_TTL_MS = 10 * 60_000;
+
+/** What Ollama says a model can do ("completion", "vision", "tools", "thinking"...). Cached; [] when unknown. */
+export async function modelCapabilities(base: string, model: string, fetcher: Fetcher = fetch, now = Date.now()): Promise<string[]> {
+  const hit = capabilityCache.get(model);
+  if (hit && now - hit.at < CAPABILITY_TTL_MS) return hit.capabilities;
+  try {
+    const info = await ollamaApi<{ capabilities?: string[] }>(base, '/api/show', fetcher, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }) }, 8_000);
+    const capabilities = info.capabilities ?? [];
+    capabilityCache.set(model, { at: now, capabilities });
+    return capabilities;
+  } catch {
+    return [];
+  }
+}
+
+export const supportsThinking = async (base: string, model: string, fetcher: Fetcher = fetch, now = Date.now()): Promise<boolean> =>
+  (await modelCapabilities(base, model, fetcher, now)).includes('thinking');
+
+/** Test hook. */
+export const resetCapabilities = (): void => capabilityCache.clear();
+
 export interface InstalledModel {
   name: string;
   size: number;

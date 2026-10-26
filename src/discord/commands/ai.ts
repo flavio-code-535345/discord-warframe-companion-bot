@@ -1,39 +1,21 @@
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import {
-  LOCAL_MODEL_META,
-  currentPull,
-  gb,
-  listInstalled,
-  localModelOf,
-  ollamaApi,
-  ollamaBase,
-  pullProgress,
-  pullRunning,
-  setChosenModel,
-  startPull,
-  validModelTag,
-} from '../../ai/ollama.js';
-import { localAvailable } from '../../answers/compose.js';
-import type { AppContext } from '../../context.js';
+import { DEFAULT_MODEL_CHOICE, aiOverview, chooseModel, installModel, requireBase, setToggle, testModel } from '../../ai/control.js';
+import { gb, listInstalled } from '../../ai/ollama.js';
+import { type AiToggle, TOGGLES, TOGGLE_KEYS, isToggle } from '../../ai/settings.js';
 import { UserError } from '../../services/clan.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 
-/** The value that clears the choice, so LOCAL_AI_MODEL from the stack applies again. */
-const DEFAULT_CHOICE = '-';
-
-function baseOf(ctx: AppContext): string {
-  if (!ctx.config.LOCAL_AI_URL) throw new UserError('No local AI server is set up: add LOCAL_AI_URL to the bot\'s settings first.');
-  return ollamaBase(ctx.config.LOCAL_AI_URL);
-}
-
-/** Staff: pick which Ollama model answers questions, or download a new one, without redeploying the bot. */
+/**
+ * Staff: choose or install the local AI model and flip the AI switches without redeploying. Everything here goes through
+ * ai/control.ts, which the admin panel's AI page uses too, so the command and the panel always show the same state.
+ */
 export const ai: Command = {
   data: new SlashCommandBuilder()
     .setName('ai')
-    .setDescription('Staff: choose or install the local AI model that answers questions')
+    .setDescription('Staff: choose, install and configure the local AI model that answers questions')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((s) => s.setName('status').setDescription('Show the model in use, the installed models and any download'))
+    .addSubcommand((s) => s.setName('status').setDescription('Show the model in use, the switches, the installed models and any download'))
     .addSubcommand((s) =>
       s
         .setName('model')
@@ -46,38 +28,39 @@ export const ai: Command = {
         .setDescription('Download a model onto the AI server (several GB, runs in the background)')
         .addStringOption((o) => o.setName('tag').setDescription('Model tag, e.g. gemma3:27b or hf.co/user/repo:Q4_K_M').setRequired(true).setMaxLength(120)),
     )
+    .addSubcommand((s) =>
+      s
+        .setName('toggle')
+        .setDescription('Turn an AI feature on or off')
+        .addStringOption((o) =>
+          o
+            .setName('feature')
+            .setDescription('Which switch')
+            .setRequired(true)
+            .addChoices(...TOGGLE_KEYS.map((k) => ({ name: TOGGLES[k].label, value: k }))),
+        )
+        .addBooleanOption((o) => o.setName('on').setDescription('On (true) or off (false)').setRequired(true)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('test')
+        .setDescription('Send one short prompt to the local model and time the answer')
+        .addStringOption((o) => o.setName('prompt').setDescription('Default: a greeting').setMaxLength(300)),
+    )
     .toJSON(),
 
   async execute(interaction, ctx) {
     const sub = interaction.options.getSubcommand();
-    const base = baseOf(ctx);
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (sub === 'model') {
-      const name = interaction.options.getString('name', true).trim();
-      if (name === DEFAULT_CHOICE) {
-        setChosenModel(null);
-        ctx.store.setMeta(LOCAL_MODEL_META, '');
-        await interaction.editReply(`Back to the bot's own setting: **${ctx.config.LOCAL_AI_MODEL ?? 'none'}**.`);
-        return;
-      }
-      const installed = await listInstalled(base);
-      const match = installed.find((m) => m.name === name || m.name === `${name}:latest`);
-      if (!match) throw new UserError(`"${name}" is not installed on the AI server. Installed: ${installed.map((m) => m.name).join(', ') || 'nothing'}. Use /ai install first.`);
-      setChosenModel(match.name);
-      ctx.store.setMeta(LOCAL_MODEL_META, match.name);
-      await interaction.editReply(`Ordis now answers with **${match.name}** (${gb(match.size)}${match.parameters ? `, ${match.parameters}` : ''}). The first answer after a switch is slower while it loads into memory.`);
+      await interaction.editReply(await chooseModel(ctx, interaction.options.getString('name', true)));
       return;
     }
 
     if (sub === 'install') {
-      const tag = interaction.options.getString('tag', true).trim();
-      if (!validModelTag(tag)) throw new UserError('That is not a model tag. Use something like `gemma3:27b` or `hf.co/user/repo:Q4_K_M`.');
-      const running = currentPull();
-      if (pullRunning() && running) throw new UserError(`Already downloading **${running.model}** (${pullProgress(running) ?? running.status}). Wait for it to finish.`);
-      await ollamaApi(base, '/api/version'); // fail now, with a clear message, if the server is unreachable
       const channelId = interaction.channelId;
-      void startPull(base, tag, fetch, (state) => {
+      const message = await installModel(ctx, interaction.options.getString('tag', true), (state) => {
         void (async () => {
           const channel = await ctx.client.channels.fetch(channelId).catch(() => null);
           if (!channel?.isSendable()) return;
@@ -85,27 +68,42 @@ export const ai: Command = {
           await channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
         })();
       });
-      await interaction.editReply(`⬇️ Downloading **${tag}** in the background. Check \`/ai status\` for progress; I'll post here when it is done.`);
+      await interaction.editReply(`⬇️ ${message} I'll post here when it is done.`);
+      return;
+    }
+
+    if (sub === 'toggle') {
+      const feature = interaction.options.getString('feature', true);
+      if (!isToggle(feature)) throw new UserError('Unknown switch.');
+      await interaction.editReply(await setToggle(ctx, feature as AiToggle, interaction.options.getBoolean('on', true)));
+      return;
+    }
+
+    if (sub === 'test') {
+      const r = await testModel(ctx, interaction.options.getString('prompt') ?? undefined);
+      await interaction.editReply(`**${r.model}** answered in ${r.seconds}s${r.tokensPerSecond ? ` (${r.tokensPerSecond} tokens/s)` : ''}${r.thinking ? ' with thinking on' : ''}:\n${r.answer ? `> ${r.answer.replace(/\n/g, '\n> ').slice(0, 1500)}` : '*(empty answer)*'}`);
       return;
     }
 
     // status
-    const [installed, running] = await Promise.all([
-      listInstalled(base),
-      ollamaApi<{ models: { name: string; size: number }[] }>(base, '/api/ps'),
-    ]);
-    const used = localModelOf(ctx.config);
-    const pull = currentPull();
+    requireBase(ctx);
+    const o = await aiOverview(ctx);
+    if (!o.reachable) throw new UserError(o.error ?? 'The AI server is not reachable.');
     const embed = new EmbedBuilder()
       .setColor(COLORS.brand)
-      .setTitle('🤖 Local AI')
+      .setTitle('🤖 AI')
       .addFields(
-        { name: 'In use', value: used ? `**${used}**${used === ctx.config.LOCAL_AI_MODEL ? '' : ' (chosen with /ai model)'}${localAvailable() ? '' : '\n⚠️ skipped for a few minutes after a failure'}` : '*none*', inline: false },
-        { name: 'Installed', value: installed.map((m) => `${m.name === used ? '▶ ' : ''}${m.name} · ${gb(m.size)}${m.parameters ? ` · ${m.parameters}` : ''}`).join('\n').slice(0, 1000) || '*nothing*' },
-        { name: 'Loaded in memory', value: running.models.map((m) => `${m.name} · ${gb(m.size)}`).join('\n') || '*nothing right now*' },
+        {
+          name: 'In use',
+          value: o.model ? `**${o.model}**${o.chosen ? ' (chosen with /ai model)' : ''}${o.thinkingCapable ? ' · can think' : ''}${o.skippedAfterFailure ? '\n⚠️ skipped for a few minutes after a failure' : ''}` : '*none*',
+        },
+        { name: 'Switches', value: o.toggles.map((t) => `${t.on ? '🟢' : '⚫'} ${t.label}`).join('\n') },
+        { name: 'Installed', value: o.installed.map((m) => `${m.name === o.model ? '▶ ' : ''}${m.name} · ${gb(m.size)}${m.parameters ? ` · ${m.parameters}` : ''}`).join('\n').slice(0, 1000) || '*nothing*' },
+        { name: 'Loaded in memory', value: o.loaded.map((m) => `${m.name} · ${gb(m.size)}`).join('\n') || '*nothing right now*' },
+        { name: 'Web search', value: o.webSearch.configured ? `SearXNG at \`${o.webSearch.host}\`` : '*not configured*' },
       );
-    if (pull) {
-      embed.addFields({ name: 'Download', value: `${pull.model}: ${pull.error ? `❌ ${pull.error}` : pull.finishedAt ? '✅ done' : (pullProgress(pull) ?? pull.status)}` });
+    if (o.download) {
+      embed.addFields({ name: 'Download', value: `${o.download.model}: ${o.download.error ? `❌ ${o.download.error}` : o.download.finishedAt ? '✅ done' : (o.download.progress ?? o.download.status)}` });
     }
     await interaction.editReply({ embeds: [embed] });
   },
@@ -114,11 +112,11 @@ export const ai: Command = {
     const q = interaction.options.getFocused().toLowerCase();
     let names: string[] = [];
     try {
-      names = (await listInstalled(baseOf(ctx))).map((m) => m.name);
+      names = (await listInstalled(requireBase(ctx))).map((m) => m.name);
     } catch {
       // Unreachable server: offer only the reset choice.
     }
-    const choices = [...names.filter((n) => n.toLowerCase().includes(q)), ...(ctx.config.LOCAL_AI_MODEL ? [DEFAULT_CHOICE] : [])];
-    await interaction.respond(choices.slice(0, 25).map((n) => ({ name: (n === DEFAULT_CHOICE ? `- (back to the default: ${ctx.config.LOCAL_AI_MODEL})` : n).slice(0, 100), value: n })));
+    const choices = [...names.filter((n) => n.toLowerCase().includes(q)), ...(ctx.config.LOCAL_AI_MODEL ? [DEFAULT_MODEL_CHOICE] : [])];
+    await interaction.respond(choices.slice(0, 25).map((n) => ({ name: (n === DEFAULT_MODEL_CHOICE ? `- (back to the default: ${ctx.config.LOCAL_AI_MODEL})` : n).slice(0, 100), value: n })));
   },
 };

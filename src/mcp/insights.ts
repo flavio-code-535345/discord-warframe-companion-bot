@@ -1,6 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { chooseModel, setToggle } from '../ai/control.js';
 import { localModelOf } from '../ai/ollama.js';
+import { TOGGLE_KEYS, TOGGLES, aiToggle } from '../ai/settings.js';
 import { localAvailable } from '../answers/compose.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
@@ -123,6 +125,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           cloudModel: config.FREE_AI_KEY ? config.FREE_AI_MODEL : null,
           cloudDailyLimit: config.FREE_AI_KEY ? config.FREE_AI_DAILY_LIMIT : null,
           claudeChat: Boolean(ctx.ai),
+          switches: Object.fromEntries(TOGGLE_KEYS.map((k) => [k, aiToggle(k)])),
         },
         wikiIndex: wiki && { pages: wiki.pages, chunks: wiki.chunks, refreshedAt: iso(wiki.refreshedAt) },
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
@@ -203,5 +206,27 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
       if (!results.length) throw new UserError('No members given.');
       return { results };
     }),
+  );
+
+  server.registerTool(
+    'set_ai_switch',
+    {
+      title: 'AI switches',
+      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model), thinking (let a thinking-capable local model reason first), websearch (SearXNG results), operators (free-form instructions for the two owners), log (the question log).',
+      inputSchema: { feature: z.enum(TOGGLE_KEYS as [string, ...string[]]), on: z.boolean() },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    tool(async ({ feature, on }) => ({ message: await setToggle(ctx, feature as (typeof TOGGLE_KEYS)[number], on), switches: Object.fromEntries(TOGGLE_KEYS.map((k) => [TOGGLES[k].label, aiToggle(k)])) })),
+  );
+
+  server.registerTool(
+    'choose_ai_model',
+    {
+      title: 'Choose the AI model',
+      description: 'Chooses which installed Ollama model answers questions (same as /ai model and the panel). Use "-" to go back to the bot\'s LOCAL_AI_MODEL. Install new models with ollama_pull.',
+      inputSchema: { name: z.string().min(1).max(120) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    tool(async ({ name }) => ({ message: await chooseModel(ctx, name) })),
   );
 }

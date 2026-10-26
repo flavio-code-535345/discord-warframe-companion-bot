@@ -1,3 +1,4 @@
+import { aiToggle } from '../ai/settings.js';
 import type { AppContext } from '../context.js';
 import { asPassages, webSearch } from '../warframe/websearch.js';
 import { searchWiki } from '../warframe/wiki.js';
@@ -17,7 +18,7 @@ export const isOperatorId = (config: { OPERATOR_IDS: string[] }, userId: string)
 const OPEN_ENDED = new Set(['wiki', 'build']);
 
 export const useOperatorMode = (config: { OPERATOR_IDS: string[] }, userId: string, intentKind: string): boolean =>
-  isOperatorId(config, userId) && OPEN_ENDED.has(intentKind);
+  aiToggle('operators') && isOperatorId(config, userId) && OPEN_ENDED.has(intentKind);
 
 export const operatorSystemPrompt = (name: string): string =>
   [

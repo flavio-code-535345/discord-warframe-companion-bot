@@ -1,4 +1,5 @@
-import { localModelOf } from '../ai/ollama.js';
+import { localModelOf, ollamaBase, supportsThinking } from '../ai/ollama.js';
+import { aiToggle } from '../ai/settings.js';
 import type { WikiResult } from '../warframe/wiki.js';
 
 /**
@@ -76,6 +77,8 @@ interface Endpoint {
   timeoutMs: number;
   /** Local servers have no allowance to spend and are skipped for a while after a failure. */
   local: boolean;
+  /** Let a thinking-capable local model reason first (the Thinking switch). */
+  thinking?: boolean;
 }
 
 /** One endpoint, its models in order. `failed` means no model gave a usable reply (unreachable, timed out, error status). */
@@ -93,9 +96,9 @@ async function ask(ep: Endpoint, system: string, user: string, fetcher: Fetcher)
           model,
           temperature: 0.2,
           // Reasoning models spend part of the budget thinking first, so leave room for the answer itself.
-          max_tokens: 1200,
+          max_tokens: ep.thinking ? 3000 : 1200,
           // Ollama's thinking models (Gemma 4...) otherwise reason for ~400 tokens first: 30+ s on a CPU instead of a few.
-          ...(ep.local ? { reasoning_effort: 'none' } : /gpt-oss|gemini/.test(model) ? { reasoning_effort: 'low' } : {}),
+          ...(ep.local ? { reasoning_effort: ep.thinking ? 'low' : 'none' } : /gpt-oss|gemini/.test(model) ? { reasoning_effort: 'low' } : {}),
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
@@ -145,8 +148,9 @@ export async function composeDetailed(config: ComposeConfig, question: string, p
 export async function composeWith(config: ComposeConfig, system: string, user: string, fetcher: Fetcher = fetch, now = Date.now(), maxChars = 1500): Promise<Composed | null> {
   const endpoints: Endpoint[] = [];
   const localModel = localModelOf(config);
-  if (config.LOCAL_AI_URL && localModel && now >= localDownUntil) {
-    endpoints.push({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [localModel], timeoutMs: (config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000, local: true });
+  if (config.LOCAL_AI_URL && localModel && aiToggle('local') && now >= localDownUntil) {
+    const thinking = aiToggle('thinking') && (await supportsThinking(ollamaBase(config.LOCAL_AI_URL), localModel, fetcher as typeof fetch, now));
+    endpoints.push({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [localModel], timeoutMs: (config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000, local: true, thinking });
   }
   if (config.FREE_AI_KEY) {
     const models = [config.FREE_AI_MODEL, config.FREE_AI_FALLBACK_MODEL].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);

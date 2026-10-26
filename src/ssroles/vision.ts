@@ -1,4 +1,5 @@
 import { localModelOf } from '../ai/ollama.js';
+import { aiToggle } from '../ai/settings.js';
 import { localAvailable, markLocalDown } from '../answers/compose.js';
 import { UserError } from '../services/clan.js';
 import type { CardReading } from './roles.js';
@@ -166,7 +167,7 @@ export async function readProfileCard(
 
   // Reading an image on a CPU is slow, so the local model gets longer.
   const localModel = localModelOf(config);
-  if (config.LOCAL_AI_URL && localModel && localAvailable(now)) {
+  if (config.LOCAL_AI_URL && localModel && aiToggle('local') && localAvailable(now)) {
     const timeoutMs = Math.max(120, config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000;
     const local = await readWith({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [localModel], timeoutMs, local: true }, images, fetcher);
     if (local.reading) return local.reading;

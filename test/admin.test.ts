@@ -4,6 +4,7 @@ import { after, before, test } from 'node:test';
 import type { Client } from 'discord.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
+import { aiToggle, resetAiToggles } from '../src/ai/settings.js';
 import { Store } from '../src/db.js';
 import { startHttpServer } from '../src/http.js';
 import { SESSION_COOKIE, sessionSecret, sign, unsign } from '../src/web/admin/auth.js';
@@ -138,4 +139,28 @@ test('logout ends the session', async () => {
   const res = await post('/admin/logout', { _csrf: 'csrf-token' }, cookie);
   assert.equal(res.status, 302);
   assert.equal(store.getPanelSession(session.id), null);
+});
+
+test('the AI page shows the switches, and a switch flipped there is the one the bot uses', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const page = await get('/admin/ai', cookie);
+  assert.equal(page.status, 200);
+  const body = await page.text();
+  assert.match(body, /<h1>AI<\/h1>/);
+  assert.match(body, /Web search/);
+  assert.match(body, /No local AI server is set up/);
+
+  const noCsrf = await post('/admin/ai/toggle', { feature: 'websearch', on: '0' }, cookie);
+  assert.equal(noCsrf.status, 403);
+
+  const res = await post('/admin/ai/toggle', { feature: 'websearch', on: '0', _csrf: 'csrf-token' }, cookie);
+  assert.equal(res.status, 302);
+  assert.match(decodeURIComponent((res.headers.get('location') ?? '').replace(/[+]/g, ' ')), /is now off/);
+  assert.equal(aiToggle('websearch'), false);
+  assert.equal(store.getMeta('ai_toggle_websearch'), 'off');
+  assert.match(await (await get('/admin/ai', cookie)).text(), /Turn on/);
+
+  const bad = await post('/admin/ai/toggle', { feature: 'nope', on: '1', _csrf: 'csrf-token' }, cookie);
+  assert.match(decodeURIComponent((bad.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Unknown switch/);
+  resetAiToggles();
 });

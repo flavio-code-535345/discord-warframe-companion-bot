@@ -18,6 +18,7 @@ export interface Option {
 const NAV: [string, string][] = [
   ['overview', 'Overview'],
   ['settings', 'Settings'],
+  ['ai', 'AI'],
   ['announce', 'Announce'],
   ['events', 'Events'],
   ['members', 'Members'],
