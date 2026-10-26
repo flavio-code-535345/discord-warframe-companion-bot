@@ -236,3 +236,47 @@ test('the AI page lists saved answers and can forget one', async () => {
   const again = await post('/admin/ai/cache/forget', { key: 'where do i get bite', _csrf: 'csrf-token' }, cookie);
   assert.match(decodeURIComponent((again.headers.get('location') ?? '').replace(/[+]/g, ' ')), /already gone/);
 });
+
+test('the Config page edits settings that used to be environment variables, with limits for non-owners', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const page = await get('/admin/config', cookie);
+  assert.equal(page.status, 200);
+  const body = await page.text();
+  assert.match(body, /<h1>Config<\/h1>/);
+  assert.match(body, /Live world state/);
+  assert.match(body, /Still environment-only/);
+  assert.match(body, /DISCORD_TOKEN/);
+  assert.doesNotMatch(body, /name="s_DISCORD_TOKEN"|name="s_MCP_AUTH_TOKEN"/);
+
+  assert.equal((await post('/admin/config/save', { group: 'Warframe data', s_WORLDSTATE_ENABLED: 'true' }, cookie)).status, 403);
+  const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
+
+  const saved = await post('/admin/config/save', { group: 'Warframe data', s_WORLDSTATE_ENABLED: 'true', s_WORLDSTATE_POLL_SECONDS: '900', s_WORLDSTATE_URL: '', s_WARFRAME_PLATFORM: 'pc', _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(saved), /Saved 2 settings\. Applied\./);
+  assert.equal(store.getMeta('cfg_WORLDSTATE_ENABLED'), 'v:true');
+  assert.equal(store.getMeta('cfg_WORLDSTATE_POLL_SECONDS'), 'v:900');
+  assert.equal(store.getMeta('cfg_WARFRAME_PLATFORM'), null, 'unchanged values are not pinned');
+  assert.match(await (await get('/admin/config', cookie)).text(), /set here/);
+
+  const bad = await post('/admin/config/save', { group: 'Warframe data', s_WORLDSTATE_POLL_SECONDS: '5', _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(bad), /World state poll interval/);
+  assert.equal(store.getMeta('cfg_WORLDSTATE_POLL_SECONDS'), 'v:900', 'a refused value changes nothing');
+
+  const restartNeeded = await post('/admin/config/save', { group: 'Needs a restart', s_WIKI_INDEX: 'false', _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(restartNeeded), /Local wiki copy: applies after a restart/);
+
+  const reset = await post('/admin/config/save', { group: 'Warframe data', reset_WORLDSTATE_ENABLED: '1', reset_WORLDSTATE_POLL_SECONDS: '1', _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(reset), /Saved 2 settings/);
+  assert.equal(store.getMeta('cfg_WORLDSTATE_POLL_SECONDS'), '');
+  await post('/admin/config/save', { group: 'Needs a restart', reset_WIKI_INDEX: '1', _csrf: 'csrf-token' }, cookie);
+
+  assert.match(flash(await post('/admin/config/restart', { _csrf: 'csrf-token' }, cookie)), /Tick "sure"/);
+
+  // A panel admin who is not an owner cannot change who the operators are.
+  await post('/admin/admins', { user_id: '333333333333333333', note: 'officer', _csrf: 'csrf-token' }, cookie);
+  const officer = sessionCookie('333333333333333333');
+  assert.match(flash(await post('/admin/config/save', { group: 'Operators', s_OPERATOR_IDS: '333333333333333333', _csrf: 'csrf-token' }, officer.cookie)), /Only panel owners/);
+  assert.equal(store.getMeta('cfg_OPERATOR_IDS'), null);
+  assert.match(flash(await post('/admin/config/save', { group: 'Operators', s_OPERATOR_IDS: '603293720061935626', _csrf: 'csrf-token' }, cookie)), /Saved 1 setting/);
+  await post('/admin/config/save', { group: 'Operators', reset_OPERATOR_IDS: '1', _csrf: 'csrf-token' }, cookie);
+});

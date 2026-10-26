@@ -4,7 +4,7 @@ const bool = z
   .enum(['true', 'false', '1', '0', 'yes', 'no'])
   .transform((v) => v === 'true' || v === '1' || v === 'yes');
 
-const EnvSchema = z.object({
+export const EnvSchema = z.object({
   DISCORD_TOKEN: z.string({ error: 'is required (bot token from the Discord Developer Portal)' }),
   DISCORD_GUILD_ID: z
     .string({ error: 'is required (ID of the clan Discord server)' })
