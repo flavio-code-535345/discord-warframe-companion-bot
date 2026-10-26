@@ -5,7 +5,7 @@ import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { modLog } from '../moderation/service.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
-import { MATCH_THRESHOLD, decodeImage, findEmblem, fingerprint, similarity } from './emblem.js';
+import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEmblem, fingerprint } from './emblem.js';
 import { ocr } from './ocr.js';
 import { type RankRow, parseCard, parseRankRow } from './parse.js';
 import { type CardReading, type RoleInfo, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
@@ -108,7 +108,7 @@ function withReference(r: CardReading, reference: Reference | null, emblem: Uint
   return {
     ...r,
     clan_text_matches_reference: text,
-    emblem_matches_reference: emblem ? similarity(emblem, reference.fingerprint) >= MATCH_THRESHOLD : null,
+    emblem_matches_reference: emblem ? bestSimilarity(emblem, reference.fingerprint) >= MATCH_THRESHOLD : null,
   };
 }
 
@@ -339,30 +339,62 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   return true;
 }
 
-/** Learns what a genuine clan card looks like from one screenshot, keeping only a fingerprint of the emblem and the clan's name line. */
-export async function learnReference(ctx: AppContext, bytes: Uint8Array, mime: string): Promise<string> {
-  const pixels = decodeImage(bytes, mime);
-  if (!pixels) throw new UserError('The reference must be a PNG or JPG screenshot (not WebP).');
-  const parsed = await ocr.recognize(bytes).then(parseCard);
-  const { reading } = parsed;
-  if (!parsed.complete || !parsed.clanLine || !reading.clan_name || !reading.clan_tag) throw new UserError("I couldn't read a clan name on that screenshot. It must show the Clan panel clearly.");
-  if (norm(reading.clan_name) !== norm(ctx.config.CLAN_NAME)) throw new UserError(`That card says the clan is "${reading.clan_name}", not ${ctx.config.CLAN_NAME}.`);
-  const box = findEmblem(pixels, parsed.clanLine);
-  if (!box) throw new UserError("I couldn't find the clan emblem above the clan name. Use an uncropped screenshot of the Clan panel.");
-  const clanText = `${reading.clan_name}#${reading.clan_tag}`;
-  ctx.store.setSsReference(ctx.config.DISCORD_GUILD_ID, fingerprint(pixels, box), clanText);
-  return clanText;
+export interface ReferenceResult {
+  /** "Name#043" of the clan card(s) learned, or null when only roster rows were given. */
+  clanText: string | null;
+  cards: number;
+  /** Clan roster rows that were recognized (checked, nothing stored). */
+  rows: RankRow[];
+}
+
+/**
+ * Learns from up to two reference screenshots, each recognized by what it shows: a profile card teaches the clan emblem
+ * and name line (kept as a tiny fingerprint; two cards, e.g. from different screen sizes, are both kept), and a clan
+ * roster row is only checked, to confirm the reader understands that layout. No screenshot is saved.
+ */
+export async function learnReferences(ctx: AppContext, images: { mime: string; data: Uint8Array }[]): Promise<ReferenceResult> {
+  const fingerprints: Uint8Array[] = [];
+  const rows: RankRow[] = [];
+  let clanText: string | null = null;
+  for (const [i, image] of images.entries()) {
+    const which = images.length > 1 ? `Picture ${i + 1}: ` : '';
+    const pixels = decodeImage(image.data, image.mime);
+    if (!pixels) throw new UserError(`${which}the reference must be a PNG or JPG screenshot (not WebP).`);
+    const lines = await ocr.recognize(image.data);
+    const parsed = parseCard(lines);
+    const { reading } = parsed;
+    if (!parsed.complete) {
+      const row = parseRankRow(lines);
+      if (!row) throw new UserError(`${which}I couldn't read that as a profile card or as a row of the clan member list. Use an uncropped screenshot.`);
+      rows.push(row);
+      continue;
+    }
+    if (!parsed.clanLine || !reading.clan_name || !reading.clan_tag) throw new UserError(`${which}I couldn't read a clan name on that screenshot. It must show the Clan panel clearly.`);
+    if (norm(reading.clan_name) !== norm(ctx.config.CLAN_NAME)) throw new UserError(`${which}that card says the clan is "${reading.clan_name}", not ${ctx.config.CLAN_NAME}.`);
+    const box = findEmblem(pixels, parsed.clanLine);
+    if (!box) throw new UserError(`${which}I couldn't find the clan emblem above the clan name. Use an uncropped screenshot of the Clan panel.`);
+    const text = `${reading.clan_name}#${reading.clan_tag}`;
+    if (clanText && norm(clanText) !== norm(text)) throw new UserError(`${which}the two cards show different clans (${clanText} and ${text}).`);
+    clanText = text;
+    fingerprints.push(fingerprint(pixels, box));
+  }
+  if (clanText) {
+    const blob = new Uint8Array(fingerprints.length * FINGERPRINT_BYTES);
+    fingerprints.forEach((f, i) => blob.set(f, i * FINGERPRINT_BYTES));
+    ctx.store.setSsReference(ctx.config.DISCORD_GUILD_ID, blob, clanText);
+  }
+  return { clanText, cards: fingerprints.length, rows };
 }
 
 /** Points screenshot roles at a channel, optionally learns the reference card, and posts the instructions there. */
-export async function setupSsRoles(ctx: AppContext, channelId: string, reference?: { mime: string; data: Uint8Array }): Promise<string | null> {
+export async function setupSsRoles(ctx: AppContext, channelId: string, references: { mime: string; data: Uint8Array }[] = []): Promise<ReferenceResult | null> {
   await getSendableChannel(ctx, channelId);
   const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
   if ([settings.chatChannelId, settings.honeypotChannelId, settings.verifyChannelId].includes(channelId)) {
     throw new UserError('That channel is used for something else. Pick a channel just for screenshots.');
   }
-  if (reference && reference.data.length > MAX_IMAGE_BYTES) throw new UserError('The reference image is over 8 MB.');
-  const learned = reference ? await learnReference(ctx, reference.data, reference.mime) : null;
+  if (references.some((r) => r.data.length > MAX_IMAGE_BYTES)) throw new UserError('A reference image is over 8 MB.');
+  const learned = references.length ? await learnReferences(ctx, references) : null;
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
   // The example card is public, so its mastery total is reserved for Ordis: posting a copy of the example gets nobody roles.
   reserveExample(ctx);

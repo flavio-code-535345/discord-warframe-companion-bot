@@ -5,7 +5,8 @@ import { Store } from '../src/db.js';
 import { ocr } from '../src/ssroles/ocr.js';
 import { type OcrLine, parseCard, parseRankRow } from '../src/ssroles/parse.js';
 import { type RoleInfo, masteryOfRoleName, planClanRank } from '../src/ssroles/roles.js';
-import { ownsName, syncNickname } from '../src/ssroles/service.js';
+import { FINGERPRINT_BYTES, bestSimilarity, splitFingerprints } from '../src/ssroles/emblem.js';
+import { learnReferences, ownsName, syncNickname } from '../src/ssroles/service.js';
 import { renderStickyEmbeds, stickyImages } from '../src/sticky/service.js';
 
 const line = (text: string): OcrLine => ({ text, x0: 0, y0: 0, x1: 100, y1: 20, confidence: 90 });
@@ -124,4 +125,41 @@ describe('nickname', () => {
   it('reports a failure instead of throwing (server owner, members above Ordis)', async () => {
     assert.equal((await syncNickname(fake(null, true) as never, 'TheRareGamer'))?.status, 'failed');
   });
+});
+
+describe('two reference pictures', () => {
+  const asset = (name: string) => ({ mime: 'image/png', data: new Uint8Array(readFileSync(new URL(`../assets/${name}`, import.meta.url))) });
+  const ctx = () => ({ config: { CLAN_NAME: 'The Rats Den 69', DISCORD_GUILD_ID: 'g' }, store: new Store(':memory:') }) as never;
+
+  it('learns the emblem from the profile card and recognizes the roster row', async () => {
+    const c = ctx() as { store: Store };
+    const r = await learnReferences(c as never, [asset('ss-roles-example.png'), asset('ss-roles-example-rank.png')]);
+    assert.equal(r.clanText, 'The Rats Den 69#043');
+    assert.equal(r.cards, 1);
+    assert.deepEqual(r.rows, [{ rank: 'king', name: 'TheRareGamer' }]);
+    assert.equal(c.store.getSsReference('g')?.fingerprint.length, FINGERPRINT_BYTES);
+  });
+
+  it('keeps two card fingerprints and matches the better one', async () => {
+    const c = ctx() as { store: Store };
+    const r = await learnReferences(c as never, [asset('ss-roles-example.png'), asset('ss-roles-example.png')]);
+    assert.equal(r.cards, 2);
+    assert.equal(c.store.getSsReference('g')?.fingerprint.length, 2 * FINGERPRINT_BYTES);
+  });
+
+  it('refuses a picture that is neither', async () => {
+    await assert.rejects(learnReferences(ctx(), [asset('clan-logo.png')]), /neither|couldn't read/);
+  });
+
+  it('splits stored fingerprints and takes the best similarity', () => {
+    const a = Uint8Array.from({ length: FINGERPRINT_BYTES }, (_, i) => i % 256);
+    const b = Uint8Array.from({ length: FINGERPRINT_BYTES }, (_, i) => (i * 7) % 256);
+    const blob = new Uint8Array(2 * FINGERPRINT_BYTES);
+    blob.set(a, 0);
+    blob.set(b, FINGERPRINT_BYTES);
+    assert.equal(splitFingerprints(blob).length, 2);
+    assert.ok(bestSimilarity(b, blob) > 0.99);
+    assert.ok(bestSimilarity(a, blob) > 0.99);
+  });
+  after(() => ocr.release());
 });

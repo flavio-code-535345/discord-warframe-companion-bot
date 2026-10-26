@@ -19,6 +19,19 @@ export interface Box {
 
 /** Side of the square grayscale thumbnail an emblem is reduced to. Only this is stored, never the image. */
 export const FINGERPRINT_SIDE = 16;
+export const FINGERPRINT_BYTES = FINGERPRINT_SIDE * FINGERPRINT_SIDE;
+
+/** A stored reference may hold several fingerprints back to back (e.g. cards from different screen sizes or UI themes). */
+export function splitFingerprints(blob: Uint8Array): Uint8Array[] {
+  const out: Uint8Array[] = [];
+  for (let i = 0; i + FINGERPRINT_BYTES <= blob.length; i += FINGERPRINT_BYTES) out.push(blob.slice(i, i + FINGERPRINT_BYTES));
+  return out;
+}
+
+/** How well an emblem matches the best of several reference fingerprints. */
+export function bestSimilarity(emblem: Uint8Array, blob: Uint8Array): number {
+  return Math.max(0, ...splitFingerprints(blob).map((f) => similarity(emblem, f)));
+}
 /** Pearson correlation above which two emblems count as the same picture. */
 export const MATCH_THRESHOLD = 0.8;
 

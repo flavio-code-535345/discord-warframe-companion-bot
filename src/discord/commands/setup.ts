@@ -93,7 +93,8 @@ export const setup: Command = {
         .setName('ssroles')
         .setDescription('Channel where members post a profile screenshot to get their rank and clan roles')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel for screenshots').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addAttachmentOption((o) => o.setName('reference').setDescription('A clan profile screenshot (PNG/JPG) to learn the emblem from; not saved')),
+        .addAttachmentOption((o) => o.setName('reference').setDescription('A clan profile screenshot (PNG/JPG) to learn the emblem from; not saved'))
+        .addAttachmentOption((o) => o.setName('reference2').setDescription('A second reference: another profile card or a clan roster row (PNG/JPG); not saved')),
     )
     .addSubcommand((s) =>
       s
@@ -224,11 +225,18 @@ export const setup: Command = {
         break;
       case 'ssroles': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const file = interaction.options.getAttachment('reference');
-        const reference = file ? { mime: (file.contentType ?? 'image/png').split(';')[0]!, data: new Uint8Array(await (await fetch(file.url)).arrayBuffer()) } : undefined;
-        const learned = await setupSsRoles(ctx, channelId(), reference);
+        const files = [interaction.options.getAttachment('reference'), interaction.options.getAttachment('reference2')].filter((f) => f !== null);
+        const references = await Promise.all(
+          files.map(async (file) => ({ mime: (file.contentType ?? 'image/png').split(';')[0]!, data: new Uint8Array(await (await fetch(file.url)).arrayBuffer()) })),
+        );
+        const learned = await setupSsRoles(ctx, channelId(), references);
+        const notes = [
+          learned?.clanText ? `Learned the clan card of **${learned.clanText}** from ${learned.cards} screenshot${learned.cards === 1 ? '' : 's'}: the emblem and name are kept as a tiny fingerprint.` : null,
+          ...(learned?.rows ?? []).map((r) => `Recognized a clan roster row (**${r.name ?? 'name not read'}**, ${r.rank}): rank screenshots in that layout are read.`),
+          learned ? 'No screenshot is saved.' : 'No reference given, so only the clan name is checked, not the emblem.',
+        ];
         await interaction.editReply({
-          content: learned ? `Learned the clan card of **${learned}**: its emblem and name are kept as a tiny fingerprint, the screenshot itself is not saved.` : 'No reference card given, so only the clan name is checked, not the emblem.',
+          content: notes.filter(Boolean).join('\n'),
           embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)],
         });
         return;
