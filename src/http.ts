@@ -4,7 +4,7 @@ import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middlewar
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express, { type RequestHandler } from 'express';
 import type { AppContext } from './context.js';
-import { LOGO_PATH, SS_EXAMPLE_PATH } from './discord/identity.js';
+import { LOGO_PATH, SS_EXAMPLE_PATH, SS_RANK_EXAMPLE_PATH } from './discord/identity.js';
 import { createMcpServer } from './mcp/server.js';
 import { adminRouter } from './web/admin/routes.js';
 import { buildStatus, renderStatusPage } from './web/status.js';
@@ -68,6 +68,11 @@ export function startHttpServer(ctx: AppContext): Server {
   // The example profile card shown in the screenshot-roles sticky message (Discord fetches it from here).
   app.get('/ss-example.png', (_req, res) => {
     res.sendFile(SS_EXAMPLE_PATH, { maxAge: '1d' }, (err) => {
+      if (err && !res.headersSent) res.sendStatus(404);
+    });
+  });
+  app.get('/ss-example-rank.png', (_req, res) => {
+    res.sendFile(SS_RANK_EXAMPLE_PATH, { maxAge: '1d' }, (err) => {
       if (err && !res.headersSent) res.sendStatus(404);
     });
   });

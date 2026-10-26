@@ -35,7 +35,7 @@ function stickyModal(channelId: string, clean: boolean, current: Sticky | null):
     .addComponents(
       field('title', 'Heading (optional)', TextInputStyle.Short, MAX_STICKY_TITLE, false, current?.title),
       field('content', 'Message (Markdown works)', TextInputStyle.Paragraph, MAX_STICKY_LENGTH, true, current?.content),
-      field('image', 'Picture link (optional, https)', TextInputStyle.Short, 1000, false, current?.imageUrl, 'https://…/picture.png'),
+      field('image', 'Picture links (optional, up to 2, https)', TextInputStyle.Short, 1000, false, current?.imageUrl, 'https://…/picture.png'),
     );
 }
 

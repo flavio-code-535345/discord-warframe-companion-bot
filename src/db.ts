@@ -795,6 +795,11 @@ export class Store {
     return null;
   }
 
+  /** The normalized in-game names ("name1234") a member has verified with a profile card. */
+  ssNamesOf(guildId: string, userId: string): string[] {
+    return (this.db.prepare("SELECT key FROM ss_claims WHERE guild_id = ? AND kind = 'ign' AND user_id = ?").all(guildId, userId) as Row[]).map((r) => String(r.key));
+  }
+
   /** Forgets every claimed in-game name, screenshot and mastery total, so those cards can be used again. Returns how many were cleared. */
   resetSsClaims(guildId: string): number {
     return Number(this.db.prepare('DELETE FROM ss_claims WHERE guild_id = ?').run(guildId).changes);

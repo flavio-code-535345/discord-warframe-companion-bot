@@ -1,4 +1,4 @@
-import type { CardReading } from './roles.js';
+import { CLAN_RANKS, type CardReading, type ClanRank } from './roles.js';
 
 /** Turns OCR'd lines of a Warframe profile screen into a CardReading. Pure, so it is tested without any OCR. */
 
@@ -112,4 +112,43 @@ export function parseCard(lines: OcrLine[]): ParsedCard {
     notes: 'read by OCR',
   };
   return { reading, clanLine, complete: isCard && rank !== null && clanName !== null };
+}
+
+export interface RankRow {
+  rank: ClanRank;
+  /** The in-game name next to the rank, without a #tag (the roster doesn't show it). */
+  name: string | null;
+}
+
+/** Edit distance, enough to forgive one wrong letter in an OCR'd "Rat Sqvire". */
+function distance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]!;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j]!;
+      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return row[b.length]!;
+}
+
+/**
+ * Reads the clan roster row ("<emblem> Name ......... Rat King"): the rank title is the last two words of the line and the
+ * name is the word before them. Returns null when no line ends in a clan rank title.
+ */
+export function parseRankRow(lines: OcrLine[]): RankRow | null {
+  for (const line of lines) {
+    const words = clean(line.text).split(' ').filter(Boolean);
+    if (words.length < 2) continue;
+    const last2 = words.slice(-2).map((w) => w.replace(/[^A-Za-z]/g, '').toLowerCase()).join('');
+    const rank = CLAN_RANKS.find((r) => distance(last2, `rat${r}`) <= (r.length >= 5 ? 1 : 0));
+    if (!rank) continue;
+    const before = words.slice(0, -2).reverse().find((w) => /^[A-Za-z0-9_.-]{3,}$/.test(w.replace(/^[^A-Za-z0-9_.-]+|[^A-Za-z0-9_.-]+$/g, '')));
+    const name = before ? before.replace(/^[^A-Za-z0-9_.-]+|[^A-Za-z0-9_.-]+$/g, '') : null;
+    return { rank, name };
+  }
+  return null;
 }

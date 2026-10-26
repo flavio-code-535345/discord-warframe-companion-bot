@@ -114,3 +114,59 @@ export function planRoles(roles: RoleInfo[], earned: Set<string>, held: Set<stri
   }
   return plan;
 }
+
+// --- clan rank (the title next to a member's name in the in-game clan roster) ---
+
+/** Clan ranks from lowest to highest. The title in the roster is "Rat Squire", "Rat Knight" and so on. */
+export const CLAN_RANKS = ['squire', 'knight', 'baron', 'count', 'lord', 'king', 'emperor'] as const;
+export type ClanRank = (typeof CLAN_RANKS)[number];
+
+/**
+ * Ranks a screenshot can earn. Baron and above are handed out by leadership (Baron needs MR 30 and 1000+ hours, which a
+ * screenshot can't show), so they never come from a picture.
+ */
+export const SELF_SERVE_RANKS: readonly ClanRank[] = ['squire', 'knight'];
+
+/** The mastery rank a clan rank asks for, where the clan has a rule (Rat Knight: MR 16+). */
+export const RANK_MIN_MASTERY: Partial<Record<ClanRank, number>> = { knight: 16 };
+
+export const clanRankRoleName = (rank: ClanRank): string => `Rat ${rank[0]!.toUpperCase()}${rank.slice(1)}`;
+
+/** The mastery rank a role name stands for ("MR 33" = 33, "LR 3" = 33), or null. */
+export function masteryOfRoleName(name: string): number | null {
+  const m = /^(mr|masteryrank|mastery)(\d{1,2})$|^(lr|legendaryrank|legendary)(\d{1,2})$/.exec(norm(name));
+  if (!m) return null;
+  return m[2] ? Number(m[2]) : 30 + Number(m[4]);
+}
+
+export interface ClanRankPlan {
+  add: RoleInfo | null;
+  /** Lower self-serve clan roles replaced by the new one. */
+  remove: RoleInfo[];
+  problems: string[];
+}
+
+/**
+ * Which clan-rank role a roster screenshot earns. Only SELF_SERVE_RANKS are handed out; Rat Knight also needs an MR 16+
+ * mastery role (which comes from a verified profile card). Other clan-rank roles the member holds are never touched.
+ */
+export function planClanRank(roles: RoleInfo[], rank: ClanRank, held: Set<string>, botPosition: number): ClanRankPlan {
+  const plan: ClanRankPlan = { add: null, remove: [], problems: [] };
+  if (!SELF_SERVE_RANKS.includes(rank)) {
+    plan.problems.push(`${clanRankRoleName(rank)} is given out by clan leadership, not from a screenshot.`);
+    return plan;
+  }
+  const need = RANK_MIN_MASTERY[rank];
+  if (need !== undefined) {
+    const mastery = Math.max(0, ...roles.filter((r) => held.has(r.id)).map((r) => masteryOfRoleName(r.name) ?? 0));
+    if (mastery < need) plan.problems.push(`${clanRankRoleName(rank)} needs Mastery Rank ${need}+. Post your profile card first so I can give you your MR role, then post this again.`);
+  }
+  const target = roles.find((r) => norm(r.name) === norm(clanRankRoleName(rank)));
+  if (!target) plan.problems.push(`There is no "${clanRankRoleName(rank)}" role on this server.`);
+  else if (target.managed || target.dangerous || target.position >= botPosition) plan.problems.push(`I can't hand out ${target.name} (managed, above me or has moderator powers).`);
+  if (plan.problems.length) return plan;
+  if (target && !held.has(target.id)) plan.add = target;
+  const lower = SELF_SERVE_RANKS.slice(0, SELF_SERVE_RANKS.indexOf(rank));
+  plan.remove = roles.filter((r) => held.has(r.id) && lower.some((l) => norm(r.name) === norm(clanRankRoleName(l))) && r.position < botPosition && !r.managed);
+  return plan;
+}

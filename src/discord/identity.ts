@@ -5,6 +5,7 @@ import type { AppContext } from '../context.js';
 
 /** The clan logo; resolves to <repo>/assets from both src/discord (tsx) and dist/discord (built image). */
 export const SS_EXAMPLE_PATH = fileURLToPath(new URL('../../assets/ss-roles-example.png', import.meta.url));
+export const SS_RANK_EXAMPLE_PATH = fileURLToPath(new URL('../../assets/ss-roles-example-rank.png', import.meta.url));
 export const LOGO_PATH = fileURLToPath(new URL('../../assets/clan-logo.png', import.meta.url));
 
 /**

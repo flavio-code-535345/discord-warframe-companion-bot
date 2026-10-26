@@ -7,8 +7,8 @@ import { modLog } from '../moderation/service.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
 import { MATCH_THRESHOLD, decodeImage, findEmblem, fingerprint, similarity } from './emblem.js';
 import { ocr } from './ocr.js';
-import { parseCard } from './parse.js';
-import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, norm, planRoles } from './roles.js';
+import { type RankRow, parseCard, parseRankRow } from './parse.js';
+import { type CardReading, type RoleInfo, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
 import { readProfileCard } from './vision.js';
 import { saveSticky } from '../sticky/service.js';
 
@@ -70,6 +70,8 @@ export interface CardRead {
   reader: 'ocr' | 'gemini';
   /** The emblem as a fingerprint, when the OCR reader found it. */
   emblem: Uint8Array | null;
+  /** Set when the image is a clan roster row (name and clan rank) instead of a profile card. */
+  rankRow?: RankRow | null;
 }
 
 /** OCR first; Gemini only when OCR can't make sense of the image (unsupported format, unusual layout, unreadable). */
@@ -79,6 +81,8 @@ export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string,
     try {
       const lines = await ocr.recognize(bytes);
       const parsed = parseCard(lines);
+      const rankRow = parsed.complete ? null : parseRankRow(lines);
+      if (rankRow) return { reading: parsed.reading, reader: 'ocr', emblem: null, rankRow };
       if (!parsed.complete || !parsed.clanLine) {
         const r = parsed.reading;
         console.log(`[ssroles] OCR incomplete (${pixels.width}x${pixels.height}, ${lines.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name}`);
@@ -122,6 +126,76 @@ function resultEmbed(ctx: AppContext, r: CardReading, mr: number | null, ok: boo
   embed.setFooter({ text: 'Your screenshot was deleted after reading. Ordis keeps no copy.' });
   embed.setDescription(lines.join('\n').slice(0, 2000) || null);
   return embed;
+}
+
+/** True when the roster's in-game name ("TheRareGamer") is one this member verified with a profile card ("TheRareGamer#1234"). */
+export function ownsName(verified: string[], rosterName: string): boolean {
+  const n = norm(rosterName);
+  return n.length >= 3 && verified.some((k) => k === n || (k.startsWith(n) && /^\d{3,4}$/.test(k.slice(n.length))));
+}
+
+/** A clan roster screenshot: gives Rat Squire or Rat Knight to the member whose verified in-game name is on the row. */
+async function handleRankRow(
+  ctx: AppContext,
+  message: Message<true>,
+  member: GuildMember,
+  me: GuildMember,
+  bytes: Uint8Array,
+  row: RankRow,
+  finish: (payload: { content: string; embeds?: EmbedBuilder[] }, ttlMs?: number) => Promise<void>,
+): Promise<void> {
+  const { store, config } = ctx;
+  const guild = message.guild;
+  const problems: string[] = [];
+  if (!row.name) problems.push("I couldn't read the in-game name next to the rank.");
+  else if (!ownsName(store.ssNamesOf(guild.id, message.author.id), row.name)) {
+    problems.push(`"${row.name}" is not an in-game name you verified. Post your profile card first (it shows your name), then this screenshot.`);
+  }
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  if (!problems.length && store.claimSs(guild.id, 'image', hash, message.author.id)) problems.push('This screenshot was already used by another member.');
+
+  const plan = problems.length ? null : planClanRank(roleInfos(guild), row.rank, new Set(member.roles.cache.keys()), me.roles.highest.position);
+  if (plan) problems.push(...plan.problems);
+
+  const rankName = clanRankRoleName(row.rank);
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: config.BOT_NAME, iconURL: brandIcon(ctx) })
+    .addFields({ name: 'Clan rank', value: rankName, inline: true }, { name: 'In-game name', value: row.name ?? 'not read', inline: true })
+    .setFooter({ text: 'Your screenshot was deleted after reading. Ordis keeps no copy.' });
+
+  if (problems.length || !plan) {
+    embed.setColor(COLORS.warn).setTitle('🚫 Clan rank not verified').setDescription(problems.map((p) => `• ${p}`).join('\n'));
+    await finish({ content: `<@${message.author.id}>`, embeds: [embed] }, 60_000);
+    await modLog(ctx, { action: 'Screenshot rejected', moderator: ctx.client.user!, target: message.author, reason: problems.join(' '), fields: [{ name: 'Clan rank screenshot', value: `${rankName} · ${row.name ?? 'name not read'}` }] });
+    return;
+  }
+
+  const failed: string[] = [];
+  if (plan.add) await member.roles.add(plan.add.id, 'Screenshot roles: clan rank').catch(() => failed.push(plan.add!.id));
+  for (const r of plan.remove) await member.roles.remove(r.id, 'Screenshot roles: clan rank').catch(() => failed.push(r.id));
+  embed
+    .setColor(COLORS.success)
+    .setTitle('✅ Clan rank verified')
+    .setDescription(
+      [
+        plan.add ? `**Role added:** <@&${plan.add.id}>` : 'You already have this role.',
+        ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
+        ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
+      ].join('\n'),
+    );
+  await finish({ content: `<@${message.author.id}>`, embeds: [embed] }, 20_000);
+  await modLog(ctx, {
+    action: 'Screenshot roles',
+    moderator: ctx.client.user!,
+    target: message.author,
+    reason: `Verified clan rank: ${rankName}`,
+    fields: [
+      { name: 'In-game name', value: row.name ?? '—' },
+      { name: 'Roles added', value: plan.add?.name ?? '—' },
+      { name: 'Roles removed', value: plan.remove.map((r) => r.name).join(', ') || '—' },
+      { name: 'Reader', value: 'OCR' },
+    ],
+  });
 }
 
 /** Handles a message in the screenshot-roles channel. Returns true when the message belonged to it. */
@@ -169,6 +243,10 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
 
     const reference = store.getSsReference(guild.id);
     const read = await readCard(ctx, bytes, mimeOf(image.contentType), reference);
+    if (read.rankRow) {
+      await handleRankRow(ctx, message, member, me, bytes, read.rankRow, finish);
+      return;
+    }
     const reading = read.reading;
     const mr = masteryRank(reading);
     const clan = checkClan(reading, config.CLAN_NAME, reference !== null);
@@ -270,7 +348,7 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });
   // The example card is public, so its mastery total is reserved for Ordis: posting a copy of the example gets nobody roles.
   reserveExample(ctx);
-  const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png?v=2` : null;
+  const exampleUrl = ctx.config.PUBLIC_URL ? `${ctx.config.PUBLIC_URL}/ss-example.png?v=2 ${ctx.config.PUBLIC_URL}/ss-example-rank.png?v=1` : null;
   // The instructions are the channel's sticky message: always the last thing posted, so new members see them.
   await saveSticky(ctx, {
     channelId,
@@ -280,7 +358,8 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     content: [
       `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
       'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. This channel is for clan members only, and edited screenshots are rejected.',
-      'Your screenshot is deleted right after it is read and is never saved. Post a new one after you rank up and your rank role is updated.',
+      `**Clan rank:** to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list, like the second picture. Post your profile card first: the name on the row has to be the one on your profile. Higher ranks are handed out by leadership. Rat Knight needs MR 16+.`,
+      'Your screenshots are deleted right after they are read and are never saved. Post a new one after you rank up and your roles are updated.',
     ].join('\n\n'),
   });
   return learned;

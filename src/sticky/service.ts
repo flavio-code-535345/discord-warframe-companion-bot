@@ -26,6 +26,17 @@ export function renderSticky(s: Pick<Sticky, 'title' | 'content'> & { imageUrl?:
   return embed;
 }
 
+/** The pictures of a sticky: up to two https links separated by spaces. */
+export const stickyImages = (imageUrl: string | null | undefined): string[] => (imageUrl ?? '').split(/\s+/).filter(Boolean).slice(0, 2);
+
+/** The sticky as Discord embeds: the message with its first picture, and a second picture in an embed of its own. */
+export function renderStickyEmbeds(s: Pick<Sticky, 'title' | 'content'> & { imageUrl?: string | null }): EmbedBuilder[] {
+  const [first, second] = stickyImages(s.imageUrl);
+  const embeds = [renderSticky({ ...s, imageUrl: first ?? null })];
+  if (second) embeds.push(new EmbedBuilder().setColor(COLORS.brand).setImage(second));
+  return embeds;
+}
+
 export class StickyKeeper {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   /** When the first not-yet-answered message of a burst arrived, per channel. */
@@ -79,7 +90,7 @@ export class StickyKeeper {
       if (!force && sticky.messageId && 'lastMessageId' in channel && channel.lastMessageId === sticky.messageId) return;
 
       // Post the new copy first so the channel is never without it, then remove the old one.
-      const sent = await channel.send({ embeds: [renderSticky(sticky)], allowedMentions: { parse: [] } });
+      const sent = await channel.send({ embeds: renderStickyEmbeds(sticky), allowedMentions: { parse: [] } });
       this.ctx.store.setStickyMessage(channelId, sent.id);
       if (sticky.messageId) await channel.messages.delete(sticky.messageId).catch(() => {});
     } finally {
@@ -125,7 +136,7 @@ export async function saveSticky(ctx: AppContext, input: StickyInput): Promise<v
   if (!content) throw new UserError('The message is empty.');
   if (content.length > MAX_STICKY_LENGTH) throw new UserError(`That message is ${content.length} characters; the limit is ${MAX_STICKY_LENGTH}.`);
   if (title && title.length > MAX_STICKY_TITLE) throw new UserError(`The heading is over ${MAX_STICKY_TITLE} characters.`);
-  if (imageUrl && !validImageUrl(imageUrl)) throw new UserError('The picture must be a direct https link.');
+  if (imageUrl && (stickyImages(imageUrl).length !== imageUrl.split(/\s+/).filter(Boolean).length || !stickyImages(imageUrl).every((u) => validImageUrl(u)))) throw new UserError('The pictures must be direct https links (at most two, separated by a space).');
   const deleteOthers = input.deleteOthers ?? false;
   await checkStickyChannel(ctx, input.channelId, deleteOthers);
 
