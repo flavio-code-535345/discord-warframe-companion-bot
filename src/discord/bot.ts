@@ -31,6 +31,7 @@ import { event } from './commands/event.js';
 import { lfg } from './commands/lfg.js';
 import { MODERATION_COMMANDS } from './commands/moderation.js';
 import { item, wiki } from './commands/lookup.js';
+import { ai as aiCommand } from './commands/ai.js';
 import { ailog } from './commands/ailog.js';
 import { LEVEL_COMMANDS } from './commands/levels.js';
 import { setup } from './commands/setup.js';
@@ -39,7 +40,7 @@ import { track } from './commands/track.js';
 import { vc } from './commands/vc.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, activity, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [wf, item, price, drops, wiki, ask, track, clan, event, lfg, activity, vc, sticky, ailog, aiCommand, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ENABLE_MEMBER_LOGGING'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the

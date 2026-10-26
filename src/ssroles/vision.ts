@@ -1,3 +1,4 @@
+import { localModelOf } from '../ai/ollama.js';
 import { localAvailable, markLocalDown } from '../answers/compose.js';
 import { UserError } from '../services/clan.js';
 import type { CardReading } from './roles.js';
@@ -17,7 +18,7 @@ export interface VisionConfig {
 }
 
 /** True when some model is configured to read screenshots. */
-export const visionEnabled = (c: Pick<VisionConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>): boolean => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && c.LOCAL_AI_MODEL));
+export const visionEnabled = (c: Pick<VisionConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>): boolean => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && localModelOf(c)));
 
 export interface ImageData {
   mime: string;
@@ -164,9 +165,10 @@ export async function readProfileCard(
   }
 
   // Reading an image on a CPU is slow, so the local model gets longer.
-  if (config.LOCAL_AI_URL && config.LOCAL_AI_MODEL && localAvailable(now)) {
+  const localModel = localModelOf(config);
+  if (config.LOCAL_AI_URL && localModel && localAvailable(now)) {
     const timeoutMs = Math.max(120, config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000;
-    const local = await readWith({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [config.LOCAL_AI_MODEL], timeoutMs, local: true }, images, fetcher);
+    const local = await readWith({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [localModel], timeoutMs, local: true }, images, fetcher);
     if (local.reading) return local.reading;
     if (local.unreachable) markLocalDown(now);
   }

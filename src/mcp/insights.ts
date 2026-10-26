@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { localModelOf } from '../ai/ollama.js';
 import { localAvailable } from '../answers/compose.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
@@ -117,7 +118,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
         },
         warframeApi: { enabled: ws.enabled, everySeconds: ws.intervalSeconds, lastCall: iso(ws.lastCallAt), lastOk: ws.lastOk, detail: ws.lastDetail },
         ai: {
-          localModel: config.LOCAL_AI_URL && config.LOCAL_AI_MODEL ? config.LOCAL_AI_MODEL : null,
+          localModel: config.LOCAL_AI_URL ? (localModelOf(config) ?? null) : null,
           localSkippedAfterFailure: config.LOCAL_AI_URL ? !localAvailable() : null,
           cloudModel: config.FREE_AI_KEY ? config.FREE_AI_MODEL : null,
           cloudDailyLimit: config.FREE_AI_KEY ? config.FREE_AI_DAILY_LIMIT : null,

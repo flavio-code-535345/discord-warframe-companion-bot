@@ -1,3 +1,4 @@
+import { localModelOf } from '../ai/ollama.js';
 import type { WikiResult } from '../warframe/wiki.js';
 
 /**
@@ -64,7 +65,7 @@ function allow(limit: number, now = Date.now()): boolean {
   return true;
 }
 
-export const composeEnabled = (c: Pick<ComposeConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>) => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && c.LOCAL_AI_MODEL));
+export const composeEnabled = (c: Pick<ComposeConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>) => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && localModelOf(c)));
 
 interface Endpoint {
   url: string;
@@ -138,8 +139,9 @@ export async function composeDetailed(config: ComposeConfig, question: string, p
   const user = `Question: ${question}\n\nExcerpts:\n${excerpts}`;
 
   const endpoints: Endpoint[] = [];
-  if (config.LOCAL_AI_URL && config.LOCAL_AI_MODEL && now >= localDownUntil) {
-    endpoints.push({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [config.LOCAL_AI_MODEL], timeoutMs: (config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000, local: true });
+  const localModel = localModelOf(config);
+  if (config.LOCAL_AI_URL && localModel && now >= localDownUntil) {
+    endpoints.push({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [localModel], timeoutMs: (config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000, local: true });
   }
   if (config.FREE_AI_KEY) {
     const models = [config.FREE_AI_MODEL, config.FREE_AI_FALLBACK_MODEL].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);
