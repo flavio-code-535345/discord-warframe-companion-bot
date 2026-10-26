@@ -4,6 +4,7 @@ import { after, before, test } from 'node:test';
 import type { Client } from 'discord.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
+import { brain, resetBrainState } from '../src/agent/brain.js';
 import { aiToggle, resetAiToggles } from '../src/ai/settings.js';
 import { Store } from '../src/db.js';
 import { startHttpServer } from '../src/http.js';
@@ -163,4 +164,35 @@ test('the AI page shows the switches, and a switch flipped there is the one the 
   const bad = await post('/admin/ai/toggle', { feature: 'nope', on: '1', _csrf: 'csrf-token' }, cookie);
   assert.match(decodeURIComponent((bad.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Unknown switch/);
   resetAiToggles();
+});
+
+test('the Brain page shows the prompt and slider, and saving clamps and applies the settings', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const page = await get('/admin/brain', cookie);
+  assert.equal(page.status, 200);
+  const body = await page.text();
+  assert.match(body, /<h1>Brain<\/h1>/);
+  assert.match(body, /type="range" name="ordisness"/);
+  assert.match(body, /You are Cephalon Ordis, the Cephalon of the Warframe clan/);
+
+  const noCsrf = await post('/admin/brain/save', { ordisness: '90' }, cookie);
+  assert.equal(noCsrf.status, 403);
+
+  const saved = await post('/admin/brain/save', { ordisness: '900', temperature: '0.8', maxSteps: '3', agentFor: 'everyone', scope: 'all', toolMode: 'text', prompt: 'Custom prompt {{persona}}', show_tools: '1', tool_search_wiki: '1', _csrf: 'csrf-token' }, cookie);
+  assert.equal(saved.status, 302);
+  assert.equal(brain().ordisness, 100);
+  assert.equal(brain().temperature, 0.8);
+  assert.equal(brain().agentFor, 'everyone');
+  assert.equal(brain().prompt, 'Custom prompt {{persona}}');
+  assert.equal(brain().showTools, true);
+  assert.ok(brain().disabledTools.includes('search_web') && !brain().disabledTools.includes('search_wiki'), 'unticked tools are switched off');
+  assert.match(store.getMeta('brain_settings') ?? '', /"ordisness":100/);
+  assert.match(await (await get('/admin/brain', cookie)).text(), /Custom prompt/);
+
+  const noConfirm = await post('/admin/brain/reset', { _csrf: 'csrf-token' }, cookie);
+  assert.match(decodeURIComponent((noConfirm.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Tick/);
+  await post('/admin/brain/reset', { confirm: 'yes', _csrf: 'csrf-token' }, cookie);
+  assert.equal(brain().ordisness, 20);
+  assert.equal(brain().prompt, '');
+  resetBrainState();
 });

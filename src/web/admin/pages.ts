@@ -19,6 +19,7 @@ const NAV: [string, string][] = [
   ['overview', 'Overview'],
   ['settings', 'Settings'],
   ['ai', 'AI'],
+  ['brain', 'Brain'],
   ['announce', 'Announce'],
   ['events', 'Events'],
   ['members', 'Members'],
@@ -64,6 +65,12 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;le
 .thumb{object-fit:cover;border-radius:6px}
 .check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .check input{width:auto}
+input[type=range]{padding:0;accent-color:var(--accent)}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--input);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;margin:6px 0;max-height:360px;overflow:auto}
+details{margin:4px 0}
+summary{cursor:pointer}
+.step{border-left:2px solid var(--border);padding-left:10px;margin:10px 0}
+.answer{white-space:pre-wrap;background:rgba(59,154,199,.08);border:1px solid var(--border);border-radius:10px;padding:12px}
 .center{max-width:420px;margin:12vh auto;text-align:center}
 .center img{width:96px;height:96px;border-radius:22px;box-shadow:0 0 40px rgba(59,154,199,.45)}
 .discord{background:#5865f2;color:#fff;display:inline-block;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;margin-top:16px}

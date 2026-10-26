@@ -6,6 +6,7 @@ import { LfgVoiceSweeper } from './lfg/voice.js';
 import { configureWorldState } from './warframe/worldstate.js';
 import { SAFE_BOOT_MS, markOverlayHealthy } from './overlay.js';
 import { LOCAL_MODEL_META, setChosenModel } from './ai/ollama.js';
+import { loadBrain } from './agent/brain.js';
 import { loadAiToggles } from './ai/settings.js';
 import { reportStart, reportStop } from './lifecycle.js';
 import { LevelVoiceTicker } from './leveling/service.js';
@@ -31,6 +32,7 @@ if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: chat answers and /ask 
 configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
 setChosenModel(store.getMeta(LOCAL_MODEL_META) || null);
 loadAiToggles(store);
+loadBrain(store);
 const ctx: AppContext = { config, store, client, ai };
 
 attachHandlers(ctx);

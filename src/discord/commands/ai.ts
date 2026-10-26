@@ -1,5 +1,6 @@
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { DEFAULT_MODEL_CHOICE, aiOverview, chooseModel, installModel, requireBase, setToggle, testModel } from '../../ai/control.js';
+import { personaBand, updateBrain } from '../../agent/brain.js';
 import { gb, listInstalled } from '../../ai/ollama.js';
 import { type AiToggle, TOGGLES, TOGGLE_KEYS, isToggle } from '../../ai/settings.js';
 import { UserError } from '../../services/clan.js';
@@ -43,6 +44,12 @@ export const ai: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('persona')
+        .setDescription('How much Ordis the answers sound like: 0 plain to 100 full Ordis')
+        .addIntegerOption((o) => o.setName('level').setDescription('0 = plain, 25 = a hint, 50 = light, 75 = strong, 100 = full Ordis').setRequired(true).setMinValue(0).setMaxValue(100)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('test')
         .setDescription('Send one short prompt to the local model and time the answer')
         .addStringOption((o) => o.setName('prompt').setDescription('Default: a greeting').setMaxLength(300)),
@@ -76,6 +83,13 @@ export const ai: Command = {
       const feature = interaction.options.getString('feature', true);
       if (!isToggle(feature)) throw new UserError('Unknown switch.');
       await interaction.editReply(await setToggle(ctx, feature as AiToggle, interaction.options.getBoolean('on', true)));
+      return;
+    }
+
+    if (sub === 'persona') {
+      const level = interaction.options.getInteger('level', true);
+      updateBrain(ctx.store, { ordisness: level });
+      await interaction.editReply(`Ordis-ness is now ${level}/100 (${personaBand(level).name}). It applies to the agent's next answer. The full prompt and tuning are on the admin panel's Brain page.`);
       return;
     }
 

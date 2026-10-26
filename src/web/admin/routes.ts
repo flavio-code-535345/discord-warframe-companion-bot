@@ -28,6 +28,7 @@ import {
   unsign,
 } from './auth.js';
 import { registerAiRoutes } from './ai-page.js';
+import { registerBrainRoutes } from './brain-page.js';
 import { type Option, type PageContext, actionButton, csrfField, deniedPage, layout, loginPage, notConfiguredPage, select } from './pages.js';
 
 const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
@@ -401,6 +402,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
   // --- AI (same controls as the /ai command) ---
 
   registerAiRoutes({ router, ctx, pc, html, action, audit });
+  registerBrainRoutes({ router, ctx, pc, html, action, audit });
 
   // --- announcements ---
 

@@ -29,6 +29,8 @@ import { asPassages, webSearch } from '../warframe/websearch.js';
 import { searchWiki } from '../warframe/wiki.js';
 import type { AiSource } from '../db.js';
 import { composeDetailed } from './compose.js';
+import { agentAnswer, useAgent } from '../agent/answer.js';
+import { brain } from '../agent/brain.js';
 import { operatorAnswer, useOperatorMode } from './operator.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
@@ -45,7 +47,8 @@ export interface SmartAnswer {
   ms?: number;
 }
 
-const pick = <T>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+/** One of the in-character intro lines; below Ordis-ness 10 a neutral one. */
+const pick = (xs: string[]): string => (brain().ordisness < 10 ? 'Here you go.' : xs[Math.floor(Math.random() * xs.length)]!);
 
 /** Ordis's voice: one short line before the data, with the occasional glitch. */
 const LINES: Record<string, string[]> = {
@@ -211,7 +214,10 @@ export async function smartAnswer(question: string, ctx: AppContext, asker?: { i
   const intent = detectIntent(question);
   const started = Date.now();
   // Prices, drops, relics, world state and the clan schedule stay plain API lookups for everyone, operators included.
-  const operator = asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await operatorAnswer(ctx, question, asker.name) : null;
-  const answer = operator ?? (await answerIntent(intent, question, ctx));
+  // The agent (tools it picks itself, see src/agent) comes first where it is switched on; the operator answer and the plain lookups are the fallbacks.
+  const who = asker ?? { id: '', name: 'a clan member' };
+  const agent = useAgent(ctx, who.id, intent.kind) ? await agentAnswer(ctx, question, who) : null;
+  const operator = !agent && asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await operatorAnswer(ctx, question, asker.name) : null;
+  const answer = agent ?? operator ?? (await answerIntent(intent, question, ctx));
   return { ...answer, source: answer.source ?? 'lookup', model: answer.model ?? null, intent: answer.intent ?? intent.kind, ms: Date.now() - started };
 }
