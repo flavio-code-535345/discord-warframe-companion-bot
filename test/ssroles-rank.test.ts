@@ -5,7 +5,7 @@ import { Store } from '../src/db.js';
 import { ocr } from '../src/ssroles/ocr.js';
 import { type OcrLine, parseCard, parseRankRow } from '../src/ssroles/parse.js';
 import { type RoleInfo, masteryOfRoleName, planClanRank } from '../src/ssroles/roles.js';
-import { ownsName } from '../src/ssroles/service.js';
+import { ownsName, syncNickname } from '../src/ssroles/service.js';
 import { renderStickyEmbeds, stickyImages } from '../src/sticky/service.js';
 
 const line = (text: string): OcrLine => ({ text, x0: 0, y0: 0, x1: 100, y1: 20, confidence: 90 });
@@ -98,5 +98,30 @@ describe('sticky with two pictures', () => {
     assert.equal(e[1]!.data.image?.url, 'https://a.example/2.png');
     assert.equal(renderStickyEmbeds({ title: null, content: 'c' }).length, 1);
     assert.deepEqual(stickyImages(null), []);
+  });
+});
+
+describe('nickname', () => {
+  const fake = (nickname: string | null, fail = false) => {
+    const m = { nickname, calls: [] as string[], setNickname: async (n: string) => (fail ? Promise.reject(new Error('Missing Permissions')) : (m.calls.push(n), m)) };
+    return m;
+  };
+
+  it('sets the in-game name as the nickname', async () => {
+    const m = fake(null);
+    assert.deepEqual(await syncNickname(m as never, 'TheRareGamer'), { name: 'TheRareGamer', status: 'set' });
+    assert.deepEqual(m.calls, ['TheRareGamer']);
+  });
+
+  it('leaves it alone when it already matches or the name is unusable', async () => {
+    const m = fake('TheRareGamer');
+    assert.equal((await syncNickname(m as never, 'TheRareGamer'))?.status, 'same');
+    assert.equal(await syncNickname(m as never, 'x'), null);
+    assert.equal(await syncNickname(m as never, null), null);
+    assert.deepEqual(m.calls, []);
+  });
+
+  it('reports a failure instead of throwing (server owner, members above Ordis)', async () => {
+    assert.equal((await syncNickname(fake(null, true) as never, 'TheRareGamer'))?.status, 'failed');
   });
 });

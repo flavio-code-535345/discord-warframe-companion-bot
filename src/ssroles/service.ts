@@ -128,6 +128,22 @@ function resultEmbed(ctx: AppContext, r: CardReading, mr: number | null, ok: boo
   return embed;
 }
 
+export type NicknameResult = { name: string; status: 'set' | 'same' | 'failed' } | null;
+
+/** Sets the member's server nickname to their in-game name. Never throws: Discord refuses for the owner and for members above Ordis. */
+export async function syncNickname(member: GuildMember, inGameName: string | null): Promise<NicknameResult> {
+  const name = inGameName?.trim() ?? '';
+  if (!/^[A-Za-z0-9_.-]{3,32}$/.test(name)) return null;
+  if (member.nickname === name) return { name, status: 'same' };
+  return member.setNickname(name, 'Screenshot roles: in-game name').then(
+    () => ({ name, status: 'set' as const }),
+    () => ({ name, status: 'failed' as const }),
+  );
+}
+
+const nicknameLine = (r: NicknameResult): string[] =>
+  r === null || r.status === 'same' ? [] : [r.status === 'set' ? `**Nickname:** ${r.name}` : `I couldn't change your nickname to ${r.name} (Discord doesn't let me rename you), so do that yourself.`];
+
 /** True when the roster's in-game name ("TheRareGamer") is one this member verified with a profile card ("TheRareGamer#1234"). */
 export function ownsName(verified: string[], rosterName: string): boolean {
   const n = norm(rosterName);
@@ -181,6 +197,7 @@ async function handleRankRow(
         plan.add ? `**Role added:** <@&${plan.add.id}>` : 'You already have this role.',
         ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
         ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
+        ...nicknameLine(await syncNickname(member, row.name)),
       ].join('\n'),
     );
   await finish({ content: `<@${message.author.id}>`, embeds: [embed] }, 20_000);
@@ -293,6 +310,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       ...(plan.remove.length ? [`**Replaced:** ${plan.remove.map((r) => `~~${r.name}~~`).join(' ')}`] : []),
       ...(plan.skipped.length ? [`Skipped: ${plan.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}`] : []),
       ...(failed.length ? ["Some roles could not be changed. A moderator needs to check Ordis's role position."] : []),
+      ...nicknameLine(await syncNickname(member, reading.in_game_name?.split('#')[0] ?? null)),
     ];
     await finish({ content: `<@${message.author.id}>`, embeds: [resultEmbed(ctx, reading, mr, true, lines)] }, 20_000);
     await modLog(ctx, {
@@ -357,7 +375,7 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     imageUrl: exampleUrl,
     content: [
       `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
-      'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. This channel is for clan members only, and edited screenshots are rejected.',
+      'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. Your server nickname is set to your in-game name. This channel is for clan members only, and edited screenshots are rejected.',
       `**Clan rank:** to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list, like the second picture. Post your profile card first: the name on the row has to be the one on your profile. Higher ranks are handed out by leadership. Rat Knight needs MR 16+.`,
       'Your screenshots are deleted right after they are read and are never saved. Post a new one after you rank up and your roles are updated.',
     ].join('\n\n'),
