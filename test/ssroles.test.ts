@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { resetLocalAi } from '../src/answers/compose.js';
 import { Store } from '../src/db.js';
 import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, planRoles } from '../src/ssroles/roles.js';
 import { parseReading, readProfileCard } from '../src/ssroles/vision.js';
@@ -121,4 +122,55 @@ test('roles: LR roles match Legendary ranks and replace MR 30 and older LR roles
   const plan = planRoles(roles, earnedNames(r, masteryRank(r), 'The Rats Den 69'), new Set(['1', '2']), 36);
   assert.deepEqual(plan.add.map((x) => x.name), ['LR 3']);
   assert.deepEqual(plan.remove.map((x) => x.name).sort(), ['LR 2', 'MR 30']);
+});
+
+test('vision reads with the cloud model first and uses the local one when the cloud fails', async () => {
+  resetLocalAi();
+  const config = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://192.168.0.5:11434/v1', LOCAL_AI_MODEL: 'gemma' };
+  const image = { mime: 'image/png', data: new Uint8Array([2]) };
+  const reply = (text: string) => new Response(JSON.stringify({ choices: [{ message: { content: text } }] }));
+
+  const seen: string[] = [];
+  const a = await readProfileCard(config, image, async (url) => {
+    seen.push(url);
+    return reply('{"is_profile_card": true}');
+  });
+  assert.equal(a.is_profile_card, true);
+  assert.deepEqual(seen, ['https://llm.example/v1/chat/completions']);
+
+  seen.length = 0;
+  const b = await readProfileCard(config, image, async (url, init) => {
+    seen.push(url);
+    if (url.startsWith('https://llm.')) return new Response('busy', { status: 503 });
+    assert.equal(JSON.parse(String(init.body)).reasoning_effort, 'none');
+    return reply('{"is_profile_card": true, "in_game_name": "A#1"}');
+  });
+  assert.equal(b.in_game_name, 'A#1');
+  assert.equal(seen.at(-1), 'http://192.168.0.5:11434/v1/chat/completions');
+  resetLocalAi();
+});
+
+test('vision falls back to the local model when the cloud allowance is used up, and survives it being offline', async () => {
+  resetLocalAi();
+  const config = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://192.168.0.5:11434/v1', LOCAL_AI_MODEL: 'gemma' };
+  const image = { mime: 'image/png', data: new Uint8Array([2]) };
+  const local = async (url: string) => {
+    if (url.startsWith('https://')) throw new Error('should not call the cloud');
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"is_profile_card": true}' } }] }));
+  };
+  const out = await readProfileCard(config, image, local, 0);
+  assert.equal(out.is_profile_card, true);
+  resetLocalAi();
+  await assert.rejects(readProfileCard(config, image, async () => { throw new Error('down'); }, 0), /as many screenshots as it can today/);
+  resetLocalAi();
+});
+
+test('vision with only a local model needs no cloud key', async () => {
+  resetLocalAi();
+  const out = await readProfileCard({ FREE_AI_URL: 'https://x/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://h/v1', LOCAL_AI_MODEL: 'g' }, { mime: 'image/png', data: new Uint8Array([2]) }, async () =>
+    new Response(JSON.stringify({ choices: [{ message: { content: '{"is_profile_card": true}' } }] })),
+  );
+  assert.equal(out.is_profile_card, true);
+  await assert.rejects(readProfileCard({ FREE_AI_URL: 'https://x/v1', FREE_AI_MODEL: 'm' }, { mime: 'image/png', data: new Uint8Array([2]) }), /needs a vision model/);
+  resetLocalAi();
 });

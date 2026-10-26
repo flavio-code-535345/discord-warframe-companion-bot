@@ -37,6 +37,13 @@ const TEMPORARY = new Set([408, 429, 500, 502, 503, 504]);
 export const LOCAL_COOLDOWN_MS = 3 * 60_000;
 let localDownUntil = 0;
 
+/** False for a few minutes after the local server failed, so a sleeping host doesn't delay every request. */
+export const localAvailable = (now = Date.now()): boolean => now >= localDownUntil;
+
+export function markLocalDown(now = Date.now()): void {
+  localDownUntil = now + LOCAL_COOLDOWN_MS;
+}
+
 /** Test hook: forget a recorded local failure. */
 export const resetLocalAi = (): void => {
   localDownUntil = 0;
