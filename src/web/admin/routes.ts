@@ -29,6 +29,7 @@ import {
 } from './auth.js';
 import { registerAiRoutes } from './ai-page.js';
 import { registerBrainRoutes } from './brain-page.js';
+import { registerSsTestRoutes } from './sstest-page.js';
 import { registerConfigRoutes } from './config-page.js';
 import { type Option, type PageContext, actionButton, csrfField, deniedPage, layout, loginPage, notConfiguredPage, select } from './pages.js';
 
@@ -128,7 +129,8 @@ export function adminRouter(ctx: AppContext): Router {
       return html(res, deniedPage(pc(res), session.userId), 403);
     }
     res.locals.session = session;
-    if (req.method === 'POST' && !safeEqual(req.body?._csrf, session.csrf)) return html(res, layout('Expired', '<p>That form expired. Go back, reload and try again.</p>', pc(res)), 403);
+    // Forms carry the token in the body; the screenshot test page posts a raw image, so its script sends it in a header.
+    if (req.method === 'POST' && !safeEqual(req.body?._csrf ?? req.get('x-csrf-token'), session.csrf)) return html(res, layout('Expired', '<p>That form expired. Go back, reload and try again.</p>', pc(res)), 403);
     next();
   };
   router.use(guard);
@@ -404,6 +406,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
 
   registerAiRoutes({ router, ctx, pc, html, action, audit });
   registerBrainRoutes({ router, ctx, pc, html, action, audit });
+  registerSsTestRoutes({ router, ctx, pc, html });
   registerConfigRoutes({ router, ctx, pc, html, action, audit });
 
   // --- announcements ---

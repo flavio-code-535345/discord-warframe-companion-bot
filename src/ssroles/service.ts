@@ -9,7 +9,7 @@ import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEm
 import { ocr } from './ocr.js';
 import { type RankRow, parseCard, parseRankRow, parseRankRows, rankFromTitle } from './parse.js';
 import { type CardReading, type RoleInfo, SELF_SERVE_RANKS, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
-import { readProfileCard } from './vision.js';
+import { readProfileCardVia } from './vision.js';
 import { saveSticky } from '../sticky/service.js';
 
 /**
@@ -69,40 +69,75 @@ type Reference = { fingerprint: Uint8Array; clanText: string };
 export interface CardRead {
   reading: CardReading;
   /** Which reader produced it, for the log. */
-  reader: 'ocr' | 'gemini';
+  reader: 'ocr' | 'local' | 'cloud';
+  /** The vision model that read it (not set for OCR). */
+  model?: string;
   /** The emblem as a fingerprint, when the OCR reader found it. */
   emblem: Uint8Array | null;
   /** Set when the image shows clan roster rows (name and clan rank) instead of a profile card. */
   rankRows?: RankRow[];
 }
 
-/** OCR first; Gemini only when OCR can't make sense of the image (unsupported format, unusual layout, unreadable). */
-export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string, reference: Reference | null): Promise<CardRead> {
+/** What the OCR reader made of an image, with enough detail to explain a miss (the admin panel's test page shows it). */
+export interface OcrAttempt {
+  /** The finished reading, or null when OCR could not make a complete one and a vision model should look. */
+  read: CardRead | null;
+  ms: number;
+  /** One sentence: what happened. */
+  note: string;
+  /** Image size as "1920x1080", when it could be decoded (PNG and JPEG only). */
+  size: string | null;
+  /** The recognised text, one line per entry. */
+  lines: string[];
+  /** How alike the clan emblem is to the stored reference (0 to 1), when both exist. */
+  emblemSimilarity: number | null;
+}
+
+/** Method 1: OCR (tesseract.js) plus the emblem fingerprint. Never throws. */
+export async function readWithOcr(bytes: Uint8Array, mime: string, reference: Reference | null): Promise<OcrAttempt> {
+  const t0 = Date.now();
+  const out = (read: CardRead | null, note: string, extra: Partial<OcrAttempt> = {}): OcrAttempt => ({ read, ms: Date.now() - t0, note, size: null, lines: [], emblemSimilarity: null, ...extra });
   const pixels = decodeImage(bytes, mime);
-  if (pixels) {
-    try {
-      const lines = await ocr.recognize(bytes);
-      const parsed = parseCard(lines);
-      const rankRows = parsed.complete ? [] : parseRankRows(lines);
-      if (rankRows.length) return { reading: parsed.reading, reader: 'ocr', emblem: null, rankRows };
-      if (!parsed.complete || !parsed.clanLine) {
-        const r = parsed.reading;
-        console.log(`[ssroles] OCR incomplete (${pixels.width}x${pixels.height}, ${lines.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name} | text: ${lines.map((l) => l.text.trim()).filter(Boolean).join(' / ').slice(0, 300)}`);
-      } else {
-        const box = findEmblem(pixels, parsed.clanLine);
-        const emblem = box ? fingerprint(pixels, box) : null;
-        if (!emblem) console.log(`[ssroles] emblem not found above the clan line at ${JSON.stringify(parsed.clanLine)} in ${pixels.width}x${pixels.height}`);
-        // Without an emblem to compare, a stored reference can't be honoured: let the fallback reader look.
-        if (emblem || !reference) return { reading: withReference(parsed.reading, reference, emblem), reader: 'ocr', emblem };
-      }
-    } catch (err) {
-      console.error('[ssroles] OCR failed, using the fallback reader:', err instanceof Error ? err.message : err);
+  if (!pixels) return out(null, 'OCR reads PNG and JPEG only; this image type goes straight to the vision models.');
+  const size = `${pixels.width}x${pixels.height}`;
+  try {
+    const found = await ocr.recognize(bytes);
+    const lines = found.map((l) => l.text.trim()).filter(Boolean);
+    const parsed = parseCard(found);
+    const rankRows = parsed.complete ? [] : parseRankRows(found);
+    if (rankRows.length) return out({ reading: parsed.reading, reader: 'ocr', emblem: null, rankRows }, `Read ${rankRows.length} row(s) of the clan member list.`, { size, lines });
+    if (!parsed.complete || !parsed.clanLine) {
+      const r = parsed.reading;
+      console.log(`[ssroles] OCR incomplete (${size}, ${found.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name} | text: ${lines.join(' / ').slice(0, 300)}`);
+      return out(null, 'OCR could not read both the mastery rank and the clan, so a vision model is asked next.', { size, lines });
     }
+    const box = findEmblem(pixels, parsed.clanLine);
+    const emblem = box ? fingerprint(pixels, box) : null;
+    if (!emblem) console.log(`[ssroles] emblem not found above the clan line at ${JSON.stringify(parsed.clanLine)} in ${size}`);
+    const emblemSimilarity = emblem && reference ? bestSimilarity(emblem, reference.fingerprint) : null;
+    // Without an emblem to compare, a stored reference can't be honoured: let the vision models look.
+    if (emblem || !reference) return out({ reading: withReference(parsed.reading, reference, emblem), reader: 'ocr', emblem }, emblem ? 'Read the whole card and found the emblem.' : 'Read the whole card (no reference emblem is stored, so none was compared).', { size, lines, emblemSimilarity });
+    return out(null, 'Read the card, but could not find the clan emblem to compare with the stored one, so a vision model is asked next.', { size, lines });
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    console.error('[ssroles] OCR failed, using the vision models:', why);
+    return out(null, `OCR failed: ${why}`, { size });
   }
-  const reading = await readProfileCard(ctx.config, { mime, data: bytes });
+}
+
+/** Turns a vision model's reading into the shape the rest of the service works with. */
+export function visionRead(reading: CardReading, via: 'local' | 'cloud', model: string, reference: Reference | null): CardRead {
   const rankRows = reading.is_profile_card ? [] : (reading.roster_rows ?? []).flatMap((r) => { const rank = rankFromTitle(r.rank); return rank ? [{ rank, name: r.name }] : []; });
-  if (rankRows.length) return { reading, reader: 'gemini', emblem: null, rankRows };
-  return { reading: withReference(reading, reference, null), reader: 'gemini', emblem: null };
+  if (rankRows.length) return { reading, reader: via, model, emblem: null, rankRows };
+  return { reading: withReference(reading, reference, null), reader: via, model, emblem: null };
+}
+
+/** OCR first; then the self-hosted vision model (Gemma on Ollama); then the free cloud model (Gemini). */
+export async function readCard(ctx: AppContext, bytes: Uint8Array, mime: string, reference: Reference | null): Promise<CardRead> {
+  const attempt = await readWithOcr(bytes, mime, reference);
+  if (attempt.read) return attempt.read;
+  const { reading, via, model } = await readProfileCardVia(ctx.config, { mime, data: bytes });
+  return visionRead(reading, via, model, reference);
 }
 
 /** Fills in the clan text and emblem verdicts by comparing with the stored reference. */
@@ -131,6 +166,10 @@ function resultEmbed(ctx: AppContext, r: CardReading, mr: number | null, ok: boo
   embed.setDescription(lines.join('\n').slice(0, 2000) || null);
   return embed;
 }
+
+/** Which reader produced a reading, for the mod log. */
+export const readerLabel = (read: Pick<CardRead, 'reader' | 'model'>): string =>
+  read.reader === 'ocr' ? 'OCR' : `${read.reader === 'local' ? 'Gemma on Ollama' : 'Gemini'}${read.model ? ` (${read.model})` : ''} (OCR could not read it; emblem not compared)`;
 
 export type NicknameResult = { name: string; status: 'set' | 'same' | 'failed' } | null;
 
@@ -269,7 +308,7 @@ async function handleCard(
       moderator: ctx.client.user!,
       target: message.author,
       reason: problems.join(' '),
-      fields: [{ name: 'Reader', value: read.reader }],
+      fields: [{ name: 'Reader', value: readerLabel(read) }],
     });
     return { embed: resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`)), ttl: 60_000 };
   }
@@ -303,7 +342,7 @@ async function handleCard(
       { name: 'Accolades', value: reading.accolades.join(', ') || '—' },
       { name: 'Roles added', value: plan.add.map((r) => r.name).join(', ') || '—' },
       { name: 'Roles removed', value: plan.remove.map((r) => r.name).join(', ') || '—' },
-      { name: 'Reader', value: read.reader === 'ocr' ? 'OCR' : 'Gemini (OCR could not read it; emblem not compared)' },
+      { name: 'Reader', value: readerLabel(read) },
     ],
   });
   return { embed: resultEmbed(ctx, reading, mr, true, lines), ttl: 20_000 };

@@ -280,3 +280,35 @@ test('the Config page edits settings that used to be environment variables, with
   assert.match(flash(await post('/admin/config/save', { group: 'Operators', s_OPERATOR_IDS: '603293720061935626', _csrf: 'csrf-token' }, cookie)), /Saved 1 setting/);
   await post('/admin/config/save', { group: 'Operators', reset_OPERATOR_IDS: '1', _csrf: 'csrf-token' }, cookie);
 });
+
+test('the Screenshots test page runs one reader per request and needs the CSRF header', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const page = await get('/admin/sstest', cookie);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /1\. OCR/);
+  assert.match(html, /2\. Gemma \(Ollama\)/);
+  assert.match(html, /3\. Gemini/);
+  assert.ok(html.indexOf('1. OCR') < html.indexOf('2. Gemma') && html.indexOf('2. Gemma') < html.indexOf('3. Gemini'), 'the bot order');
+
+  const run = (method: string, headers: Record<string, string>, body: Uint8Array = new Uint8Array([1, 2, 3])) =>
+    fetch(`${baseUrl}/admin/sstest/run?method=${method}`, { method: 'POST', redirect: 'manual', headers: { cookie, 'content-type': 'image/png', ...headers }, body });
+  assert.equal((await run('ocr', {})).status, 403, 'no token');
+  assert.equal((await run('bogus', { 'x-csrf-token': 'csrf-token' })).status, 400);
+  assert.equal((await fetch(`${baseUrl}/admin/sstest/run?method=ocr`, { method: 'POST', redirect: 'manual', headers: { cookie, 'content-type': 'text/plain', 'x-csrf-token': 'csrf-token' }, body: 'x' })).status, 400, 'not an image');
+
+  const results: Record<string, any> = {};
+  for (const m of ['ocr', 'local', 'cloud']) {
+    const res = await run(m, { 'x-csrf-token': 'csrf-token' });
+    assert.equal(res.status, 200);
+    results[m] = (await res.text()).trim().split('\n').map((l) => JSON.parse(l)).at(-1);
+    assert.equal(results[m].t, 'result');
+    assert.equal(results[m].method, m);
+  }
+  // Not a real picture: OCR cannot decode it; the test bot has no vision model configured.
+  assert.equal(results.ocr.status, 'incomplete');
+  assert.equal(results.local.status, 'skipped');
+  assert.match(results.local.note, /not configured/i);
+  assert.equal(results.cloud.status, 'skipped');
+  assert.match(results.cloud.note, /FREE_AI_KEY/);
+});

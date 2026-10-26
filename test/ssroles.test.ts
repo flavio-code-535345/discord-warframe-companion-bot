@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { resetLocalAi } from '../src/answers/compose.js';
 import { Store } from '../src/db.js';
 import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, planRoles } from '../src/ssroles/roles.js';
-import { parseReading, readProfileCard } from '../src/ssroles/vision.js';
+import { localSkipReason, parseReading, readCloud, readLocal, readProfileCard, readProfileCardVia } from '../src/ssroles/vision.js';
 
 const card = (over: Partial<CardReading> = {}): CardReading => ({
   is_profile_card: true,
@@ -124,44 +124,85 @@ test('roles: LR roles match Legendary ranks and replace MR 30 and older LR roles
   assert.deepEqual(plan.remove.map((x) => x.name).sort(), ['LR 2', 'MR 30']);
 });
 
-test('vision reads with the cloud model first and uses the local one when the cloud fails', async () => {
+const bothConfig = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://192.168.0.5:11434/v1', LOCAL_AI_MODEL: 'gemma' };
+const pngImage = { mime: 'image/png', data: new Uint8Array([2]) };
+const replyWith = (text: string) => new Response(JSON.stringify({ choices: [{ message: { content: text } }] }));
+
+test('vision asks the local Gemma model first and stops when it can read the card', async () => {
   resetLocalAi();
-  const config = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://192.168.0.5:11434/v1', LOCAL_AI_MODEL: 'gemma' };
-  const image = { mime: 'image/png', data: new Uint8Array([2]) };
-  const reply = (text: string) => new Response(JSON.stringify({ choices: [{ message: { content: text } }] }));
-
   const seen: string[] = [];
-  const a = await readProfileCard(config, image, async (url) => {
+  const out = await readProfileCardVia(bothConfig, pngImage, async (url, init) => {
     seen.push(url);
-    return reply('{"is_profile_card": true}');
-  });
-  assert.equal(a.is_profile_card, true);
-  assert.deepEqual(seen, ['https://llm.example/v1/chat/completions']);
-
-  seen.length = 0;
-  const b = await readProfileCard(config, image, async (url, init) => {
-    seen.push(url);
-    if (url.startsWith('https://llm.')) return new Response('busy', { status: 503 });
     assert.equal(JSON.parse(String(init.body)).reasoning_effort, 'none');
-    return reply('{"is_profile_card": true, "in_game_name": "A#1"}');
+    return replyWith('{"is_profile_card": true, "in_game_name": "A#1"}');
   });
-  assert.equal(b.in_game_name, 'A#1');
-  assert.equal(seen.at(-1), 'http://192.168.0.5:11434/v1/chat/completions');
+  assert.equal(out.via, 'local');
+  assert.equal(out.model, 'gemma');
+  assert.equal(out.reading.in_game_name, 'A#1');
+  assert.deepEqual(seen, ['http://192.168.0.5:11434/v1/chat/completions']);
   resetLocalAi();
 });
 
-test('vision falls back to the local model when the cloud allowance is used up, and survives it being offline', async () => {
+test('vision goes on to the Gemini cloud model when Gemma cannot read it, and pauses Gemma when it is unreachable', async () => {
   resetLocalAi();
-  const config = { FREE_AI_KEY: 'test-key-123', FREE_AI_URL: 'https://llm.example/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://192.168.0.5:11434/v1', LOCAL_AI_MODEL: 'gemma' };
-  const image = { mime: 'image/png', data: new Uint8Array([2]) };
-  const local = async (url: string) => {
-    if (url.startsWith('https://')) throw new Error('should not call the cloud');
-    return new Response(JSON.stringify({ choices: [{ message: { content: '{"is_profile_card": true}' } }] }));
+  const seen: string[] = [];
+  const fetcher = async (url: string) => {
+    seen.push(url);
+    if (url.startsWith('http://192.')) throw new Error('connect ETIMEDOUT');
+    return replyWith('{"is_profile_card": true, "in_game_name": "B#2"}');
   };
-  const out = await readProfileCard(config, image, local, 0);
-  assert.equal(out.is_profile_card, true);
+  const first = await readProfileCardVia(bothConfig, pngImage, fetcher);
+  assert.equal(first.via, 'cloud');
+  assert.deepEqual(seen, ['http://192.168.0.5:11434/v1/chat/completions', 'https://llm.example/v1/chat/completions']);
+
+  // The unreachable server is left alone for a few minutes, so the next screenshot goes straight to the cloud.
+  seen.length = 0;
+  const second = await readProfileCardVia(bothConfig, pngImage, fetcher);
+  assert.equal(second.via, 'cloud');
+  assert.deepEqual(seen, ['https://llm.example/v1/chat/completions']);
   resetLocalAi();
-  await assert.rejects(readProfileCard(config, image, async () => { throw new Error('down'); }, 0), /as many screenshots as it can today/);
+});
+
+test('vision falls back to the cloud when Gemma answers with something unreadable', async () => {
+  resetLocalAi();
+  const seen: string[] = [];
+  const out = await readProfileCardVia(bothConfig, pngImage, async (url) => {
+    seen.push(url);
+    return replyWith(url.startsWith('http://192.') ? 'I cannot help with that' : '{"is_profile_card": true}');
+  });
+  assert.equal(out.via, 'cloud');
+  assert.equal(seen.length, 2);
+  resetLocalAi();
+});
+
+test('vision reports the daily allowance only when Gemma could not read it either', async () => {
+  resetLocalAi();
+  const ok = await readProfileCard(bothConfig, pngImage, async () => replyWith('{"is_profile_card": true}'), 0);
+  assert.equal(ok.is_profile_card, true, 'the local model does not use the cloud allowance');
+  resetLocalAi();
+  await assert.rejects(readProfileCard(bothConfig, pngImage, async () => { throw new Error('down'); }, 0), /as many screenshots as it can today/);
+  resetLocalAi();
+});
+
+test('each vision reader can be asked on its own', async () => {
+  resetLocalAi();
+  const seen: string[] = [];
+  const fetcher = async (url: string) => {
+    seen.push(url);
+    return replyWith('{"is_profile_card": true}');
+  };
+  const local = await readLocal(bothConfig, pngImage, fetcher);
+  assert.equal(local?.via, 'local');
+  assert.equal(local?.model, 'gemma');
+  const cloud = await readCloud(bothConfig, pngImage, fetcher);
+  assert.ok(cloud && !cloud.overLimit && cloud.via === 'cloud' && cloud.model === 'm');
+  assert.deepEqual(seen, ['http://192.168.0.5:11434/v1/chat/completions', 'https://llm.example/v1/chat/completions']);
+
+  // Not configured means "not available", not an error.
+  assert.equal(await readLocal({ FREE_AI_URL: 'https://x/v1', FREE_AI_MODEL: 'm' }, pngImage, fetcher), null);
+  assert.match(localSkipReason({ FREE_AI_URL: 'https://x/v1', FREE_AI_MODEL: 'm' }) ?? '', /not configured/);
+  assert.equal(await readCloud({ FREE_AI_URL: 'https://x/v1', FREE_AI_MODEL: 'm', LOCAL_AI_URL: 'http://h/v1', LOCAL_AI_MODEL: 'g' }, pngImage, fetcher), null);
+  assert.equal(seen.length, 2);
   resetLocalAi();
 });
 

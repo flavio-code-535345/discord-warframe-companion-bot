@@ -11,7 +11,7 @@ export interface VisionConfig {
   FREE_AI_URL: string;
   FREE_AI_MODEL: string;
   FREE_AI_FALLBACK_MODEL?: string | undefined;
-  /** Self-hosted vision-capable model (Ollama), the backup when the cloud reader is missing, down or over its allowance; see answers/compose.ts. */
+  /** Self-hosted vision-capable model (Ollama), tried first; the free cloud model is the backup. See answers/compose.ts. */
   LOCAL_AI_URL?: string | undefined;
   LOCAL_AI_MODEL?: string | undefined;
   LOCAL_AI_KEY?: string | undefined;
@@ -88,6 +88,7 @@ let day = '';
 let used = 0;
 /** One card read costs one call; this keeps the free tier from being drained by a flood of screenshots. */
 function allow(limit: number): boolean {
+  if (!Number.isFinite(limit)) return true;
   const today = new Date().toISOString().slice(0, 10);
   if (today !== day) {
     day = today;
@@ -142,38 +143,84 @@ async function readWith(ep: VisionEndpoint, images: unknown[], fetcher: Fetcher)
   return { reading: null, unreachable };
 }
 
-export async function readProfileCard(
+/** Which vision reader produced a reading: the self-hosted model (Gemma on Ollama) or the free cloud model (Gemini). */
+export type VisionVia = 'local' | 'cloud';
+
+export interface VisionAttempt {
+  via: VisionVia;
+  /** The model that answered, or the first one that was tried when none did. */
+  model: string;
+  reading: CardReading | null;
+  ms: number;
+  /** The server could not be reached at all (as opposed to answering with something unreadable). */
+  unreachable: boolean;
+}
+
+/** Why the self-hosted reader would not be asked right now, or null when it would. `force` ignores the switch and the pause (the test page). */
+export function localSkipReason(config: VisionConfig, opts: { now?: number; force?: boolean } = {}): string | null {
+  if (!config.LOCAL_AI_URL || !localModelOf(config)) return 'not configured (LOCAL_AI_URL and a model)';
+  if (opts.force) return null;
+  if (!aiToggle('local')) return 'switched off (the Local model switch on the AI page)';
+  if (!localAvailable(opts.now)) return 'paused for a few minutes after failing to answer';
+  return null;
+}
+
+/** Reads with the self-hosted model. Null when it is not available (see `localSkipReason`). Reading an image on a CPU is slow, so it gets a long timeout. */
+export async function readLocal(
+  config: VisionConfig,
+  submission: ImageData,
+  fetcher: Fetcher = fetch,
+  opts: { now?: number; force?: boolean } = {},
+): Promise<VisionAttempt | null> {
+  if (localSkipReason(config, opts)) return null;
+  const model = localModelOf(config)!;
+  const timeoutMs = Math.max(120, config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000;
+  const t0 = Date.now();
+  const out = await readWith({ url: config.LOCAL_AI_URL!, key: config.LOCAL_AI_KEY || 'ollama', models: [model], timeoutMs, local: true }, [imagePart(submission)], fetcher);
+  return { via: 'local', model, reading: out.reading, ms: Date.now() - t0, unreachable: out.unreachable };
+}
+
+/** Reads with the free cloud model (and its fallback model). Null without a key, or when today's allowance is used up (`overLimit`). `dailyLimit` of Infinity does not count against the allowance. */
+export async function readCloud(
+  config: VisionConfig,
+  submission: ImageData,
+  fetcher: Fetcher = fetch,
+  dailyLimit = 100,
+): Promise<(VisionAttempt & { overLimit: false }) | { overLimit: true } | null> {
+  if (!config.FREE_AI_KEY) return null;
+  if (!allow(dailyLimit)) return { overLimit: true };
+  const models = [config.FREE_AI_MODEL, config.FREE_AI_FALLBACK_MODEL].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);
+  const t0 = Date.now();
+  const out = await readWith({ url: config.FREE_AI_URL, key: config.FREE_AI_KEY, models, timeoutMs: 40_000, local: false }, [imagePart(submission)], fetcher);
+  return { via: 'cloud', model: models[0] ?? '', reading: out.reading, ms: Date.now() - t0, unreachable: out.unreachable, overLimit: false };
+}
+
+const imagePart = (i: ImageData) => ({ type: 'image_url', image_url: { url: dataUrl(i) } });
+
+/**
+ * The vision readers, in order: the self-hosted model first (no limit, no cost, but slow on a CPU), then the free cloud model
+ * when the self-hosted one is missing, switched off, down or could not read the image.
+ */
+export async function readProfileCardVia(
   config: VisionConfig,
   submission: ImageData,
   fetcher: Fetcher = fetch,
   dailyLimit = 100,
   now = Date.now(),
-): Promise<CardReading> {
+): Promise<{ reading: CardReading; via: VisionVia; model: string }> {
   if (!visionEnabled(config)) throw new UserError('Screenshot reading needs a vision model: set FREE_AI_KEY, or LOCAL_AI_URL and LOCAL_AI_MODEL, on the bot.');
-  const images = [submission].map((i) => ({ type: 'image_url', image_url: { url: dataUrl(i) } }));
 
-  // The free cloud model reads best (a self-hosted Gemma flagged untouched cards as edited and missed roster rows in tests),
-  // so it goes first; the self-hosted one is the backup when the cloud is missing, down or over its daily allowance.
-  let overLimit = false;
-  if (config.FREE_AI_KEY) {
-    if (allow(dailyLimit)) {
-      const models = [config.FREE_AI_MODEL, config.FREE_AI_FALLBACK_MODEL].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);
-      const cloud = await readWith({ url: config.FREE_AI_URL, key: config.FREE_AI_KEY, models, timeoutMs: 40_000, local: false }, images, fetcher);
-      if (cloud.reading) return cloud.reading;
-    } else {
-      overLimit = true;
-    }
-  }
+  const local = await readLocal(config, submission, fetcher, { now });
+  if (local?.reading) return { reading: local.reading, via: 'local', model: local.model };
+  if (local?.unreachable) markLocalDown(now);
 
-  // Reading an image on a CPU is slow, so the local model gets longer.
-  const localModel = localModelOf(config);
-  if (config.LOCAL_AI_URL && localModel && aiToggle('local') && localAvailable(now)) {
-    const timeoutMs = Math.max(120, config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000;
-    const local = await readWith({ url: config.LOCAL_AI_URL, key: config.LOCAL_AI_KEY || 'ollama', models: [localModel], timeoutMs, local: true }, images, fetcher);
-    if (local.reading) return local.reading;
-    if (local.unreachable) markLocalDown(now);
-  }
+  const cloud = await readCloud(config, submission, fetcher, dailyLimit);
+  if (cloud && !cloud.overLimit && cloud.reading) return { reading: cloud.reading, via: 'cloud', model: cloud.model };
 
-  if (overLimit) throw new UserError('Ordis has read as many screenshots as it can today. Try again tomorrow, or ask a moderator.');
+  if (cloud?.overLimit) throw new UserError('Ordis has read as many screenshots as it can today. Try again tomorrow, or ask a moderator.');
   throw new UserError("I couldn't read that screenshot right now. Try again in a minute, or ask a moderator.");
+}
+
+export async function readProfileCard(config: VisionConfig, submission: ImageData, fetcher: Fetcher = fetch, dailyLimit = 100, now = Date.now()): Promise<CardReading> {
+  return (await readProfileCardVia(config, submission, fetcher, dailyLimit, now)).reading;
 }
