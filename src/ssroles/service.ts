@@ -374,10 +374,9 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     title: '🖼️ Get your roles from a screenshot',
     imageUrl: exampleUrl,
     content: [
-      `Open the in-game **Profile** and post a screenshot here. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. PNG or JPG works best.`,
-      'Ordis reads it and gives you the roles it earns: your Mastery Rank, the clan role and accolades such as Ten Year Supporter. Your server nickname is set to your in-game name. This channel is for clan members only, and edited screenshots are rejected.',
-      `**Clan rank:** to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list, like the second picture. Post your profile card first: the name on the row has to be the one on your profile. Higher ranks are handed out by leadership. Rat Knight needs MR 16+.`,
-      'Your screenshots are deleted right after they are read and are never saved. Post a new one after you rank up and your roles are updated.',
+      `**① Profile card** (first picture): open the in-game **Profile** and post a screenshot. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. You get your Mastery Rank role, the clan role and accolades such as Ten Year Supporter, and your server nickname becomes your in-game name.`,
+      '**② Clan rank** (second picture): to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list. Do ① first: the name on the row has to be the one on your profile. Rat Knight needs MR 16+. Higher ranks are handed out by leadership.',
+      'This channel is for clan members only and edited screenshots are rejected. Your screenshots are deleted right after they are read and are never saved. Post a new one after you rank up and your roles are updated.',
     ].join('\n\n'),
   });
   return learned;
