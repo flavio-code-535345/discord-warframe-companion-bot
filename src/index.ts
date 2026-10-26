@@ -24,7 +24,7 @@ const ai = config.ANTHROPIC_API_KEY
   ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
   : null;
 if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: chat answers and /ask are disabled.');
-configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED });
+configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
 const ctx: AppContext = { config, store, client, ai };
 
 attachHandlers(ctx);

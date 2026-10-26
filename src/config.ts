@@ -17,7 +17,8 @@ const EnvSchema = z.object({
   WORLDSTATE_ENABLED: bool.default(false),
   /** Raw worldState.php feed to read instead of DE's own, e.g. a relay on another IP. */
   WORLDSTATE_URL: z.string().url().optional(),
-  WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(30).default(60),
+  /** Minimum seconds between calls to the worldstate feed (everything shares one cached copy). */
+  WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(60).default(600),
   ENABLE_WELCOME: bool.default(false),
   HTTP_HOST: z.string().default('0.0.0.0'),
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),

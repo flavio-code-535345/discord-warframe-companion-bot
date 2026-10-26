@@ -7,6 +7,7 @@ import {
   type WorldState,
   archimedeaName,
   getWorldState,
+  worldStateInfo,
   isBaroHere,
   resurgenceItemName,
   rewardText,
@@ -45,6 +46,8 @@ export interface StatusData {
   registeredMembers: number;
   /** The knowledge archive Ordis answers questions from; null when it is switched off. */
   archive: { pages: number; total: number | null; syncing: boolean } | null;
+  /** Calls to Digital Extremes' worldstate feed: whether they are on, when the last one was and how it went. */
+  warframeApi: { enabled: boolean; intervalSeconds: number; lastCallAt: string | null; lastOk: boolean | null; lastDetail: string | null };
   upcomingEvents: { id: number; title: string; startsAt: string; going: number; maybe: number }[];
   /** null when the worldstate could not be loaded. */
   cycles: CycleStatus[] | null;
@@ -181,11 +184,23 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
 }
 
 /** Collects everything the public status page shows. Uses only cached Discord data, so page views cost no API calls. */
+function apiPill(a: StatusData['warframeApi']): string {
+  if (!a.enabled) return 'off';
+  if (!a.lastCallAt) return `not called yet · every ${Math.round(a.intervalSeconds / 60)} min`;
+  const ago = formatDuration(Math.max(0, Date.now() - Date.parse(a.lastCallAt)));
+  return `last call ${ago} ago · ${a.lastOk ? 'ok' : (a.lastDetail ?? 'failed').replace(/^Worldstate request failed: /, '')} · every ${Math.round(a.intervalSeconds / 60)} min`;
+}
+
 function archiveProgress(): StatusData['archive'] {
   const index = getWikiIndex();
   if (!index) return null;
   const total = Number(index.getMeta('total') ?? 0);
   return { pages: index.stats().pages, total: total || null, syncing: index.getMeta('syncing') === '1' };
+}
+
+function warframeApiStatus(): StatusData['warframeApi'] {
+  const i = worldStateInfo();
+  return { enabled: i.enabled, intervalSeconds: i.intervalSeconds, lastCallAt: i.lastCallAt === null ? null : new Date(i.lastCallAt).toISOString(), lastOk: i.lastOk, lastDetail: i.lastDetail };
 }
 
 export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise<WorldState> = getWorldState): Promise<StatusData> {
@@ -213,6 +228,7 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
     server: guild ? { name: guild.name, memberCount: guild.memberCount } : null,
     registeredMembers: store.listMembers(config.DISCORD_GUILD_ID).length,
     archive: archiveProgress(),
+    warframeApi: warframeApiStatus(),
     // Titles and counts only: who RSVP'd stays inside Discord.
     upcomingEvents: store
       .upcomingEvents(config.DISCORD_GUILD_ID)
@@ -299,6 +315,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
     `<span class="pill">up <b>${e(formatDuration(s.uptimeSeconds * 1000))}</b></span>`,
     `<span class="pill"><b>${e(String(s.server?.memberCount ?? '—'))}</b> members</span>`,
     `<span class="pill"><b>${s.registeredMembers}</b> registered</span>`,
+    `<span class="pill">Warframe API <b>${e(apiPill(s.warframeApi))}</b></span>`,
     s.archive ? `<span class="pill">archive <b>${s.archive.pages.toLocaleString('en-US')}${s.archive.syncing && s.archive.total ? ` / ${s.archive.total.toLocaleString('en-US')}` : ''}</b>${s.archive.syncing ? ' · syncing' : ''}</span>` : '',
   ].join('');
 

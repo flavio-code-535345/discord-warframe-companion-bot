@@ -8,6 +8,8 @@ import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed
 import { brandIcon } from './identity.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
+/** How often the notifier wakes up (event reminders). The worldstate itself is fetched at most every WORLDSTATE_POLL_SECONDS. */
+const TICK_MS = 60_000;
 const SEEN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface WorldStateAlert {
@@ -69,7 +71,7 @@ export class Notifier {
 
   start(): void {
     void this.tick();
-    this.timer = setInterval(() => void this.tick(), this.ctx.config.WORLDSTATE_POLL_SECONDS * 1000);
+    this.timer = setInterval(() => void this.tick(), TICK_MS);
   }
 
   stop(): void {

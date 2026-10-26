@@ -1,65 +1,122 @@
 // The parser's models use decorators that need the Reflect metadata polyfill loaded first.
 import 'reflect-metadata';
 import WorldStateParser from 'warframe-worldstate-parser';
+import { readFile, writeFile } from 'node:fs/promises';
 import { toMs } from '../time.js';
 import { UserError } from '../services/clan.js';
 import { apiFetch } from './fetch.js';
 
 /** Official, cross-platform worldstate feed published by Digital Extremes. */
 const DE_URL = 'https://api.warframe.com/cdn/worldState.php';
-let feedUrl = DE_URL;
-let enabled = true;
-
-/** Called once at startup from the config: where to read the feed and whether to read it at all. */
-export function configureWorldState(opts: { url?: string | undefined; enabled: boolean }): void {
-  feedUrl = opts.url ?? DE_URL;
-  enabled = opts.enabled;
-}
-
-export const worldStateEnabled = (): boolean => enabled;
-const CACHE_TTL_MS = 55_000;
-/** After a failed fetch the feed is left alone this long, so a block (HTTP 403) isn't made worse by hammering it. */
-const FAILURE_COOLDOWN_MS = 5 * 60_000;
+/** After a failed call (e.g. HTTP 403) the feed is left alone at least this long, so a block isn't made worse by retrying. */
+const FAILURE_COOLDOWN_MS = 30 * 60_000;
+const META_KEY = 'worldstate_last_call';
 
 export type WorldState = Awaited<ReturnType<typeof WorldStateParser.build>>;
 export type Fissure = WorldState['fissures'][number];
+
+interface LastCall {
+  at: number;
+  ok: boolean;
+  /** "HTTP 200", or the error message. */
+  detail: string;
+}
+
+interface MetaStore {
+  getMeta(key: string): string | null;
+  setMeta(key: string, value: string): void;
+}
+
+let feedUrl = DE_URL;
+let enabled = true;
+let ttlMs = 600_000;
+let meta: MetaStore | null = null;
+let cacheFile: string | null = null;
+let lastCall: LastCall | null = null;
+
+/**
+ * Called once at startup from the config. The feed is called at most once per `intervalSeconds` (and the last call and
+ * its raw answer survive restarts, so deploys don't cause extra calls).
+ */
+export function configureWorldState(opts: { url?: string | undefined; enabled: boolean; intervalSeconds?: number; store?: MetaStore; cacheFile?: string }): void {
+  feedUrl = opts.url ?? DE_URL;
+  enabled = opts.enabled;
+  ttlMs = (opts.intervalSeconds ?? 600) * 1000;
+  meta = opts.store ?? null;
+  cacheFile = opts.cacheFile ?? null;
+  try {
+    lastCall = meta ? (JSON.parse(meta.getMeta(META_KEY) ?? 'null') as LastCall | null) : null;
+  } catch {
+    lastCall = null;
+  }
+}
+
+export const worldStateEnabled = (): boolean => enabled;
+
+/** What the status page shows about the Warframe API: whether it is on, when it was last called and what came back. */
+export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null } {
+  return { enabled, intervalSeconds: Math.round(ttlMs / 1000), lastCallAt: lastCall?.at ?? null, lastOk: lastCall?.ok ?? null, lastDetail: lastCall?.detail ?? null };
+}
 
 const quietLogger = { debug: () => {} };
 
 let cached: { at: number; ws: WorldState } | null = null;
 let inflight: Promise<WorldState> | null = null;
-let failedAt = 0;
-let lastError: Error | null = null;
 
-async function fetchWorldState(): Promise<WorldState> {
-  const res = await apiFetch(feedUrl);
-  if (!res.ok) throw new Error(`Worldstate request failed: HTTP ${res.status}`);
-  return WorldStateParser.build(await res.text(), { locale: 'en', logger: quietLogger });
+const parse = (text: string) => WorldStateParser.build(text, { locale: 'en', logger: quietLogger });
+
+function record(call: LastCall): void {
+  lastCall = call;
+  try {
+    meta?.setMeta(META_KEY, JSON.stringify(call));
+  } catch {
+    // The record is only for display and restart pacing.
+  }
 }
 
-/** Returns the parsed worldstate, cached briefly and de-duplicated across concurrent callers. */
+async function fetchWorldState(): Promise<WorldState> {
+  try {
+    const res = await apiFetch(feedUrl);
+    if (!res.ok) throw new Error(`Worldstate request failed: HTTP ${res.status}`);
+    const text = await res.text();
+    const ws = await parse(text);
+    record({ at: Date.now(), ok: true, detail: `HTTP ${res.status}` });
+    if (cacheFile) await writeFile(cacheFile, text).catch(() => {});
+    return ws;
+  } catch (err) {
+    record({ at: Date.now(), ok: false, detail: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
+}
+
+/** Returns the parsed worldstate: at most one call to the feed per interval, shared by every caller and surviving restarts. */
 export async function getWorldState(): Promise<WorldState> {
   if (!enabled) throw new UserError('Live Warframe world data is switched off right now (WORLDSTATE_ENABLED=false), so there are no fissures, alerts or cycles to show.');
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.ws;
-  // While the feed is failing, serve the last good copy (stale beats nothing) or repeat the last error without a request.
-  if (Date.now() - failedAt < FAILURE_COOLDOWN_MS) {
+  const now = Date.now();
+  if (cached && now - cached.at < ttlMs) return cached.ws;
+  // Too soon for another call: serve what we have (after a restart, the saved answer), or repeat the last failure.
+  const wait = lastCall ? (lastCall.ok ? ttlMs : Math.max(FAILURE_COOLDOWN_MS, ttlMs)) : 0;
+  if (lastCall && now - lastCall.at < wait) {
     if (cached) return cached.ws;
-    throw lastError ?? new Error('Worldstate is unavailable');
+    if (lastCall.ok && cacheFile) {
+      const saved = await readFile(cacheFile, 'utf8').then(parse, () => null);
+      if (saved) {
+        cached = { at: lastCall.at, ws: saved };
+        return saved;
+      }
+    } else if (!lastCall.ok) throw new Error(lastCall.detail);
   }
   inflight ??= fetchWorldState()
     .then((ws) => {
       cached = { at: Date.now(), ws };
-      failedAt = 0;
       return ws;
     })
     .catch((err: unknown) => {
-      failedAt = Date.now();
-      lastError = err instanceof Error ? err : new Error(String(err));
       if (cached) {
-        console.warn(`[worldstate] fetch failed (${lastError.message}); serving the data from ${Math.round((Date.now() - cached.at) / 60_000)} min ago`);
+        console.warn(`[worldstate] call failed (${(err as Error).message}); serving the data from ${Math.round((Date.now() - cached.at) / 60_000)} min ago`);
         return cached.ws;
       }
-      throw lastError;
+      throw err;
     })
     .finally(() => {
       inflight = null;
