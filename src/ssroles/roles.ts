@@ -71,6 +71,14 @@ export interface RoleInfo {
 const MASTERY_ROLE = /^(mr|masteryrank|mastery)\d{1,2}$|^(lr|legendaryrank|legendary)\d{1,2}$/;
 export const isMasteryRoleName = (name: string): boolean => MASTERY_ROLE.test(norm(name));
 
+/**
+ * Leadership, moderation and admin roles are never handed out from a screenshot, whatever permissions they carry and
+ * whatever an (editable) picture says: "Leadership", "Founding Warlord", "Rat Emperor/King/Lord/Count/Baron",
+ * "Enhanced Permissions", anything with admin, moderator, staff or owner in its name, and the bot's own roles.
+ */
+const STAFF_ROLE = /admin|moderat|leader|warlord|owner|staff|emperor|permission|^rat(king|lord|count|baron)$|^(mod|mods|ordis|cephalonordis|muted|verified)$/;
+export const isStaffRoleName = (name: string): boolean => STAFF_ROLE.test(norm(name));
+
 /** Every normalized role name a verified card earns. */
 export function earnedNames(r: CardReading, mr: number | null, clanName: string): Set<string> {
   const names = new Set<string>(['clan', norm(clanName)]);
@@ -109,7 +117,8 @@ export function planRoles(roles: RoleInfo[], earned: Set<string>, held: Set<stri
       continue;
     }
     if (!earned.has(key) || key === 'everyone') continue;
-    if (role.managed) plan.skipped.push({ name: role.name, reason: 'managed by an integration' });
+    if (isStaffRoleName(role.name)) plan.skipped.push({ name: role.name, reason: 'staff roles are never given from a screenshot' });
+    else if (role.managed) plan.skipped.push({ name: role.name, reason: 'managed by an integration' });
     else if (role.dangerous) plan.skipped.push({ name: role.name, reason: 'has moderator permissions' });
     else if (role.position >= botPosition) plan.skipped.push({ name: role.name, reason: 'above Ordis in the role list' });
     else if (!held.has(role.id)) plan.add.push(role);
@@ -165,7 +174,7 @@ export function planClanRank(roles: RoleInfo[], rank: ClanRank, held: Set<string
   }
   const target = roles.find((r) => norm(r.name) === norm(clanRankRoleName(rank)));
   if (!target) plan.problems.push(`There is no "${clanRankRoleName(rank)}" role on this server.`);
-  else if (target.managed || target.dangerous || target.position >= botPosition) plan.problems.push(`I can't hand out ${target.name} (managed, above me or has moderator powers).`);
+  else if (isStaffRoleName(target.name) || target.managed || target.dangerous || target.position >= botPosition) plan.problems.push(`I can't hand out ${target.name} (managed, above me or has moderator powers).`);
   if (plan.problems.length) return plan;
   if (target && !held.has(target.id)) plan.add = target;
   const lower = SELF_SERVE_RANKS.slice(0, SELF_SERVE_RANKS.indexOf(rank));

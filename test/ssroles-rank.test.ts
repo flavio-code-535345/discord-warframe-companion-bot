@@ -4,7 +4,7 @@ import { describe, it, after } from 'node:test';
 import { Store } from '../src/db.js';
 import { ocr } from '../src/ssroles/ocr.js';
 import { type OcrLine, parseCard, parseRankRow, parseRankRows, rankFromTitle } from '../src/ssroles/parse.js';
-import { type RoleInfo, masteryOfRoleName, planClanRank } from '../src/ssroles/roles.js';
+import { type RoleInfo, isStaffRoleName, masteryOfRoleName, planClanRank, planRoles } from '../src/ssroles/roles.js';
 import { FINGERPRINT_BYTES, bestSimilarity, splitFingerprints } from '../src/ssroles/emblem.js';
 import { learnReferences, ownsName, syncNickname } from '../src/ssroles/service.js';
 import { renderStickyEmbeds, stickyImages } from '../src/sticky/service.js';
@@ -184,5 +184,26 @@ describe('roster rows on a whole member list or split columns', () => {
     assert.equal(rankFromTitle('Rat Squire'), 'squire');
     assert.equal(rankFromTitle('KNIGHT'), 'knight');
     assert.equal(rankFromTitle('Warlord'), null);
+  });
+});
+
+describe('staff roles are never given from a screenshot', () => {
+  const role = (id: string, name: string): RoleInfo => ({ id, name, position: 10, managed: false, dangerous: false });
+
+  it('recognizes leadership, moderation and admin role names', () => {
+    for (const n of ['Leadership', 'Founding Warlord', 'Rat Emperor', 'Rat King', 'Rat Lord', 'Rat Count', 'Rat Baron', 'Enhanced Permissions', 'Admin', 'Moderator', 'Server Owner', 'Staff', 'Ordis', 'Cephalon Ordis', 'Muted', 'Verified']) {
+      assert.equal(isStaffRoleName(n), true, n);
+    }
+    for (const n of ['Clan', 'The Rats Den 69', 'Rat Squire', 'Rat Knight', 'MR 20', 'LR 3', 'Level 10+', 'Ten Year Supporter', 'FSK 18']) {
+      assert.equal(isStaffRoleName(n), false, n);
+    }
+  });
+
+  it('skips them even when a (faked) card names them as an accolade and they carry no dangerous permission', () => {
+    const roles = [role('l', 'Leadership'), role('k', 'Rat King'), role('c', 'Clan')];
+    const earned = new Set(['leadership', 'ratking', 'clan']);
+    const plan = planRoles(roles, earned, new Set(), 50);
+    assert.deepEqual(plan.add.map((r) => r.id), ['c']);
+    assert.deepEqual(plan.skipped.map((s) => s.name).sort(), ['Leadership', 'Rat King']);
   });
 });
