@@ -45,6 +45,21 @@ test('an unreachable Ollama is explained, not thrown', async () => {
   assert.match(out.content[0]!.text, /not reachable.*ECONNREFUSED/);
 });
 
+test('ollama_tune creates a thread-tuned copy of the model in use', async () => {
+  let body: unknown;
+  const tools = setup('http://h:11434/v1', async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path === '/api/create') {
+      body = JSON.parse(String(init?.body));
+      return json({ status: 'success' });
+    }
+    return json({ models: [{ name: 'gemma:latest', size: 1e9 }] });
+  });
+  const out = JSON.parse((await tools.ollama_tune!.handler({ threads: 8, context: 4096 })).content[0]!.text);
+  assert.match(out.message, /Created ordis-t8 from gemma:latest/);
+  assert.deepEqual(body, { model: 'ordis-t8', from: 'gemma:latest', parameters: { num_thread: 8, num_ctx: 4096 }, stream: false });
+});
+
 test('ollama_test times one answer', async () => {
   const tools = setup('http://h:11434/v1', async (url) => {
     assert.equal(String(url), 'http://h:11434/v1/chat/completions');

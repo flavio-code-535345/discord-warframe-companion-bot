@@ -1,5 +1,5 @@
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { DEFAULT_MODEL_CHOICE, aiOverview, chooseModel, installModel, requireBase, setToggle, testModel } from '../../ai/control.js';
+import { DEFAULT_MODEL_CHOICE, aiOverview, chooseModel, installModel, requireBase, setToggle, testModel, tuneModel } from '../../ai/control.js';
 import { personaBand, updateBrain } from '../../agent/brain.js';
 import { cacheOverview, refreshAnswers } from '../../answers/cache.js';
 import { gb, listInstalled } from '../../ai/ollama.js';
@@ -29,6 +29,15 @@ export const ai: Command = {
         .setName('install')
         .setDescription('Download a model onto the AI server (several GB, runs in the background)')
         .addStringOption((o) => o.setName('tag').setDescription('Model tag, e.g. gemma3:27b or hf.co/user/repo:Q4_K_M').setRequired(true).setMaxLength(120)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('tune')
+        .setDescription('Make a copy of the model with a CPU thread count (no download), to try it')
+        .addIntegerOption((o) => o.setName('threads').setDescription('CPU threads that generate tokens, e.g. 6 (the performance cores of a 13900HK)').setRequired(true).setMinValue(1).setMaxValue(64))
+        .addStringOption((o) => o.setName('name').setDescription('Name of the copy (default ordis-t<threads>)').setMaxLength(60))
+        .addIntegerOption((o) => o.setName('context').setDescription('Context window in tokens (default 4096)').setMinValue(512).setMaxValue(131072))
+        .addBooleanOption((o) => o.setName('use').setDescription('Switch to the copy right away')),
     )
     .addSubcommand((s) =>
       s
@@ -83,6 +92,18 @@ export const ai: Command = {
         })();
       });
       await interaction.editReply(`⬇️ ${message} I'll post here when it is done.`);
+      return;
+    }
+
+    if (sub === 'tune') {
+      await interaction.editReply(
+        await tuneModel(ctx, {
+          threads: interaction.options.getInteger('threads', true),
+          name: interaction.options.getString('name') ?? undefined,
+          context: interaction.options.getInteger('context') ?? undefined,
+          use: interaction.options.getBoolean('use') ?? false,
+        }),
+      );
       return;
     }
 

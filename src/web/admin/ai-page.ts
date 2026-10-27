@@ -1,5 +1,5 @@
 import type { Request, RequestHandler, Response, Router } from 'express';
-import { aiOverview, chooseModel, installModel, setToggle, testModel } from '../../ai/control.js';
+import { aiOverview, chooseModel, installModel, setToggle, testModel, tuneModel } from '../../ai/control.js';
 import { gb } from '../../ai/ollama.js';
 import { TOGGLE_KEYS, isToggle } from '../../ai/settings.js';
 import { cacheOverview, refreshAnswers } from '../../answers/cache.js';
@@ -69,6 +69,11 @@ ${
     ? `<p class="muted">Download: <strong>${e(o.download.model)}</strong> — ${o.download.error ? `❌ ${e(o.download.error)}` : o.download.finishedAt ? '✅ done' : e(o.download.progress ?? o.download.status)}</p>`
     : ''
 }</div>
+<div class="card"><form class="stack" method="post" action="/admin/ai/tune">${csrfField(p.session)}
+<p class="muted">Makes a copy of the model in use with a CPU thread count and context size (same weights, nothing is downloaded; it appears in the list above). Try it to find the fastest setting: the number of performance cores is a good start (6 on an i9-13900HK), then 8 and 12. Test each with the button below.</p>
+<div class="row"><label>CPU threads<input type="number" name="threads" min="1" max="64" value="6" required></label><label>Context (tokens)<input type="number" name="context" min="512" max="131072" value="4096"></label><label>Name (optional)<input name="name" maxlength="60" placeholder="ordis-t6"></label></div>
+<label class="check"><input type="checkbox" name="use" value="1"> Use the copy right away</label>
+<div><button>Create the copy</button></div></form></div>
 <div class="card"><form class="stack" method="post" action="/admin/ai/test">${csrfField(p.session)}
 <div class="row"><label>Test prompt (optional)<input name="prompt" maxlength="300" placeholder="Say hello in one short sentence."></label></div>
 <div><button class="ghost">Test the model</button></div></form></div>`
@@ -160,6 +165,20 @@ ${cacheCard}
       const message = await installModel(ctx, tag);
       await audit(session, 'Started an AI model download', [{ name: 'Model', value: tag.trim() }]);
       return message;
+    }),
+  );
+
+  router.post(
+    '/ai/tune',
+    action('ai', async (req, session) => {
+      const num = (v: unknown) => (typeof v === 'string' && v.trim() ? Number(v) : undefined);
+      const threads = num(req.body.threads);
+      if (threads === undefined || !Number.isFinite(threads)) throw new UserError('Enter the number of CPU threads.');
+      const context = num(req.body.context);
+      const name = typeof req.body.name === 'string' && req.body.name.trim() ? req.body.name.trim() : undefined;
+      const message = await tuneModel(ctx, { threads, context: context !== undefined && Number.isFinite(context) ? context : undefined, name, use: req.body.use === '1' });
+      await audit(session, 'Created a CPU-tuned model copy', [{ name: 'Threads', value: String(threads) }, { name: 'Name', value: name ?? `ordis-t${threads}` }]);
+      return message.slice(0, 280);
     }),
   );
 

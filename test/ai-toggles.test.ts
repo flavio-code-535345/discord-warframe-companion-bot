@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import { chooseModel, setToggle } from '../src/ai/control.js';
+import { chooseModel, setToggle, tuneModel } from '../src/ai/control.js';
 import { resetCapabilities, setChosenModel } from '../src/ai/ollama.js';
 import { TOGGLE_KEYS, aiToggle, loadAiToggles, resetAiToggles, setAiToggle } from '../src/ai/settings.js';
 import { composeAnswer, resetLocalAi } from '../src/answers/compose.js';
@@ -134,5 +134,36 @@ describe('control actions', () => {
     assert.equal(store.getMeta('local_ai_model'), 'small:1');
     await assert.rejects(chooseModel(ctxOf(store), 'nope', tags), /not installed/);
     assert.match(await chooseModel(ctxOf(store), '-', tags), /Back to the bot's own setting: gemma/);
+  });
+
+  it('makes a CPU-tuned copy of the model in use, and can switch to it', async () => {
+    const store = new Store(':memory:');
+    const created: unknown[] = [];
+    const server = (async (url: string, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/api/create') {
+        created.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ status: 'success' }));
+      }
+      return new Response(JSON.stringify({ models: [{ name: 'gemma', size: 5e9 }, ...(created.length ? [{ name: 'ordis-t6', size: 5e9 }] : [])] }));
+    }) as never;
+
+    assert.match(await tuneModel(ctxOf(store), { threads: 6 }, server), /Created ordis-t6 from gemma with 6 threads and a 4096-token context/);
+    assert.deepEqual(created[0], { model: 'ordis-t6', from: 'gemma', parameters: { num_thread: 6, num_ctx: 4096 }, stream: false });
+    assert.equal(store.getMeta('local_ai_model') ?? '', '');
+
+    assert.match(await tuneModel(ctxOf(store), { threads: 6, use: true }, server), /now answers with ordis-t6/);
+    assert.equal(store.getMeta('local_ai_model'), 'ordis-t6');
+  });
+
+  it('refuses silly tuning requests', async () => {
+    const store = new Store(':memory:');
+    const tags = (async () => new Response(JSON.stringify({ models: [{ name: 'gemma', size: 5e9 }] }))) as never;
+    await assert.rejects(tuneModel(ctxOf(store), { threads: 0 }, tags), /between 1 and 64/);
+    await assert.rejects(tuneModel(ctxOf(store), { threads: 6, context: 10 }, tags), /Context must be/);
+    await assert.rejects(tuneModel(ctxOf(store), { threads: 6, from: 'missing' }, tags), /"missing" is not installed/);
+    await assert.rejects(tuneModel(ctxOf(store), { threads: 6, name: 'bad name!' }, tags), /usable model name/);
+    const failing = (async (url: string) => (new URL(String(url)).pathname === '/api/create' ? new Response(JSON.stringify({ error: 'nope' })) : new Response(JSON.stringify({ models: [{ name: 'gemma', size: 1 }] })))) as never;
+    await assert.rejects(tuneModel(ctxOf(store), { threads: 6 }, failing), /could not create ordis-t6: nope/);
   });
 });

@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { tuneModel } from '../ai/control.js';
 import { currentPull, gb, listInstalled, localModelOf, ollamaApi, ollamaBase, pullProgress, pullRunning, startPull, validModelTag } from '../ai/ollama.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
@@ -72,6 +73,23 @@ export function registerOllamaTools(server: McpServer, ctx: AppContext, fetcher:
       void startPull(base, model, fetcher);
       return { started: model, next: 'Call ollama_status to follow the progress, then choose it with /ai model in Discord.' };
     }),
+  );
+
+  server.registerTool(
+    'ollama_tune',
+    {
+      title: 'Create a CPU-tuned copy of a model',
+      description:
+        'Creates a copy of an installed Ollama model with a fixed CPU thread count (num_thread) and context size (num_ctx): same weights, nothing is downloaded. Use it to try thread counts (e.g. 6 for the performance cores of an i9-13900HK), switch to a copy with choose_ai_model, and time it with ollama_test. Names default to ordis-t<threads>.',
+      inputSchema: {
+        threads: z.number().int().min(1).max(64).describe('CPU threads that generate tokens'),
+        context: z.number().int().min(512).max(131072).default(4096).describe('Context window in tokens'),
+        name: z.string().min(2).max(60).refine(validModelTag, 'A model name such as ordis-t6').optional().describe('Name of the copy (default ordis-t<threads>)'),
+        from: z.string().min(2).max(120).refine(validModelTag, 'An installed model tag').optional().describe('Installed model to copy (default: the model in use)'),
+      },
+      annotations: WRITE,
+    },
+    tool(async ({ threads, context, name, from }) => ({ message: await tuneModel(ctx, { threads, context, name, from }, fetcher) })),
   );
 
   server.registerTool(

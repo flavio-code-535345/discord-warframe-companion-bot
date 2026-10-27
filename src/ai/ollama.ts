@@ -75,6 +75,30 @@ export async function listInstalled(base: string, fetcher: Fetcher = fetch): Pro
   return tags.models.map((m) => ({ name: m.name, size: m.size, parameters: m.details?.parameter_size ?? null, quantization: m.details?.quantization_level ?? null }));
 }
 
+/**
+ * Creates a variant of an installed model with other run parameters (the same weights, nothing is downloaded: it is a few
+ * hundred bytes of settings on top). This is the API behind `ollama create` with a Modelfile of `FROM` plus `PARAMETER` lines.
+ * `num_thread` is how many CPU threads generate tokens, `num_ctx` the context window.
+ */
+export async function createVariant(
+  base: string,
+  opts: { from: string; name: string; threads: number; context: number },
+  fetcher: Fetcher = fetch,
+): Promise<void> {
+  const res = await ollamaApi<{ status?: string; error?: string }>(
+    base,
+    '/api/create',
+    fetcher,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: opts.name, from: opts.from, parameters: { num_thread: opts.threads, num_ctx: opts.context }, stream: false }),
+    },
+    60_000,
+  );
+  if (res.error) throw new UserError(`Ollama could not create ${opts.name}: ${res.error}`);
+}
+
 export interface PullState {
   model: string;
   status: string;

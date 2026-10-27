@@ -5,6 +5,7 @@ import {
   LOCAL_MODEL_META,
   type InstalledModel,
   type PullState,
+  createVariant,
   currentPull,
   gb,
   listInstalled,
@@ -104,10 +105,46 @@ export async function chooseModel(ctx: AppContext, name: string, fetcher: typeof
   }
   const installed = await listInstalled(base, fetcher);
   const match = installed.find((m) => m.name === wanted || m.name === `${wanted}:latest`);
-  if (!match) throw new UserError(`"${wanted}" is not installed on the AI server. Installed: ${installed.map((m) => m.name).join(', ') || 'nothing'}. Install it first.`);
+  if (!match) throw new UserError(`"${wanted}" is not installed on the AI server. Installed: ${installed.map((m) => m.name).join(', ') || 'nothing'}. Install it first (/ai install), or make a copy of the current model with a CPU setting (/ai tune).`);
   setChosenModel(match.name);
   ctx.store.setMeta(LOCAL_MODEL_META, match.name);
   return `Ordis now answers with ${match.name} (${gb(match.size)}${match.parameters ? `, ${match.parameters}` : ''}). The first answer after a switch is slower while it loads into memory.`;
+}
+
+export interface TuneOptions {
+  /** CPU threads for generating tokens: the number of performance cores is a good start (6 on an i9-13900HK). */
+  threads: number;
+  /** Context window in tokens (the bot's prompts fit in 4096). */
+  context?: number | undefined;
+  /** Name of the new model; default `ordis-t<threads>`. */
+  name?: string | undefined;
+  /** The installed model to copy the weights from; default the model in use. */
+  from?: string | undefined;
+  /** Switch the bot to the new model right away. */
+  use?: boolean | undefined;
+}
+
+/**
+ * Creates a copy of an installed model with a fixed CPU thread count and context size (see `createVariant`), so the setting
+ * can be tried without shell access to the AI server. Returns a message for the user.
+ */
+export async function tuneModel(ctx: AppContext, opts: TuneOptions, fetcher: typeof fetch = fetch): Promise<string> {
+  const base = requireBase(ctx);
+  const threads = Math.trunc(opts.threads);
+  const context = Math.trunc(opts.context ?? 4096);
+  if (!(threads >= 1 && threads <= 64)) throw new UserError('Threads must be between 1 and 64.');
+  if (!(context >= 512 && context <= 131_072)) throw new UserError('Context must be between 512 and 131072 tokens.');
+  const name = (opts.name?.trim() || `ordis-t${threads}`).toLowerCase();
+  if (!validModelTag(name)) throw new UserError('That is not a usable model name. Use letters, digits, dashes, e.g. ordis-t6.');
+  const from = opts.from?.trim() || localModelOf(ctx.config);
+  if (!from) throw new UserError('No model is chosen and LOCAL_AI_MODEL is not set: say which installed model to copy.');
+  const installed = await listInstalled(base, fetcher);
+  const source = installed.find((m) => m.name === from || m.name === `${from}:latest`);
+  if (!source) throw new UserError(`"${from}" is not installed on the AI server. Installed: ${installed.map((m) => m.name).join(', ') || 'nothing'}.`);
+  await createVariant(base, { from: source.name, name, threads, context }, fetcher);
+  const made = `Created ${name} from ${source.name} with ${threads} threads and a ${context}-token context.`;
+  if (opts.use) return `${made} ${await chooseModel(ctx, name, fetcher)}`;
+  return `${made} Switch to it with /ai model name:${name}, then test the speed.`;
 }
 
 /** Starts a background download. `onDone` runs when it has finished or failed. */
