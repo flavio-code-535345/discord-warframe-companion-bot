@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { rivenTrace, scanLog, scanTotals } from '../rivens/channel.js';
 import { gradeFor, rivenStatus, topFor } from '../rivens/service.js';
 import { READ_ONLY, tool } from './util.js';
 
@@ -74,6 +75,9 @@ export function registerRivenTools(server: McpServer, ctx: AppContext): void {
       inputSchema: {},
       annotations: { ...READ_ONLY, openWorldHint: false },
     },
-    tool(async () => rivenStatus(ctx)),
+    tool(async () => ({
+      ...(await rivenStatus(ctx)),
+      channel: { ...rivenTrace(), messageContentOn: ctx.config.ENABLE_MESSAGE_CONTENT, scans: scanTotals(), latest: scanLog().slice(0, 5) },
+    })),
   );
 }

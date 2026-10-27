@@ -57,14 +57,32 @@ async function download(url: string): Promise<Uint8Array> {
   return new Uint8Array(await res.arrayBuffer());
 }
 
+/** What the handler decided about the latest messages in the riven channel (memory only), so a silent channel can be explained. */
+const trace: { at: number; note: string }[] = [];
+const seen = { messages: 0, lastChannelId: null as string | null, configured: null as string | null };
+const noteTrace = (note: string): void => {
+  trace.unshift({ at: Date.now(), note });
+  trace.length = Math.min(trace.length, 15);
+};
+export const rivenTrace = (): { messagesSeen: number; lastChannelId: string | null; configuredChannelId: string | null; recent: { at: number; note: string }[] } => ({
+  messagesSeen: seen.messages,
+  lastChannelId: seen.lastChannelId,
+  configuredChannelId: seen.configured,
+  recent: [...trace],
+});
+
 /** Handles a message in the riven channel. Returns true when the message was a riven screenshot post that this handled. */
 export async function handleRivenMessage(message: Message, ctx: AppContext, scan: typeof scanCard = scanCard): Promise<boolean> {
   const { config, store } = ctx;
+  seen.messages++;
+  seen.lastChannelId = message.channelId;
   if (!message.inGuild() || message.guildId !== config.DISCORD_GUILD_ID || message.author.bot) return false;
   const channelId = store.getSettings(config.DISCORD_GUILD_ID).rivenChannelId;
+  seen.configured = channelId ?? null;
   if (!channelId || message.channelId !== channelId) return false;
 
   const images = [...message.attachments.filter((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES).values()].slice(0, MAX_IMAGES);
+  noteTrace(`${message.author.username}: ${message.attachments.size} attachment(s) [${[...message.attachments.values()].map((a) => `${a.contentType ?? 'no type'} ${a.size}B`).join(', ')}], ${images.length} usable`);
   if (!images.length) return false;
 
   const clearReactions = async () => {
