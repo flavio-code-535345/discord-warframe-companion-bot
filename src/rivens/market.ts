@@ -23,10 +23,14 @@ const TTL_MS = 12 * 3_600_000;
 
 export async function getRivenWeapons(): Promise<RivenWeapon[]> {
   if (weapons && Date.now() - weapons.at < TTL_MS) return weapons.list;
-  const r = await apiJson<{ data?: { slug?: string; i18n?: { en?: { name?: string } } }[] }>(`${V2}/riven/weapons`, { kind: 'stable', headers: HEADERS, scope: RIVEN_SCOPE });
+  const r = await apiJson<{ data?: Json[] }>(`${V2}/riven/weapons`, { kind: 'stable', headers: HEADERS, scope: RIVEN_SCOPE });
   const list = (r.data?.data ?? [])
-    .filter((w): w is { slug: string; i18n?: { en?: { name?: string } } } => typeof w.slug === 'string')
-    .map((w) => ({ slug: w.slug, name: w.i18n?.en?.name ?? w.slug }))
+    .filter((w): w is Json & { slug: string } => typeof w.slug === 'string')
+    .map((w): RivenWeapon => {
+      const type = [w.rivenType, w.riven_type, w.type, w.group].find((t): t is string => typeof t === 'string' && t !== '');
+      const disposition = num(w.disposition);
+      return { slug: w.slug, name: (obj(obj(w.i18n)?.en)?.name as string | undefined) ?? w.slug, ...(type ? { type } : {}), ...(disposition !== null && disposition > 0 ? { disposition } : {}) };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
   if (list.length) weapons = { at: Date.now(), list };
   return list;

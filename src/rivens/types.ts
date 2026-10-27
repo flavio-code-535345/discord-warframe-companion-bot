@@ -31,6 +31,10 @@ export interface RivenCrawlRow {
 export interface RivenWeapon {
   slug: string;
   name: string;
+  /** The market's kind of weapon ("rifle", "pistol", "melee"...), when its list says. */
+  type?: string;
+  /** The weapon's disposition as the market lists it (old rivens were rolled with it), when its list says. */
+  disposition?: number;
 }
 
 export interface RivenAttribute {

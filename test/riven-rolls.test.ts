@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { woffToSfnt } from '../src/imaging/font.js';
 import { cardCrop, rivenPicture } from '../src/rivens/picture.js';
+import { categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
 import { MIN_SAMPLES, gradeRolls, letterFor, weightOf } from '../src/rivens/rolls.js';
 import type { RivenListing } from '../src/rivens/types.js';
 
@@ -67,6 +68,57 @@ describe('grading every stat of a riven', () => {
 
   it('turns a deviation into a letter', () => {
     assert.deepEqual([10, 9.159, 7.395, 4.042, 2, 0, -1, -3, -5, -7, -9.109, -9.9].map(letterFor), ['A+', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'C-', 'D']);
+  });
+});
+
+describe('grading from the game ranges', () => {
+  const near = (actual: number | null | undefined, expected: number, label: string) => assert.ok(actual !== null && actual !== undefined && Math.abs(actual - expected) < 0.05, `${label}: ${actual} vs ${expected}`);
+  const devs = (r: ReturnType<typeof gradeRolls>) => Object.fromEntries(r.map((x) => [x.slug, x.deviation]));
+
+  it('grades a rifle card (Zarr) from the table, finding the kind of weapon by what fits', () => {
+    const d = devs(gradeRolls([], [{ slug: 'critical_chance', value: 183.5 }, { slug: 'ammo_efficiency', value: 54.4 }, { slug: 'damage', value: 172.2 }], { slug: 'zoom', value: 50.9 }));
+    near(d.critical_chance, 8.75, 'cc');
+    near(d.ammo_efficiency, 7.46, 'ammo efficiency');
+    near(d.damage, -7.23, 'damage');
+    near(d.zoom, 5.72, 'zoom (a curse: milder is better)');
+  });
+
+  it('grades a pistol card (Nukor): a rifle can not have 228% damage, so the pistol ranges are used', () => {
+    const r = gradeRolls([], [{ slug: 'damage', value: 228.3 }, { slug: 'multishot', value: 138.6 }, { slug: 'status_damage', value: 95.2 }], { slug: 'zoom', value: 71.6 });
+    const d = devs(r);
+    near(d.damage, -7.59, 'damage');
+    near(d.multishot, 2.92, 'multishot');
+    near(d.status_damage, -5.98, 'status damage');
+    near(d.zoom, 0.68, 'zoom');
+    assert.deepEqual(r.map((x) => x.letter), ['C-', 'B+', 'C', 'B']);
+  });
+
+  it('reproduces the reference card with the weapon\'s disposition (1.1) and the kind the market names', () => {
+    const r = gradeRolls([], [{ slug: 'reload_speed', value: 46.9 }, { slug: 'heat', value: 101.3 }, { slug: 'puncture', value: 128.7 }], { slug: 'damage', value: 167.8 }, { type: 'pistol', disposition: 1.1 });
+    const d = devs(r);
+    near(d.heat, 9.159, 'heat');
+    near(d.puncture, 4.042, 'puncture');
+    assert.ok(Math.abs(d.reload_speed! - -9.109) < 0.1, 'reload ' + d.reload_speed);
+    near(d.damage, 7.395, 'damage curse');
+    assert.deepEqual(r.map((x) => x.letter), ['C-', 'A+', 'A-', 'A']);
+  });
+
+  it('falls back to the listings when no kind of weapon fits (here: a stat the table does not have)', () => {
+    const odd = gradeRolls(scisco(), [{ slug: 'reload_speed', value: 46.9 }, { slug: 'heat', value: 101.3 }, { slug: 'puncture', value: 128.7 }], { slug: 'damage', value: 167.8 });
+    assert.ok(Math.abs(odd.find((x) => x.slug === 'heat')!.deviation! - 9.159) < 0.15, 'the older, listing-based estimate');
+  });
+
+  it('knows every stat name of the wiki, and the market spellings of them', () => {
+    for (const { category, name } of rawNames()) assert.notEqual(statKey(name), null, `${category}: ${name}`);
+    const same: [string, string][] = [['Heat', 'elemental'], ['Viral', 'combined'], ['Fire Rate / Attack Speed', 'rate'], ['fire_rate_attack_speed', 'rate'], ['Weapon Recoil', 'recoil'], ['Base Damage / Melee Damage', 'damage'], ['Weak Point Damage', 'weakpoint'], ['Puncture', 'physical'], ['Critical Chance on Slide Attack', 'crit_slide']];
+    for (const [market, key] of same) assert.equal(statKey(market), key, market);
+    assert.equal(statKey('Damage vs Grineer'), null);
+    assert.equal(categoryOf('Primary'), 'rifle');
+    assert.equal(categoryOf('SECONDARY'), 'pistol');
+    assert.equal(categoryOf('kitgun'), 'pistol');
+    assert.equal(categoryOf('zaw'), 'melee');
+    assert.equal(categoryOf('archgun'), 'archgun');
+    assert.equal(categoryOf(undefined), null);
   });
 });
 

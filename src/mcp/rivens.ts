@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { rivenTrace, scanLog, scanTotals } from '../rivens/channel.js';
+import { getRivenWeapons } from '../rivens/market.js';
 import { gradeFor, rivenStatus, topFor } from '../rivens/service.js';
 import { READ_ONLY, tool } from './util.js';
 
@@ -75,9 +76,15 @@ export function registerRivenTools(server: McpServer, ctx: AppContext): void {
       inputSchema: {},
       annotations: { ...READ_ONLY, openWorldHint: false },
     },
-    tool(async () => ({
-      ...(await rivenStatus(ctx)),
-      channel: { ...rivenTrace(), messageContentOn: ctx.config.ENABLE_MESSAGE_CONTENT, scans: scanTotals(), latest: scanLog().slice(0, 5) },
-    })),
+    tool(async () => {
+      const weapons = await getRivenWeapons().catch(() => []);
+      const sample = ['Zarr', 'Nukor', 'Arca Scisco', 'Kuva Bramma', 'Rubico Prime', 'Skana'].flatMap((n) => weapons.filter((w) => w.name === n));
+      return {
+        ...(await rivenStatus(ctx)),
+        // What the market's weapon list says about the kind of weapon and the disposition (the grader's ranges depend on them).
+        weaponList: { total: weapons.length, withType: weapons.filter((w) => w.type).length, withDisposition: weapons.filter((w) => w.disposition).length, types: [...new Set(weapons.map((w) => w.type ?? '(none)'))], sample },
+        channel: { ...rivenTrace(), messageContentOn: ctx.config.ENABLE_MESSAGE_CONTENT, scans: scanTotals(), latest: scanLog().slice(0, 5) },
+      };
+    }),
   );
 }

@@ -128,7 +128,7 @@ export async function gradeResolved(ctx: AppContext, weapon: RivenWeapon, attrs:
   }
   const loaded = await loadListings(ctx, weapon);
   const market = await comparableFor(weapon.slug, positives.map((p) => p.slug), negative?.slug ?? null);
-  return { weapon, names: attributeNames(attrs), rolls: gradeRolls(loaded.listings, positives, negative), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
+  return { weapon, names: attributeNames(attrs), rolls: gradeRolls(loaded.listings, positives, negative, weapon), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
 }
 
 export interface TopReport {
