@@ -150,6 +150,19 @@ describe('a real screenshot', () => {
   });
 });
 
+/** Real tesseract output for a card with two elemental bonuses, whose icons OCR turns into "*" and "&". */
+describe('elemental stat lines', () => {
+  const real: RivenAttribute[] = ['Cold', 'Corrosive', 'Critical Chance', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/ /g, '_'), name, positiveOnly: false, negativeOnly: false }));
+  it('reads a stat whose icon OCR saw as a symbol', () => {
+    const lines = [[900, 'Nataruk Crita-corido'], [960, '+98.3% * Cold'], [1010, '+102.6% & Corrosive'], [1060, '+180.1% Critical Chance /'], [1110, '3 -56.9% Zoom'], [1180, '("MR 16 3% O33']].map(([y0, text]) => ({ text: String(text), x0: 0, y0: Number(y0), x1: 900, y1: Number(y0) + 40, confidence: 60 }));
+    const r = parseRivenCard(lines, real, [{ slug: 'nataruk', name: 'Nataruk' }]);
+    assert.equal(r.weapon!.slug, 'nataruk');
+    assert.deepEqual(r.positives, [{ slug: 'cold', value: 98.3 }, { slug: 'corrosive', value: 102.6 }, { slug: 'critical_chance', value: 180.1 }]);
+    assert.deepEqual(r.negative, { slug: 'zoom', value: 56.9 });
+    assert.deepEqual(r.unknown, []);
+  });
+});
+
 describe('preparing a picture for OCR', () => {
   const png = (width: number, height: number, background: number, ink: number): Uint8Array => {
     const p = new PNG({ width, height });
