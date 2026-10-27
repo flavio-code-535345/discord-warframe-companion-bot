@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Store } from '../src/db.js';
 import { RivenCrawler, pickWeapon } from '../src/rivens/crawler.js';
 import { gradeRiven, highBracket, topRolls } from '../src/rivens/grade.js';
-import { parseAuctions, resetRivenLists } from '../src/rivens/market.js';
+import { parseAuctions, resetRivenFilter, resetRivenLists } from '../src/rivens/market.js';
 import { gradeFor, rivenStatus, topFor } from '../src/rivens/service.js';
 import { parseStatList, resolveStat } from '../src/rivens/stats.js';
 import type { RivenAttribute, RivenListing } from '../src/rivens/types.js';
@@ -123,6 +123,18 @@ describe('grading', () => {
     assert.equal(g.stats[1]!.percentile, 0);
   });
 
+  it('prices from what warframe.market says is for sale, and is honest when that is cut off or empty', () => {
+    const want = [{ slug: 'critical_chance' }, { slug: 'critical_damage' }, { slug: 'multishot' }];
+    const cheap = (price: number) => listing(price, ['critical_chance', 'critical_damage', 'multishot']);
+    const whole = gradeRiven(market(), { positives: want }, 1000, { listings: [cheap(300), cheap(500), cheap(900), listing(50, ['zoom', 'recoil'])], complete: true })!;
+    assert.deepEqual([whole.comparable!.source, whole.comparable!.complete, whole.comparable!.count, whole.comparable!.min, whole.comparable!.median, whole.comparable!.max], ['market', true, 3, 300, 500, 900]);
+    const cut = gradeRiven(market(), { positives: want }, 1000, { listings: Array.from({ length: 12 }, (_, i) => cheap(100 + i * 10)), complete: false })!;
+    assert.deepEqual([cut.comparable!.complete, cut.comparable!.min, cut.comparable!.tenth], [false, 100, 190]);
+    assert.equal(gradeRiven(market(), { positives: want }, 1000, { listings: [], complete: true })!.comparable, null, 'complete and empty: nobody is selling it');
+    assert.equal(gradeRiven(market(), { positives: want }, 1000, { listings: [], complete: false })!.comparable!.source, 'top', 'cut off and empty: fall back to what is stored');
+    assert.equal(gradeRiven(market(), { positives: want }, 1000)!.comparable!.source, 'top');
+  });
+
   it('summarizes what sells', () => {
     const t = topRolls(market(), 1000)!;
     assert.equal(t.stats[0]!.slug, 'critical_chance');
@@ -151,13 +163,14 @@ describe('the slow read', () => {
 describe('with a fake warframe.market', () => {
   const realFetch = globalThis.fetch;
   let urls: string[] = [];
-  let mode: 'ok' | 'forbidden' = 'ok';
+  let mode: 'ok' | 'forbidden' | 'filter400' = 'ok';
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 
   beforeEach(() => {
     api.reset();
     api.configure({ limits: { minIntervalMs: 0 } });
     resetRivenLists();
+    resetRivenFilter();
     urls = [];
     mode = 'ok';
     n = 0;
@@ -169,7 +182,16 @@ describe('with a fake warframe.market', () => {
       if (u.pathname === '/v1/auctions/search') {
         if (mode === 'forbidden') return new Response('Deprecated', { status: 403 });
         const weapon = u.searchParams.get('weapon_url_name')!;
-        return json({ payload: { auctions: market().map((l, i) => ({ id: `${weapon}-${i}`, buyout_price: l.price, item: { type: 'riven', polarity: l.polarity, re_rolls: l.rerolls, attributes: l.stats.map((s) => ({ url_name: s.slug, value: s.value, positive: s.positive })) } })) } });
+        let listings = market();
+        const wanted = u.searchParams.get('positive_stats');
+        if (wanted) {
+          if (mode === 'filter400') return new Response('bad request', { status: 400 });
+          const want = wanted.split(',');
+          const neg = u.searchParams.get('negative_stats');
+          listings = listings.filter((l) => want.every((w) => l.stats.some((x) => x.positive && x.slug === w)) && (!neg || l.stats.some((x) => !x.positive && x.slug === neg)));
+          if (u.searchParams.get('sort_by') === 'price_asc') listings.sort((a, b) => a.price - b.price);
+        }
+        return json({ payload: { auctions: listings.map((l, i) => ({ id: `${weapon}-${i}`, buyout_price: l.price, item: { type: 'riven', polarity: l.polarity, re_rolls: l.rerolls, attributes: l.stats.map((s) => ({ url_name: s.slug, value: s.value, positive: s.positive })) } })) } });
       }
       return new Response('?', { status: 404 });
     }) as typeof fetch;
@@ -180,7 +202,8 @@ describe('with a fake warframe.market', () => {
 
   const ctxOf = (store: Store, over: Record<string, unknown> = {}) =>
     ({ store, config: { RIVEN_CRAWL_ENABLED: true, RIVEN_CRAWL_INTERVAL_SECONDS: 45, RIVEN_REFRESH_DAYS: 3, RIVEN_HIGH_PRICE: 1000, ...over } }) as never;
-  const auctionCalls = () => urls.filter((u) => u.includes('/v1/auctions/search'));
+  const auctionCalls = () => urls.filter((u) => u.includes('/v1/auctions/search') && !u.includes('positive_stats'));
+  const filteredCalls = () => urls.filter((u) => u.includes('positive_stats'));
 
   it('grades from one gentle read of the weapon, then from what is stored', async () => {
     const store = new Store(':memory:');
@@ -191,14 +214,36 @@ describe('with a fake warframe.market', () => {
     assert.equal(r.names.critical_chance, 'Critical Chance');
     assert.equal(auctionCalls().length, 1);
     assert.match(auctionCalls()[0]!, /type=riven&weapon_url_name=kuva_bramma&sort_by=price_desc/);
-    await gradeFor(ctx, { weapon: 'kuva_bramma', positives: 'cc, ms' });
+    // The price comes from warframe.market's own filtered search, cheapest first, not from the stored priciest listings.
+    assert.equal(filteredCalls().length, 1);
+    assert.match(filteredCalls()[0]!, /positive_stats=critical_chance,critical_damage,multishot&negative_stats=zoom/);
+    assert.match(filteredCalls()[0]!, /sort_by=price_asc/);
+    assert.deepEqual(
+      { source: r.grade!.comparable!.source, complete: r.grade!.comparable!.complete, count: r.grade!.comparable!.count, min: r.grade!.comparable!.min, same: r.grade!.comparable!.sameNegative },
+      { source: 'market', complete: true, count: 6, min: 1500, same: true },
+    );
+    const none = await gradeFor(ctx, { weapon: 'kuva_bramma', positives: 'cc, ms' });
     assert.equal(auctionCalls().length, 1, 'the second grade used the stored listings');
+    assert.equal(none.grade!.comparable, null);
+    assert.equal(none.grade!.marketChecked, true);
     const top = await topFor(ctx, 'Kuva Bramma');
     assert.equal(top.top!.combos[0]!.count, 7);
     assert.equal(auctionCalls().length, 1);
     const status = await rivenStatus(ctx);
     assert.equal(status.weaponsRead, 1);
     assert.equal(status.weaponsKnown, 2);
+  });
+
+  it('falls back to the stored listings, and says so, when the filtered search is refused, and does not keep asking', async () => {
+    mode = 'filter400';
+    const ctx = ctxOf(new Store(':memory:'));
+    const r = await gradeFor(ctx, { weapon: 'kuva bramma', positives: 'cc cd ms' });
+    assert.equal(r.grade!.comparable!.source, 'top');
+    assert.equal(r.grade!.comparable!.complete, false);
+    assert.equal(r.grade!.marketChecked, false);
+    assert.equal(filteredCalls().length, 1);
+    await gradeFor(ctx, { weapon: 'kuva bramma', positives: 'cc cd sc' });
+    assert.equal(filteredCalls().length, 1, 'not tried again after a bad request');
   });
 
   it('explains bad input in words', async () => {

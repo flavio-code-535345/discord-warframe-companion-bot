@@ -23,8 +23,8 @@ const ago = (at: number | null): string => {
 
 function bracketNote(b: { high: number; total: number; threshold: number; adaptive: boolean }, minPrice: number): string {
   return b.adaptive
-    ? `Compared with the ${b.high} priciest of ${b.total} listings (${plat(b.threshold)} and up; too few reach ${plat(minPrice)})`
-    : `Compared with the ${b.high} listings at ${plat(minPrice)} or more, out of ${b.total}`;
+    ? `Compared with the ${b.high} of the weapon's ${b.total} priciest listings from ${plat(b.threshold)} up (too few reach ${plat(minPrice)})`
+    : `Compared with the ${b.high} listings at ${plat(minPrice)} or more among the weapon's ${b.total} priciest`;
 }
 
 const FOOTER = 'Asking prices on warframe.market, not sales';
@@ -41,7 +41,7 @@ export function rivenGradeEmbed(r: GradeReport): EmbedBuilder {
   const g = r.grade;
   const lines = g.stats.map((s) => {
     const how = s.rank === null ? 'not in any of the expensive ones' : `in ${pct(s.share)} of the expensive ones (#${s.rank} most common)`;
-    const value = s.percentile === null ? '' : ` · your roll beats ${pct(s.percentile)} of listed rolls`;
+    const value = s.percentile === null ? '' : ` · your roll beats ${pct(s.percentile)} of the rolls on the priciest listings`;
     return `**${name(s.slug)}**: ${how}${value}`;
   });
   if (g.negative) {
@@ -61,13 +61,32 @@ export function rivenGradeEmbed(r: GradeReport): EmbedBuilder {
     });
   if (g.comparable) {
     const c = g.comparable;
+    const what = `${c.sameNegative ? ' and this curse' : ''}`;
+    if (c.source === 'top') {
+      embed.addFields({
+        name: `Priciest listings with these bonuses${what}`,
+        value: `${c.count} found, ${plat(c.min)} to ${plat(c.max)}. I could not ask warframe.market for the cheaper ones, so cheaper rivens like this may exist.`,
+        inline: true,
+      });
+    } else if (c.complete) {
+      embed.addFields({
+        name: `For sale with these bonuses${what}`,
+        value: c.count === 1 ? `1 listing at **${plat(c.min)}**` : `${c.count} listings, ${plat(c.min)} to ${plat(c.max)}, median **${plat(c.median)}**${c.count < 3 ? ' (very few: take with a grain of salt)' : ''}`,
+        inline: true,
+      });
+    } else {
+      embed.addFields({
+        name: `For sale with these bonuses${what}`,
+        value: `${c.count}+ listings. Cheapest **${plat(c.min)}**${c.tenth !== null ? `, 10th cheapest ${plat(c.tenth)}` : ''}`,
+        inline: true,
+      });
+    }
+  } else {
     embed.addFields({
-      name: `Listed with these bonuses${c.sameNegative ? ' and this curse' : ''}`,
-      value: c.count === 1 ? `1 listing at ${plat(c.min)}` : `${c.count} listings, ${plat(c.min)} to ${plat(c.max)}, median **${plat(c.median)}**${c.count < 3 ? ' (very few: take with a grain of salt)' : ''}`,
+      name: 'For sale with these bonuses',
+      value: g.marketChecked ? 'nobody is selling this combination right now' : "none among the weapon's priciest listings (I could not check the rest)",
       inline: true,
     });
-  } else {
-    embed.addFields({ name: 'Listed with these bonuses', value: 'nobody is selling this combination right now', inline: true });
   }
   return embed.setFooter({ text: `${bracketNote(g.bracket, r.minPrice)} · ${FOOTER} · read ${ago(r.fetchedAt)}${r.stale ? ' (warframe.market could not be reached, so this is older)' : ''}` });
 }

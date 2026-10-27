@@ -2,8 +2,8 @@ import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
 import { ApiBlockedError, api } from '../warframe/fetch.js';
 import { searchItems } from '../warframe/market.js';
-import { type Grade, type TopRolls, gradeRiven, topRolls } from './grade.js';
-import { RIVEN_SCOPE, fetchListings, getRivenAttributes, getRivenWeapons } from './market.js';
+import { type Grade, type MarketComparable, type TopRolls, gradeRiven, topRolls } from './grade.js';
+import { RIVEN_SCOPE, fetchComparable, fetchListings, getRivenAttributes, getRivenWeapons } from './market.js';
 import { parseStatList, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenListing, RivenWeapon } from './types.js';
 
@@ -74,6 +74,19 @@ export function loadListings(ctx: AppContext, weapon: RivenWeapon, now = Date.no
   return p;
 }
 
+/**
+ * What is for sale with exactly these bonuses, from one filtered search (see fetchComparable). The stored listings are only the
+ * weapon's priciest, so they would make every price lean high. A failure just means the grade falls back to them, and says so.
+ */
+async function comparableFor(weapon: string, positives: string[], negative: string | null): Promise<MarketComparable | null> {
+  try {
+    return await fetchComparable(weapon, positives, negative, { ttlMs: USER_TTL_MS });
+  } catch (err) {
+    console.warn(`[riven] could not look up what is for sale for ${weapon}: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
 export interface GradeReport {
   weapon: RivenWeapon;
   names: Record<string, string>;
@@ -102,7 +115,8 @@ export async function gradeFor(ctx: AppContext, opts: { weapon: string; positive
     if (a?.negativeOnly) throw new UserError(`${a.name} can only be a curse, not a bonus.`);
   }
   const loaded = await loadListings(ctx, weapon);
-  return { weapon, names: attributeNames(attrs), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
+  const market = await comparableFor(weapon.slug, positives.map((p) => p.slug), negative?.slug ?? null);
+  return { weapon, names: attributeNames(attrs), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
 }
 
 export interface TopReport {

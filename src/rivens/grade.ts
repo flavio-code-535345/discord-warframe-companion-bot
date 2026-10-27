@@ -75,18 +75,40 @@ export interface StatReading {
 
 export type Letter = 'S' | 'A' | 'B' | 'C' | 'D';
 
+export interface Comparable {
+  count: number;
+  min: number;
+  median: number;
+  max: number;
+  /** The 10th cheapest asking price, when ten or more were found. */
+  tenth: number | null;
+  sameNegative: boolean;
+  /** `count` is everything for sale with these bonuses (the market was asked for exactly them and did not hit its page limit), so the median means something. When false only the cheapest are known: the floor and the tenth cheapest are right, a median would lean low. */
+  complete: boolean;
+  /** `market`: warframe.market was asked for exactly these bonuses, cheapest first. `top`: only the weapon's stored priciest listings were available, so every price leans high. */
+  source: 'market' | 'top';
+}
+
+/** What warframe.market returned when asked for listings with exactly the graded bonus stats, cheapest first. */
+export interface MarketComparable {
+  listings: RivenListing[];
+  complete: boolean;
+}
+
 export interface Grade {
   letter: Letter;
   bracket: { high: number; total: number; threshold: number; adaptive: boolean };
   stats: StatReading[];
   /** High-value rivens with exactly this set of bonus stats. */
   exact: number;
-  /** Listings (any price) with the same bonus stats: what they ask. */
-  comparable: { count: number; min: number; median: number; max: number; sameNegative: boolean } | null;
+  /** What listings with the same bonus stats ask, or null when nobody is selling that combination. */
+  comparable: Comparable | null;
+  /** warframe.market was asked what is for sale with these bonuses (so a null `comparable` really means nobody is selling them). */
+  marketChecked: boolean;
   negative: { slug: string; share: number; rank: number | null } | null;
 }
 
-export function gradeRiven(all: RivenListing[], input: GradeInput, minPrice: number): Grade | null {
+export function gradeRiven(all: RivenListing[], input: GradeInput, minPrice: number, market?: MarketComparable | null): Grade | null {
   const bracket = highBracket(all, minPrice);
   if (!bracket || input.positives.length === 0) return null;
   const { high } = bracket;
@@ -104,13 +126,8 @@ export function gradeRiven(all: RivenListing[], input: GradeInput, minPrice: num
   const ratio = points / (2 * stats.length);
   const letter: Letter = ratio === 1 && exact >= 1 ? 'S' : ratio >= 5 / 6 ? 'A' : ratio >= 0.5 ? 'B' : ratio > 0 ? 'C' : 'D';
 
-  const sameSet = all.filter((l) => setKey(positives(l)) === wantKey);
   const wantNeg = input.negative?.slug ?? null;
-  const sameNeg = wantNeg ? sameSet.filter((l) => negativeOf(l) === wantNeg) : [];
-  const pool = sameNeg.length >= 3 ? sameNeg : sameSet;
-  const comparable = pool.length
-    ? { count: pool.length, min: Math.min(...pool.map((l) => l.price)), median: median(pool.map((l) => l.price)), max: Math.max(...pool.map((l) => l.price)), sameNegative: pool === sameNeg }
-    : null;
+  const comparable = comparableFrom(market?.listings ?? [], wantKey, wantNeg, market?.complete ?? false, 'market') ?? (market?.complete ? null : comparableFrom(all, wantKey, wantNeg, false, 'top'));
 
   let negative: Grade['negative'] = null;
   if (wantNeg) {
@@ -119,7 +136,16 @@ export function gradeRiven(all: RivenListing[], input: GradeInput, minPrice: num
     negative = { slug: wantNeg, share: negShares.get(wantNeg) ?? 0, rank: at === -1 ? null : at + 1 };
   }
 
-  return { letter, bracket: { high: high.length, total: bracket.total, threshold: bracket.threshold, adaptive: bracket.adaptive }, stats, exact, comparable, negative };
+  return { letter, bracket: { high: high.length, total: bracket.total, threshold: bracket.threshold, adaptive: bracket.adaptive }, stats, exact, comparable, marketChecked: Boolean(market), negative };
+}
+
+function comparableFrom(listings: RivenListing[], wantKey: string, wantNeg: string | null, complete: boolean, source: Comparable['source']): Comparable | null {
+  const sameSet = listings.filter((l) => setKey(positives(l)) === wantKey);
+  const sameNeg = wantNeg ? sameSet.filter((l) => negativeOf(l) === wantNeg) : [];
+  const pool = sameNeg.length >= 3 ? sameNeg : sameSet;
+  if (!pool.length) return null;
+  const prices = pool.map((l) => l.price).sort((a, b) => a - b);
+  return { count: pool.length, min: prices[0]!, median: median(prices), max: prices[prices.length - 1]!, tenth: prices.length >= 10 ? prices[9]! : null, sameNegative: pool === sameNeg, complete, source };
 }
 
 /** Share of the other rolls of this stat (as a bonus) that are lower or equal; null when the value is unknown or there are too few. */

@@ -1,4 +1,4 @@
-import { apiJson } from '../warframe/fetch.js';
+import { ApiHttpError, apiJson } from '../warframe/fetch.js';
 import type { RivenAttribute, RivenListing, RivenStat, RivenWeapon } from './types.js';
 
 /**
@@ -99,4 +99,46 @@ export async function fetchListings(weapon: string, opts: { background: boolean;
   const r = await apiJson<unknown>(url, { kind: 'live', ttlMs: opts.ttlMs, headers: HEADERS, background: opts.background, scope: RIVEN_SCOPE });
   if (r.data === null) return [];
   return parseAuctions(r.data, weapon);
+}
+
+/** How many listings one search returns at most (the weapon's full list is cut to this). */
+export const PAGE_SIZE = 100;
+
+/** The filtered search was refused as a bad request: it is not tried again for a while, and callers fall back to the stored listings. */
+let filterUnsupportedUntil = 0;
+const FILTER_RETRY_MS = 6 * 3_600_000;
+
+/** Test hook. */
+export const resetRivenFilter = (): void => {
+  filterUnsupportedUntil = 0;
+};
+
+/**
+ * What is for sale with exactly these bonus stats (and this curse, when given), cheapest first, asked of warframe.market itself with
+ * its own filters. The stored listings are only a weapon's priciest, so prices read from them lean high; this one request, made when
+ * someone grades a roll (cached for `ttlMs`, never stored), gives the real floor. Only listings that really carry all the stats are
+ * kept, so a filter the market ignores can't make a wrong price look right. `complete` is true when fewer than a page came back, i.e.
+ * that is everything for sale. Throws when the search can't be used; the caller falls back.
+ */
+export async function fetchComparable(weapon: string, positives: string[], negative: string | null, opts: { ttlMs: number }): Promise<{ listings: RivenListing[]; complete: boolean }> {
+  if (Date.now() < filterUnsupportedUntil) throw new Error('the filtered riven search was refused earlier');
+  const params = new URLSearchParams({ type: 'riven', weapon_url_name: weapon, sort_by: 'price_asc', buyout_policy: 'direct' });
+  params.set('positive_stats', positives.join(','));
+  if (negative) params.set('negative_stats', negative);
+  try {
+    const r = await apiJson<unknown>(`${AUCTIONS_URL}?${params.toString().replace(/%2C/g, ',')}`, { kind: 'live', ttlMs: opts.ttlMs, headers: HEADERS, scope: RIVEN_SCOPE });
+    if (r.data === null) return { listings: [], complete: true };
+    return { listings: parseAuctions(r.data, weapon), complete: auctionCount(r.data) < PAGE_SIZE };
+  } catch (err) {
+    if (err instanceof ApiHttpError && (err.status === 400 || err.status === 422)) filterUnsupportedUntil = Date.now() + FILTER_RETRY_MS;
+    throw err;
+  }
+}
+
+/** How many auctions the answer held before any were skipped. */
+export function auctionCount(body: unknown): number {
+  const root = obj(body);
+  const payload = obj(root?.payload);
+  const rows = Array.isArray(payload?.auctions) ? payload.auctions : Array.isArray(root?.data) ? root.data : [];
+  return rows.length;
 }

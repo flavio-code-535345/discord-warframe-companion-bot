@@ -33,7 +33,9 @@ export function registerRivenTools(server: McpServer, ctx: AppContext): void {
         stats: g.stats.map((s) => ({ stat: name(s.slug), shareOfExpensiveRivens: Number(s.share.toFixed(2)), rank: s.rank, rollPercentile: s.percentile === null ? null : Number(s.percentile.toFixed(2)) })),
         curse: g.negative ? { stat: name(g.negative.slug), shareOfExpensiveRivens: Number(g.negative.share.toFixed(2)), rank: g.negative.rank } : null,
         expensiveRivensWithExactBonuses: g.exact,
+        // source 'market': asked warframe.market for exactly these bonuses (complete = that is everything for sale); 'top': only the weapon's priciest stored listings, so prices lean high.
         comparableListings: g.comparable,
+        marketChecked: g.marketChecked,
         comparedWith: { ...g.bracket, highPriceLine: r.minPrice },
         dataReadAt: r.fetchedAt ? new Date(r.fetchedAt).toISOString() : null,
         stale: r.stale,
