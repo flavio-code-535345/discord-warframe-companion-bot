@@ -298,6 +298,16 @@ export const FISSURE_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'] 
 /** Invasion/alert rewards worth a clan's attention. */
 export const NOTABLE_REWARD = /orokin (catalyst|reactor)|forma|exilus|wraith|vandal|umbra|aura/i;
 
+/**
+ * What an alert is called. Event alerts (a recurring event's mission nodes) come with the feed's placeholder title "Event Alert Title",
+ * which says nothing, so those are named by their mission type instead.
+ */
+export function alertName(a: { mission: { description?: string | null; type?: string | null } }): string {
+  const title = a.mission.description?.trim();
+  if (title && !/^event alert title$/i.test(title)) return title;
+  return a.mission.type ? `Event mission (${a.mission.type})` : 'Event mission';
+}
+
 export interface FissureFilter {
   tier?: string;
   steelPath?: boolean;

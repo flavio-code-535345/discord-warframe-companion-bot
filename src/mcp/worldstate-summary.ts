@@ -2,6 +2,7 @@ import { type TimeInput, relative, toMs } from '../time.js';
 import {
   type Fissure,
   type WorldState,
+  alertName,
   archimedeaName,
   bountyStanding,
   isBaroHere,
@@ -123,7 +124,7 @@ export function summarizeWorldState(ws: WorldState, sections: readonly Section[]
     out.alerts = (ws.alerts ?? [])
       .filter((a) => toMs(a.expiry) > now)
       .map((a) => ({
-        description: a.mission.description,
+        description: alertName(a),
         type: a.mission.type,
         node: a.mission.node,
         faction: a.mission.faction,

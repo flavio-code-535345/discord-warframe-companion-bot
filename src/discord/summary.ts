@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { EmbedBuilder } from 'discord.js';
 import { discordTime, toMs } from '../time.js';
 import { projectCycles } from '../warframe/cycles.js';
-import { NOTABLE_REWARD, type WorldState, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
+import { NOTABLE_REWARD, type WorldState, alertName, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
 import { COLORS, clampLines } from './embeds.js';
 
 /**
@@ -89,7 +89,7 @@ export function summaryEmbed(ws: WorldState, opts: SummaryOptions, now = Date.no
     const open = (ws.alerts ?? []).filter((a) => live(a.expiry));
     if (!open.length) return null;
     return clampLines(
-      open.map((a) => `**${a.mission.description ?? a.mission.type}** — ${a.mission.node} · ${rewardText(a.mission.reward)} · ends ${discordTime(a.expiry)}`),
+      open.map((a) => `**${alertName(a)}** — ${a.mission.node} · ${rewardText(a.mission.reward)} · ends ${discordTime(a.expiry)}`),
       FIELD_LIMIT,
     );
   });

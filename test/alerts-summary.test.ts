@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { EmbedBuilder } from 'discord.js';
 import { Store } from '../src/db.js';
-import { Notifier, type SummaryChannel, newItemsText, updateSummaryMessage } from '../src/discord/notifier.js';
+import { Notifier, type SummaryChannel, expireNote, newItemsText, postNote, updateSummaryMessage } from '../src/discord/notifier.js';
 import { summaryEmbed, summaryHash } from '../src/discord/summary.js';
-import type { WorldState } from '../src/warframe/worldstate.js';
+import { type WorldState, alertName } from '../src/warframe/worldstate.js';
 
 const MIN = 60_000;
 const now = Date.parse('2026-10-27T16:00:00.000Z');
@@ -100,6 +100,7 @@ describe('keeping the message up to date', () => {
           log.push(`edit ${id}`);
           if (failEdit) throw failEdit;
         },
+        delete: async (id) => void log.push(`delete ${id}`),
       },
     };
     const ctx = { store, client: {}, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
@@ -155,6 +156,7 @@ describe('the notifier', () => {
     store.updateSettings('g', { alertsChannelId: 'chan', alertsRoleId: 'role1' });
     const sent: { content?: string; embeds?: unknown[]; allowedMentions: { roles?: string[] } }[] = [];
     const edits: string[] = [];
+    const deleted: string[] = [];
     const channel = {
       id: 'chan',
       guildId: 'g',
@@ -163,7 +165,7 @@ describe('the notifier', () => {
         sent.push(p);
         return { id: `m${sent.length}` };
       },
-      messages: { edit: async (id: string) => void edits.push(id) },
+      messages: { edit: async (id: string) => void edits.push(id), delete: async (id: string) => void deleted.push(id) },
     };
     const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
     const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
@@ -185,5 +187,56 @@ describe('the notifier', () => {
     assert.match(sent[1]!.content!, /^<@&role1> 🔔 \*\*New:\*\* ⚠️ Alert: Mutalist\n\[Everything right now\]\(<https:\/\/discord\.com\/channels\/g\/chan\/m1>\)$/);
     assert.deepEqual(sent[1]!.allowedMentions.roles, ['role1']);
     assert.equal(sent[1]!.embeds, undefined, 'the ping is a short text, not another pile of embeds');
+
+    // A second notable alert replaces the first note instead of adding to the pile.
+    await notifier.postWorldStateAlerts(base({ alerts: [alert, { ...alert, id: 'al10', mission: { ...alert.mission, description: 'Another' } }] }));
+    assert.equal(sent.length, 3);
+    assert.deepEqual(deleted, ['m2'], 'the previous note is gone');
+  });
+
+  it('keeps the summary but does not announce an event\'s endless resource missions, which get a readable name', async () => {
+    const store = new Store(':memory:');
+    store.updateSettings('g', { alertsChannelId: 'chan' });
+    const sent: { content?: string; embeds?: { toJSON(): { fields?: { value: string }[] } }[] }[] = [];
+    const channel = { id: 'chan', guildId: 'g', isSendable: () => true, send: async (p: (typeof sent)[number]) => (sent.push(p), { id: `m${sent.length}` }), messages: { edit: async () => {}, delete: async () => {} } };
+    const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
+    const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
+    const future = Date.now() + 3_600_000;
+    const event = (id: string) => ({ id, expiry: new Date(future), mission: { description: 'Event Alert Title', type: 'Survival', node: 'Naeglar (Eris)', faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }], credits: 17000 } } });
+    const base = (alerts: unknown[]) => world({ sortie: undefined, archonHunt: undefined, voidTrader: undefined, steelPath: undefined, alerts, invasions: [] });
+
+    await notifier.postWorldStateAlerts(base([event('e1')]));
+    await notifier.postWorldStateAlerts(base([event('e1'), event('e2')]));
+    assert.ok(sent.every((s) => s.content === undefined), 'no "New" message for them');
+    const summary = JSON.stringify(sent[0]!.embeds![0]!.toJSON());
+    assert.match(summary, /Event mission \(Survival\)/);
+    assert.doesNotMatch(summary, /Event Alert Title/);
+  });
+});
+
+describe('the "something new" message', () => {
+  it('replaces the previous one and goes away when it is old', async () => {
+    const store = new Store(':memory:');
+    const log: string[] = [];
+    let n = 0;
+    const channel: SummaryChannel = { id: 'chan', guildId: 'g', send: async () => (log.push('send'), { id: `n${++n}` }), messages: { edit: async () => {}, delete: async (id) => void log.push(`delete ${id}`) } };
+    const ctx = { store } as never;
+    await postNote(ctx, channel, { content: 'one', allowedMentions: {} }, now);
+    await postNote(ctx, channel, { content: 'two', allowedMentions: {} }, now + MIN);
+    assert.deepEqual(log, ['send', 'send', 'delete n1']);
+    await expireNote(ctx, channel, now + 2 * 60 * MIN);
+    assert.deepEqual(log, ['send', 'send', 'delete n1'], 'still fresh after two hours');
+    await expireNote(ctx, channel, now + 4 * 60 * MIN);
+    assert.deepEqual(log.slice(3), ['delete n2']);
+    await expireNote(ctx, channel, now + 5 * 60 * MIN);
+    assert.equal(log.length, 4, 'nothing left to remove');
+  });
+});
+
+describe('alert names', () => {
+  it('names an event\'s alerts by their mission and leaves real titles alone', () => {
+    assert.equal(alertName({ mission: { description: 'Event Alert Title', type: 'Hive' } }), 'Event mission (Hive)');
+    assert.equal(alertName({ mission: { description: 'Mutalist', type: 'Capture' } }), 'Mutalist');
+    assert.equal(alertName({ mission: { description: null, type: 'Capture' } }), 'Event mission (Capture)');
   });
 });

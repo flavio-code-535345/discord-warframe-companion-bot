@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 import { getSendableChannel } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
-import { NOTABLE_REWARD, type WorldState, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
+import { NOTABLE_REWARD, type WorldState, alertName, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
 import { summaryEmbed, summaryHash } from './summary.js';
@@ -35,11 +35,14 @@ export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert
 
   for (const a of ws.alerts ?? []) {
     if (!live(a.expiry)) continue;
+    // Only an alert with something worth a detour is announced (like invasions below); the rest, such as an event's endless resource
+    // nodes that appear every half hour, is still listed in the summary.
+    if (!NOTABLE_REWARD.test(rewardText(a.mission.reward))) continue;
     alerts.push({
       key: `alert:${a.id}`,
       embed: new EmbedBuilder()
         .setColor(COLORS.warn)
-        .setTitle(`⚠️ Alert: ${a.mission.description ?? a.mission.type}`)
+        .setTitle(`⚠️ Alert: ${alertName(a)}`)
         .setDescription(
           `${a.mission.type} — ${a.mission.node} · ${a.mission.faction}\n**Reward:** ${rewardText(a.mission.reward)}\nEnds ${discordTime(a.expiry)}`,
         ),
@@ -73,8 +76,8 @@ const SUMMARY_MIN_EDIT_MS = 2 * 60_000;
 export interface SummaryChannel {
   id: string;
   guildId: string;
-  send(payload: { embeds: EmbedBuilder[]; allowedMentions: { parse: [] } }): Promise<{ id: string }>;
-  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[] }): Promise<unknown> };
+  send(payload: { content?: string; embeds?: EmbedBuilder[]; allowedMentions: { parse?: []; roles?: string[] } }): Promise<{ id: string }>;
+  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[] }): Promise<unknown>; delete(messageId: string): Promise<unknown> };
 }
 
 interface SummaryRecord {
@@ -129,6 +132,35 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
   return link(sent.id);
 }
 
+/** How long the short "something new" message stays: what it announced is in the summary, which is all the channel keeps. */
+const NOTE_TTL_MS = 3 * 60 * 60_000;
+const noteKey = (channelId: string) => `alerts_note:${channelId}`;
+
+const readNote = (raw: string | null): { messageId: string; at: number } | null => {
+  try {
+    const r = JSON.parse(raw || 'null') as { messageId?: unknown; at?: unknown } | null;
+    return r && typeof r.messageId === 'string' ? { messageId: r.messageId, at: Number(r.at) || 0 } : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Posts the "something new" message and removes the previous one, so a busy day doesn't leave a pile of them in the channel. */
+export async function postNote(ctx: AppContext, channel: SummaryChannel, payload: Parameters<SummaryChannel['send']>[0], now = Date.now()): Promise<void> {
+  const previous = readNote(ctx.store.getMeta(noteKey(channel.id)));
+  const sent = await channel.send(payload);
+  ctx.store.setMeta(noteKey(channel.id), JSON.stringify({ messageId: sent.id, at: now }));
+  if (previous) await channel.messages.delete(previous.messageId).catch(() => {});
+}
+
+/** Removes the "something new" message once it is old. */
+export async function expireNote(ctx: AppContext, channel: SummaryChannel, now = Date.now()): Promise<void> {
+  const saved = readNote(ctx.store.getMeta(noteKey(channel.id)));
+  if (!saved || now - saved.at < NOTE_TTL_MS) return;
+  await channel.messages.delete(saved.messageId).catch(() => {});
+  ctx.store.setMeta(noteKey(channel.id), '');
+}
+
 export class Notifier {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
@@ -174,13 +206,14 @@ export class Notifier {
       try {
         const channel = await getSendableChannel(this.ctx, settings.alertsChannelId);
         // One message says everything that is going on and is edited in place; it is brought up to date before anyone is pinged.
-        const url = await updateSummaryMessage(this.ctx, channel as unknown as SummaryChannel, ws, { force: notify });
+        const target = channel as unknown as SummaryChannel;
+        const url = await updateSummaryMessage(this.ctx, target, ws, { force: notify });
         if (notify) {
-          await channel.send({
+          await postNote(this.ctx, target, {
             content: newItemsText(fresh.map((a) => a.embed.data.title ?? 'Something new'), url, settings.alertsRoleId),
             allowedMentions: { roles: settings.alertsRoleId ? [settings.alertsRoleId] : [] },
           });
-        }
+        } else await expireNote(this.ctx, target);
       } catch (err) {
         console.error(`[notifier] could not post alerts to ${settings.alertsChannelId}:`, err);
       }
