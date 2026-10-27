@@ -148,7 +148,10 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
 
   const found: { attr: RivenAttribute; value: number; sign: '+' | '-' | null; line: string }[] = [];
   const unknown: string[] = [];
-  for (const text of body) {
+  for (const original of body) {
+    // The icon of an element is read as a small number ("+101.5% 4% Electricity"): one or two digits, with or without a %, between the
+    // real value and the name are not a second value.
+    const text = original.replace(/(\d[.,]?\d*\s*%)\s+\d{1,2}\s*%?\s+(?=[A-Za-z])/, '$1 ');
     // Faction damage is a multiplier: "x1.55 Damage to Grineer" is a bonus, "x0.75 Damage to Infested" the curse.
     const mult = MULTIPLIER_LINE.exec(text);
     if (mult) {

@@ -112,6 +112,14 @@ describe('grading from the game ranges', () => {
     assert.deepEqual(r.map((x) => x.letter), ['A+', 'B+', 'A']);
   });
 
+  it('grades the Aklex card (a pistol) from the table', () => {
+    const d = devs(gradeRolls([], [{ slug: 'damage', value: 244.2 }, { slug: 'multishot', value: 123.7 }, { slug: 'electricity', value: 101.5 }], { slug: 'zoom', value: 74.6 }, { type: 'pistol' }));
+    near(d.damage, -1.15, 'damage');
+    near(d.multishot, -8.14, 'multishot');
+    near(d.electricity, 0.25, 'electricity');
+    near(d.zoom, -3.49, 'zoom (a curse, worse than the average)');
+  });
+
   it('falls back to the listings when no kind of weapon fits (here: a stat the table does not have)', () => {
     const odd = gradeRolls(scisco(), [{ slug: 'reload_speed', value: 46.9 }, { slug: 'heat', value: 101.3 }, { slug: 'puncture', value: 128.7 }], { slug: 'damage', value: 167.8 });
     assert.ok(Math.abs(odd.find((x) => x.slug === 'heat')!.deviation! - 9.159) < 0.15, 'the older, listing-based estimate');

@@ -150,6 +150,18 @@ describe('a real screenshot', () => {
     }
   });
 
+  /** What the real OCR engine returned for an Aklex card: the lightning bolt of Electricity came out as "4%". */
+  it('does not take the icon of an element (read as "4%") for the value of the stat', () => {
+    const elements: RivenAttribute[] = ['Damage', 'Multishot', 'Electricity', 'Zoom'].map((name) => ({ slug: name.toLowerCase(), name, positiveOnly: false, negativeOnly: false }));
+    const aklex: RivenWeapon[] = [{ slug: 'aklex', name: 'Aklex' }];
+    for (const bolt of ['+101.5% 4% Electricity', '+101.5% 4 Electricity', '+101.5% 7% Electricity']) {
+      const r = parseRivenCard(at([[810, 'y  Aklex Vexi-visican'], [931, '+244.2% Damage'], [1008, '+123.7% Multishot'], [1089, bolt], [1185, '| -74.6% Zoom'], [1232, 'ds : 28']]), elements, aklex);
+      assert.deepEqual(r.positives, [{ slug: 'damage', value: 244.2 }, { slug: 'multishot', value: 123.7 }, { slug: 'electricity', value: 101.5 }], bolt);
+      assert.deepEqual(r.negative, { slug: 'zoom', value: 74.6 });
+      assert.deepEqual(r.unsureSign, []);
+    }
+  });
+
   it('works out a stat line it could not read from its value and what is left of its name, and marks it as a guess', async () => {
     const store = new Store(':memory:');
     const ctx = { store, config: { RIVEN_HIGH_PRICE: 1000 } } as never;
