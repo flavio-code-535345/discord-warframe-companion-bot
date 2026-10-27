@@ -57,6 +57,12 @@ export function closestAttribute(attrs: RivenAttribute[], text: string): RivenAt
 /** A stat name as OCR gave it, which may have stray letters at the end ("Damage p", "Zoom b" from the card's frame): the whole text first, then without trailing one- or two-letter tokens. */
 export function matchName(attrs: RivenAttribute[], name: string): RivenAttribute | null {
   const tokens = name.split(/\s+/).filter(Boolean);
+  // An exact name (or alias) wins over a loose match of the whole text: "Damage p" is Damage plus a stray letter, not "Weak Point Damage".
+  for (let drop = 0; drop <= 2 && tokens.length - drop >= 1; drop++) {
+    if (drop > 0 && tokens[tokens.length - drop]!.length > 2) break;
+    const hit = resolveStat(attrs, tokens.slice(0, tokens.length - drop).join(' '), true);
+    if (hit) return hit;
+  }
   for (let drop = 0; drop <= 2 && tokens.length - drop >= 1; drop++) {
     if (drop > 0 && tokens[tokens.length - drop]!.length > 2) break;
     const hit = closestAttribute(attrs, tokens.slice(0, tokens.length - drop).join(' '));

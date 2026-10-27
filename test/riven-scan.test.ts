@@ -119,6 +119,16 @@ describe('a real screenshot', () => {
     }
   });
 
+  it('does not turn "Damage p" (a stray letter from the card frame) into "Weak Point Damage"', () => {
+    const market: RivenAttribute[] = ['Critical Chance', 'Ammo Efficiency', 'Base Damage / Melee Damage', 'Weak Point Damage', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/[^a-z]+/g, '_'), name, positiveOnly: false, negativeOnly: false }));
+    for (const damage of ['+172.2% Damage p', '+172.2% Damage Ps', '+172.2% Damage']) {
+      const r = parseRivenCard(at([[960, '2 Zarr Crita-parciata'], [1080, '+183.5% Critical Chance'], [1173, '+54.4% Ammo Efficiency'], [1262, damage], [1351, '-50.9% Zoom'], [1477, 'MR 9']]), market, zarr);
+      assert.deepEqual(r.positives.map((p) => p.slug), ['critical_chance', 'ammo_efficiency', 'base_damage_melee_damage'], damage);
+    }
+    const weak = parseRivenCard(at([[960, '2 Zarr Crita-parciata'], [1080, '+183.5% Critical Chance'], [1173, '+172.2% Weak Point Damage'], [1351, '-50.9% Zoom'], [1477, 'MR 9']]), market, zarr);
+    assert.ok(weak.positives.some((p) => p.slug === 'weak_point_damage'), 'a real Weak Point Damage line still matches');
+  });
+
   it('works out a stat line it could not read from its value and what is left of its name, and marks it as a guess', async () => {
     const store = new Store(':memory:');
     const ctx = { store, config: { RIVEN_HIGH_PRICE: 1000 } } as never;
