@@ -45,7 +45,7 @@ export const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g
 const WORDS: Record<string, string> = { dmg: 'damage', dam: 'damage', crit: 'critical', mult: 'multishot', reloadspeed: 'reload speed' };
 
 /** The attribute a short or loose name means, or null. Order: an alias, the exact name, a name that starts with it, one whose words start with its words, one that contains it. */
-export function resolveStat(attrs: RivenAttribute[], text: string, strict = false): RivenAttribute | null {
+export function resolveStat(attrs: RivenAttribute[], text: string, mode: 'loose' | 'prefix' | 'strict' = 'loose'): RivenAttribute | null {
   const typed = norm(text);
   if (!typed) return null;
   const byName = new Map(attrs.map((a) => [norm(a.name), a]));
@@ -57,8 +57,10 @@ export function resolveStat(attrs: RivenAttribute[], text: string, strict = fals
   const exact = byName.get(q) ?? attrs.find((a) => a.slug === q.replace(/ /g, '_'));
   if (exact) return exact;
   // Strict: an alias or the exact name only, no loose matching ("damage p" must not turn into "Weak Point Damage").
-  if (strict) return null;
+  if (mode === 'strict') return null;
   const shortest = (list: RivenAttribute[]) => [...list].sort((a, b) => a.name.length - b.name.length)[0] ?? null;
+  // Prefix: also a name that starts with the text ("ammo e" is the start of "Ammo Efficiency").
+  if (mode === 'prefix') return shortest(attrs.filter((a) => norm(a.name).startsWith(q)));
   const words = q.split(' ');
   return (
     shortest(attrs.filter((a) => norm(a.name).startsWith(q))) ??

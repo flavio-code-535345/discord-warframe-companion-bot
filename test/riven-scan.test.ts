@@ -120,10 +120,15 @@ describe('a real screenshot', () => {
   });
 
   it('does not turn "Damage p" (a stray letter from the card frame) into "Weak Point Damage"', () => {
-    const market: RivenAttribute[] = ['Critical Chance', 'Ammo Efficiency', 'Base Damage / Melee Damage', 'Weak Point Damage', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/[^a-z]+/g, '_'), name, positiveOnly: false, negativeOnly: false }));
+    const market: RivenAttribute[] = ['Critical Chance', 'Ammo Efficiency', 'Ammo Maximum', 'Base Damage / Melee Damage', 'Weak Point Damage', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/[^a-z]+/g, '_'), name, positiveOnly: false, negativeOnly: false }));
     for (const damage of ['+172.2% Damage p', '+172.2% Damage Ps', '+172.2% Damage']) {
       const r = parseRivenCard(at([[960, '2 Zarr Crita-parciata'], [1080, '+183.5% Critical Chance'], [1173, '+54.4% Ammo Efficiency'], [1262, damage], [1351, '-50.9% Zoom'], [1477, 'MR 9']]), market, zarr);
       assert.deepEqual(r.positives.map((p) => p.slug), ['critical_chance', 'ammo_efficiency', 'base_damage_melee_damage'], damage);
+    }
+    // "Ammo E" is the start of Ammo Efficiency, not the alias "ammo" (Ammo Maximum) plus a stray letter.
+    for (const ammo of ['+54.4% Ammo E', '+54.4% Ammo Efficiency', '+54.4% Ammo ETiiciency']) {
+      const r = parseRivenCard(at([[960, '2 Zarr Crita-parciata'], [1080, '+183.5% Critical Chance'], [1173, ammo], [1262, '+172.2% Damage p'], [1351, '-50.9% Zoom'], [1477, 'MR 9']]), market, zarr);
+      assert.deepEqual(r.positives.map((p) => p.slug), ['critical_chance', 'ammo_efficiency', 'base_damage_melee_damage'], ammo);
     }
     const weak = parseRivenCard(at([[960, '2 Zarr Crita-parciata'], [1080, '+183.5% Critical Chance'], [1173, '+172.2% Weak Point Damage'], [1351, '-50.9% Zoom'], [1477, 'MR 9']]), market, zarr);
     assert.ok(weak.positives.some((p) => p.slug === 'weak_point_damage'), 'a real Weak Point Damage line still matches');
