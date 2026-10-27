@@ -36,8 +36,8 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         name: 'Squad voice',
         value: s.lfgVoiceCategoryId ? `category <#${s.lfgVoiceCategoryId}> · host grace ${s.lfgVoiceGraceMinutes ?? 5} min` : '*off* (squads post without a voice channel)',
       },
-      { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}${flags.ENABLE_MESSAGE_CONTENT ? '' : ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see screenshots'}` : '*off*' },
-      { name: 'Riven scanning', value: s.rivenChannelId ? `${ch(s.rivenChannelId)}${flags.ENABLE_MESSAGE_CONTENT ? '' : ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see screenshots'}` : '*off*' },
+      { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}` : '*off*' },
+      { name: 'Riven scanning', value: s.rivenChannelId ? `${ch(s.rivenChannelId)}` : '*off*' },
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {

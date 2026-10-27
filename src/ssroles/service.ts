@@ -360,6 +360,13 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   const say = (payload: Parameters<typeof channel.send>[0]) => channel.send(payload).catch(() => {});
   const mention = { users: [message.author.id] };
 
+  // Without the Message Content intent the gateway delivers messages with no attachments at all, which would make every screenshot look like
+  // chatter that has to be removed. Read the message again over REST (it has them, and fills this message in); if that fails, leave it alone.
+  if (!message.attachments.size && !config.ENABLE_MESSAGE_CONTENT) {
+    const again = await message.fetch().catch(() => null);
+    if (!again) return true;
+  }
+
   // Only screenshots belong here: anything else is removed, and the member is told why for a moment.
   const images = [...message.attachments.filter((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES).values()].slice(0, MAX_IMAGES);
   if (!images.length) {

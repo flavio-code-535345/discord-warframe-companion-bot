@@ -99,7 +99,7 @@ export function registerRivenRoutes({ router, ctx, pc, html, action, audit, chan
       .join('');
     const body = `<h1>Rivens</h1>
 <div class="grid">
-<div class="card"><div class="stat small">${current ? e(channels.find((c) => c.value === current)?.label ?? current) : 'off'}</div><div class="muted">Scan channel${current && !config.ENABLE_MESSAGE_CONTENT ? ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see pictures' : ''}</div></div>
+<div class="card"><div class="stat small">${current ? e(channels.find((c) => c.value === current)?.label ?? current) : 'off'}</div><div class="muted">Scan channel</div></div>
 <div class="card"><div class="stat">${totals.scans}</div><div class="muted">Scans since start · ${totals.graded} graded · ${totals.failed} failed</div></div>
 <div class="card"><div class="stat">${status.weaponsRead}${status.weaponsKnown ? ` / ${status.weaponsKnown}` : ''}</div><div class="muted">Weapons read from the market · ${status.listings.toLocaleString('en-US')} listings</div></div>
 <div class="card"><div class="stat small">${status.enabled ? (status.pausedMs > 0 ? `paused ${Math.ceil(status.pausedMs / 60_000)} min` : `1 weapon / ${status.intervalSeconds} s`) : 'off'}</div><div class="muted">Slow market read · last ${ago(status.lastReadAt)}</div></div>

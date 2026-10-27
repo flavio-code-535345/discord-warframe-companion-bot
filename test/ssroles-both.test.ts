@@ -79,6 +79,44 @@ describe('profile card and clan row in one message', () => {
   });
 });
 
+describe('without the Message Content intent (the gateway delivers messages with no attachments)', () => {
+  /** Makes the message arrive empty, the way the gateway delivers it; `fetch` is the REST re-read. */
+  const arrivesEmpty = (t: ReturnType<typeof setup>, fetch: (restore: () => void) => Promise<unknown>) => {
+    const full = t.message.attachments;
+    const message = t.message as unknown as { attachments: unknown; fetch: () => Promise<unknown>; delete: () => Promise<void> };
+    message.attachments = new Collection();
+    const deleted: string[] = [];
+    message.delete = async () => void deleted.push('deleted');
+    message.fetch = () => fetch(() => (message.attachments = full));
+    return deleted;
+  };
+
+  it('reads the message again and handles the screenshot instead of removing it', async () => {
+    const t = setup(['ss-roles-example.png'], 'u8');
+    const deleted = arrivesEmpty(t, async (restore) => (restore(), t.message));
+    await handleSsMessage(t.message as never, t.ctx as never);
+    assert.equal(t.sent.at(-1)!.embeds?.length, 1, 'read and answered');
+    assert.doesNotMatch(t.sent.map((s) => s.content ?? '').join(' '), /only for profile screenshots/);
+    assert.equal(deleted.length, 1, 'removed once, after it was downloaded for reading (as always)');
+  });
+
+  it('leaves the message alone when it can not be read again', async () => {
+    const t = setup(['ss-roles-example.png'], 'u9');
+    const deleted = arrivesEmpty(t, async () => { throw new Error('rate limited'); });
+    assert.equal(await handleSsMessage(t.message as never, t.ctx as never), true);
+    assert.equal(deleted.length, 0, 'not deleted');
+    assert.equal(t.sent.length, 0, 'and nothing is said');
+  });
+
+  it('still removes real chatter (nothing attached, also over REST)', async () => {
+    const t = setup(['ss-roles-example.png'], 'u10');
+    const deleted = arrivesEmpty(t, async () => t.message);
+    await handleSsMessage(t.message as never, t.ctx as never);
+    assert.equal(deleted.length, 1);
+    assert.match(t.sent[0]!.content!, /only for profile screenshots/);
+  });
+});
+
 describe('clan rank also gives the clan role', () => {
   it('adds Clan together with Rat Squire', async () => {
     const t = setup([], 'u3');
