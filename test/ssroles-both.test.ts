@@ -1,17 +1,23 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { after, afterEach, describe, it } from 'node:test';
+import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import { Collection } from 'discord.js';
 import { Store } from '../src/db.js';
 import { screenshotQueue } from '../src/queue.js';
 import { ocr } from '../src/ssroles/ocr.js';
-import { handleRankRow, handleSsMessage } from '../src/ssroles/service.js';
+import { handleRankRow, handleSsMessage, ssTimings } from '../src/ssroles/service.js';
 
 const asset = (name: string) => readFileSync(new URL(`../assets/${name}`, import.meta.url));
 const realFetch = globalThis.fetch;
+const realTtl = ssTimings.resultTtlMs;
+beforeEach(() => {
+  ssTimings.resultTtlMs = 40;
+});
 afterEach(() => {
   globalThis.fetch = realFetch;
+  ssTimings.resultTtlMs = realTtl;
 });
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 after(() => ocr.release());
 
 const role = (id: string, name: string, position: number) => ({ id, name, position, managed: false, permissions: { any: () => false } });
@@ -33,14 +39,17 @@ function setup(attachmentNames: string[], uid = 'u1') {
     setNickname: async (n: string) => void (member.nickname = n),
   };
   const sent: { content?: string; embeds?: { data: { title?: string } }[] }[] = [];
-  const reply = { edit: async () => reply, delete: async () => {} };
+  /** What was deleted, in order: Ordis's reply ('reply') and the member's screenshot ('screenshot'). */
+  const gone: string[] = [];
+  const reply = { edit: async () => reply, delete: async () => void gone.push('reply') };
   const channel = {
     send: async (p: (typeof sent)[number]) => {
       sent.push(p);
-      return { edit: async (e: (typeof sent)[number]) => (sent.push(e), reply), delete: async () => {} };
+      return { edit: async (e: (typeof sent)[number]) => (sent.push(e), reply), delete: async () => void gone.push('reply') };
     },
   };
   const message = {
+    reply: (p: (typeof sent)[number]) => channel.send(p),
     inGuild: () => true,
     guildId: 'g',
     channelId: 'c',
@@ -49,7 +58,7 @@ function setup(attachmentNames: string[], uid = 'u1') {
     channel,
     attachments: new Collection(attachmentNames.map((n, i) => [String(i), { url: `https://cdn.test/${i}.png`, contentType: 'image/png', size: 1000 }])),
     guild: { id: 'g', members: { fetchMe: async () => ({ roles: { highest: { position: 50 } } }) }, roles: { cache: roles } },
-    delete: async () => {},
+    delete: async () => void gone.push('screenshot'),
   };
   // The handler takes the member from message.member: give it the same roles/nickname handles.
   message.member = Object.assign(member, { permissions: { has: () => false } }) as never;
@@ -58,7 +67,7 @@ function setup(attachmentNames: string[], uid = 'u1') {
     store,
     client: { user: { id: 'bot', displayAvatarURL: () => undefined } },
   };
-  return { ctx, message, sent, held, member };
+  return { ctx, message, sent, held, member, gone };
 }
 
 describe('profile card and clan row in one message', () => {
@@ -79,6 +88,20 @@ describe('profile card and clan row in one message', () => {
     const last = t.sent.at(-1)!;
     assert.equal(last.embeds?.length, 1);
     assert.match(last.embeds![0]!.data.title!, /Profile card verified/);
+  });
+
+  it('replies to the screenshot, shows the result for a while and then removes the reply and the screenshot', async () => {
+    const t = setup(['ss-roles-example.png'], 'u12');
+    const replies: unknown[] = [];
+    const reply = t.message.reply;
+    t.message.reply = ((p: never) => (replies.push(p), reply(p))) as never;
+    await handleSsMessage(t.message as never, t.ctx as never);
+    assert.equal(replies.length, 1, 'the progress notice is a reply to the member’s message');
+    assert.match(t.sent[0]!.content!, /Reading your screenshot/);
+    assert.equal(t.sent.at(-1)!.embeds?.length, 1);
+    assert.deepEqual(t.gone, [], 'nothing is removed while the result is up');
+    await pause(100);
+    assert.deepEqual([...t.gone].sort(), ['reply', 'screenshot']);
   });
 
   it('still handles a single picture', async () => {
@@ -106,7 +129,9 @@ describe('without the Message Content intent (the gateway delivers messages with
     await handleSsMessage(t.message as never, t.ctx as never);
     assert.equal(t.sent.at(-1)!.embeds?.length, 1, 'read and answered');
     assert.doesNotMatch(t.sent.map((s) => s.content ?? '').join(' '), /only for profile screenshots/);
-    assert.equal(deleted.length, 1, 'removed once, after it was downloaded for reading (as always)');
+    assert.equal(deleted.length, 0, 'kept while the result is shown');
+    await pause(100);
+    assert.equal(deleted.length, 1, 'removed once, with the result');
   });
 
   it('leaves the message alone when it can not be read again', async () => {

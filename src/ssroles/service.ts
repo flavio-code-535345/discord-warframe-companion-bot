@@ -16,12 +16,16 @@ import { QueueFullError, screenshotQueue } from '../queue.js';
 
 /**
  * Screenshots are processed in memory only: nothing is written to disk or the database (just a hash and the
- * in-game name, to stop a card being shared), and the member's message is deleted once it has been read.
+ * in-game name, to stop a card being shared). Ordis replies to the member's message, and a minute after the result the reply and the
+ * screenshot are both deleted.
  */
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const COOLDOWN_MS = 30_000;
+/** How long the result stays up before it and the member's screenshot are removed (a field so tests can shorten it). */
+export const ssTimings = { resultTtlMs: 60_000 };
+const FOOTER = 'Your screenshot and this message are removed in a minute. Ordis keeps no copy.';
 /** A message can carry a profile card and a clan roster row together. */
 const MAX_IMAGES = 2;
 /** Mastery points on the example card in assets/ss-roles-example.png (normalized, no separators). */
@@ -164,7 +168,7 @@ function resultEmbed(ctx: AppContext, r: CardReading, mr: number | null, ok: boo
   if (r.next_rank) embed.addFields({ name: 'Next Rank', value: `${r.next_rank}${r.points_to_next_rank ? ` in ${r.points_to_next_rank}` : ''}`, inline: true });
   if (r.clan_name) embed.addFields({ name: 'Clan', value: `${r.clan_name}${r.clan_tag ? `#${r.clan_tag}` : ''}${r.clan_tier_rank ? ` · ${r.clan_tier_rank}` : ''}`, inline: true });
   embed.addFields({ name: 'Clan member', value: ok ? 'yes' : 'no', inline: true });
-  embed.setFooter({ text: 'Your screenshot was deleted after reading. Ordis keeps no copy.' });
+  embed.setFooter({ text: FOOTER });
   embed.setDescription(lines.join('\n').slice(0, 2000) || null);
   return embed;
 }
@@ -227,12 +231,12 @@ export async function handleRankRow(
   const embed = new EmbedBuilder()
     .setAuthor({ name: config.BOT_NAME, iconURL: brandIcon(ctx) })
     .addFields({ name: 'Clan rank', value: rankName, inline: true }, { name: 'In-game name', value: row.name ?? 'not read', inline: true })
-    .setFooter({ text: 'Your screenshot was deleted after reading. Ordis keeps no copy.' });
+    .setFooter({ text: FOOTER });
 
   if (problems.length || !plan) {
     embed.setColor(COLORS.warn).setTitle('🚫 Clan rank not verified').setDescription(problems.map((p) => `• ${p}`).join('\n'));
     await modLog(ctx, { action: 'Screenshot rejected', moderator: ctx.client.user!, target: message.author, reason: problems.join(' '), fields: [{ name: 'Clan rank screenshot', value: `${rankName} · ${row.name ?? 'name not read'}` }] });
-    return { embed, ttl: 60_000 };
+    return { embed };
   }
 
   // A row of the clan member list proves clan membership, so the clan roles come along with the rank.
@@ -264,13 +268,12 @@ export async function handleRankRow(
       { name: 'Reader', value: 'OCR' },
     ],
   });
-  return { embed, ttl: 20_000 };
+  return { embed };
 }
 
-/** What one screenshot of a message came to: the embed to show and how long it stays up. */
+/** What one screenshot of a message came to: the embed to show. */
 interface Outcome {
   embed: EmbedBuilder;
-  ttl: number;
 }
 
 /** A profile card: checks the clan, reserves the card, and gives the roles and nickname it earns. */
@@ -312,7 +315,7 @@ async function handleCard(
       reason: problems.join(' '),
       fields: [{ name: 'Reader', value: readerLabel(read) }],
     });
-    return { embed: resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`)), ttl: 60_000 };
+    return { embed: resultEmbed(ctx, reading, mr, false, problems.map((p) => `• ${p}`)) };
   }
 
   const earned = earnedNames(reading, mr, config.CLAN_NAME);
@@ -347,7 +350,7 @@ async function handleCard(
       { name: 'Reader', value: readerLabel(read) },
     ],
   });
-  return { embed: resultEmbed(ctx, reading, mr, true, lines), ttl: 20_000 };
+  return { embed: resultEmbed(ctx, reading, mr, true, lines) };
 }
 
 /** Handles a message in the screenshot-roles channel. Returns true when the message belonged to it. */
@@ -389,7 +392,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   const readingText = `<@${message.author.id}> 🔎 Reading your screenshot…`;
   const queueText = (n: number) =>
     `<@${message.author.id}> ⏳ **Ordis is reading other screenshots.** ${n <= 1 ? "You're **next in line**" : `You're **#${n}** in the queue`}. Yours is read as soon as it's your turn.
--# Your picture is already off the channel; please don't post it again.`;
+-# Please don't post it again.`;
   let progress: Message | null = null;
   let latest = 0;
   let ticket: ReturnType<typeof screenshotQueue.join>;
@@ -406,20 +409,23 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   }
   const waited = ticket.position() > 0;
   latest = ticket.position();
-  // Answer at once so the member always sees something (their place in line, or that it is being read), then turn that message into the result (or the error).
-  progress = await channel.send({ content: waited ? queueText(latest) : readingText, allowedMentions: mention }).catch(() => null);
+  // Answer the screenshot at once, as a reply, so the member always sees something (their place in line, or that it is being read); that
+  // message then turns into the result (or the error).
+  const replyTo = (payload: { content: string; embeds?: EmbedBuilder[] }) =>
+    message.reply({ ...payload, allowedMentions: { ...mention, repliedUser: false } }).catch(() => channel.send({ ...payload, allowedMentions: mention }).catch(() => null));
+  progress = await replyTo({ content: waited ? queueText(latest) : readingText });
   if (progress && waited && latest !== ticket.position()) await progress.edit({ content: queueText(ticket.position()), allowedMentions: mention }).catch(() => {});
-  // The pictures are downloaded and taken off Discord straight away, so they only sit in memory while the line moves.
-  const prepare = Promise.all(images.map(async (image) => normalizeImage(await download(image.url), mimeOf(image.contentType)))).then(async (downloaded) => {
-    await message.delete().catch(() => {});
-    return downloaded;
-  });
+  // The pictures only sit in memory; the member's message stays until the result has been up for a minute.
+  const prepare = Promise.all(images.map(async (image) => normalizeImage(await download(image.url), mimeOf(image.contentType))));
   prepare.catch(() => {});
-  // The reply only has to be seen for a moment: the full record goes to the mod log, so the channel stays clean.
-  const finish = async (payload: { content: string; embeds?: EmbedBuilder[] }, ttlMs = 30_000) => {
+  // The result is seen for a minute and then removed together with the screenshot: the full record goes to the mod log, so the channel stays clean.
+  const finish = async (payload: { content: string; embeds?: EmbedBuilder[] }) => {
     const edited = progress ? await progress.edit({ content: payload.content, embeds: payload.embeds ?? [], allowedMentions: mention }).then(() => progress, () => null) : null;
-    const shown = edited ?? (await channel.send({ ...payload, allowedMentions: mention }).catch(() => null));
-    if (shown) setTimeout(() => void shown.delete().catch(() => {}), ttlMs).unref();
+    const shown = edited ?? (await replyTo(payload));
+    setTimeout(() => {
+      void shown?.delete().catch(() => {});
+      void message.delete().catch(() => {});
+    }, ssTimings.resultTtlMs).unref();
   };
   const work = async (downloads: { bytes: Uint8Array; mime: string }[]) => {
     const guild = message.guild;
@@ -441,7 +447,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
       } else outcomes.push(await handleCard(ctx, message, member, me, bytes, read, reference));
     }
     const extra = message.attachments.size > images.length ? 'Only the first two pictures of a message are read.' : '';
-    await finish({ content: `<@${message.author.id}>${extra ? ` ${extra}` : ''}`, embeds: outcomes.map((o) => o.embed) }, Math.max(...outcomes.map((o) => o.ttl)));
+    await finish({ content: `<@${message.author.id}>${extra ? ` ${extra}` : ''}`, embeds: outcomes.map((o) => o.embed) });
   };
   try {
     // Waiting in line does not count against the time limit; the reading does.
@@ -450,7 +456,6 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     await Promise.race([work(downloads), new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("that took too long, so I gave up. Try again in a minute.")), 90_000).unref())]);
   } catch (err) {
     console.error('[ssroles] failed:', err instanceof Error ? err.message : err);
-    await message.delete().catch(() => {});
     await finish({ content: `<@${message.author.id}> ${err instanceof UserError ? err.message : 'something went wrong reading that screenshot. Try again later.'}` });
   } finally {
     ticket.release();
@@ -528,7 +533,7 @@ export async function setupSsRoles(ctx: AppContext, channelId: string, reference
     content: [
       `**① Profile card** (first picture): open the in-game **Profile** and post a screenshot. It must show your **Mastery Rank** and your **Clan** panel, which has to be **${ctx.config.CLAN_NAME}** with our emblem. You get your Mastery Rank role, the clan role and accolades such as Ten Year Supporter, and your server nickname becomes your in-game name.`,
       '**② Clan rank** (second picture): to get **Rat Squire** or **Rat Knight**, also post a screenshot of your row in the in-game clan member list. Attach both pictures to the same message and Ordis handles them together; the name on the row has to be the one on your profile. Rat Knight needs MR 16+. Higher ranks are handed out by leadership.',
-      'This channel is for clan members only and edited screenshots are rejected. Your screenshots are deleted right after they are read and are never saved. Post a new one after you rank up and your roles are updated.',
+      'This channel is for clan members only and edited screenshots are rejected. Ordis replies to your screenshot with the result, and a minute later both are deleted; nothing is ever saved. Post a new one after you rank up and your roles are updated.',
     ].join('\n\n'),
   });
   return learned;

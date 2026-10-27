@@ -74,6 +74,16 @@ test('channels without a sticky, and other servers, are ignored', async () => {
   assert.deepEqual(log, []);
 });
 
+test('the screenshot channel\'s instructions are never reposted or deleted by chatter', async () => {
+  const { keeper, log, say, store } = setup();
+  store.updateSettings(GUILD, { ssRolesChannelId: CHANNEL });
+  await keeper.refresh(CHANNEL, true);
+  keeper.onMessage(say('u1'));
+  keeper.onMessage(say('u2'));
+  await settle();
+  assert.deepEqual(log, ['send m1: Read the rules'], 'only the first post, no new copy and no delete');
+});
+
 test('forced refresh replaces the sticky even when it is already the last message', async () => {
   const { keeper, log, channel, store } = setup();
   await keeper.refresh(CHANNEL);

@@ -56,6 +56,8 @@ export class StickyKeeper {
     const sticky = this.ctx.store.getSticky(message.channelId);
     if (!sticky || message.id === sticky.messageId) return;
     const mine = message.author.id === this.ctx.client.user?.id;
+    // The screenshot channel's instructions stay where they are: its screenshots and answers remove themselves, so nothing needs reposting.
+    if (message.channelId === this.ctx.store.getSettings(this.ctx.config.DISCORD_GUILD_ID).ssRolesChannelId) return;
 
     if (sticky.deleteOthers) {
       // Clean channel: everything from other members goes at once, except staff (who need to be able to fix things).
