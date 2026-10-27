@@ -1,5 +1,6 @@
 import { type TimeInput, toMs } from './time.js';
 import { type WorldState, isBaroHere, resurgenceItemName, rewardText } from './warframe/worldstate.js';
+import { projectCycles } from './warframe/cycles.js';
 
 /**
  * Personal trackers: what a member asked to be DM'd about. Matching is pure (worldstate in, matches out)
@@ -105,17 +106,25 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
     });
   }
 
+  // The fixed-length cycles are rolled forward locally (see warframe/cycles.ts), so a tracker fires on time even when the cached
+  // world state is older than a phase; the rest come from the feed as they are.
+  let p: ReturnType<typeof projectCycles> | null = null;
+  try {
+    p = projectCycles(ws, now);
+  } catch {
+    p = null;
+  }
   const cycles: [string, string, string, TimeInput][] = [
-    ['cetus', 'Cetus', ws.cetusCycle?.isDay ? 'day' : 'night', ws.cetusCycle?.expiry],
-    ['vallis', 'Orb Vallis', ws.vallisCycle?.isWarm ? 'warm' : 'cold', ws.vallisCycle?.expiry],
-    ['cambion', 'Cambion Drift', String(ws.cambionCycle?.state ?? ''), ws.cambionCycle?.expiry],
-    ['zariman', 'Zariman', String(ws.zarimanCycle?.state ?? ''), ws.zarimanCycle?.expiry],
-    ['earth', 'Earth', ws.earthCycle?.isDay ? 'day' : 'night', ws.earthCycle?.expiry],
+    ['cetus', 'Cetus', p ? (p.cetus.isDay ? 'day' : 'night') : ws.cetusCycle?.isDay ? 'day' : 'night', p ? p.cetus.expiry : ws.cetusCycle?.expiry],
+    ['vallis', 'Orb Vallis', p ? (p.vallis.isWarm ? 'warm' : 'cold') : ws.vallisCycle?.isWarm ? 'warm' : 'cold', p ? p.vallis.expiry : ws.vallisCycle?.expiry],
+    ['cambion', 'Cambion Drift', p ? p.cambion.state : String(ws.cambionCycle?.state ?? ''), p ? p.cambion.expiry : ws.cambionCycle?.expiry],
+    ['zariman', 'Zariman', p ? p.zariman.state : String(ws.zarimanCycle?.state ?? ''), p ? p.zariman.expiry : ws.zarimanCycle?.expiry],
+    ['earth', 'Earth', p ? (p.earth.isDay ? 'day' : 'night') : ws.earthCycle?.isDay ? 'day' : 'night', p ? p.earth.expiry : ws.earthCycle?.expiry],
     ['duviri', 'Duviri', String(ws.duviriCycle?.state ?? ''), ws.duviriCycle?.expiry],
   ];
   for (const [cycle, name, state, expiry] of cycles) {
     if (!state || !live(expiry)) continue;
-    out.push({ key: `cycle:${cycle}:${state}:${toMs(expiry)}`, kind: 'cycle', title: `${name}: ${state}`, detail: `${name} is now ${state}`, expiry, cycle: { cycle, state: state.toLowerCase() } });
+    out.push({ key: `cycle:${cycle}:${state}:${Math.round(toMs(expiry) / 60_000) * 60_000}`, kind: 'cycle', title: `${name}: ${state}`, detail: `${name} is now ${state}`, expiry, cycle: { cycle, state: state.toLowerCase() } });
   }
   return out;
 }

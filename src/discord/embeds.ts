@@ -45,7 +45,7 @@ export function cyclesEmbed(ws: WorldState, now = Date.now()): EmbedBuilder {
   const c = { isDay: p.cetus.isDay, expiry: p.cetus.expiry };
   const v = { isWarm: p.vallis.isWarm, expiry: p.vallis.expiry };
   const cam = { state: p.cambion.state, expiry: p.cambion.expiry };
-  const z = ws.zarimanCycle;
+  const z = p.zariman;
   const d = ws.duviriCycle;
   const e = { isDay: p.earth.isDay, expiry: p.earth.expiry };
   const embed = new EmbedBuilder()
@@ -79,10 +79,12 @@ export function fissuresEmbed(fissures: Fissure[], title = 'Void fissures'): Emb
     (f) =>
       `**${f.tier}** · ${f.missionType} — ${f.node} · ${f.enemy}${f.isHard ? ' · 🔱 SP' : ''}${f.isStorm ? ' · 🌀 Storm' : ''} · ends ${discordTime(f.expiry)}`,
   );
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(COLORS.void)
     .setTitle(`${title} (${fissures.length})`)
     .setDescription(fissures.length ? clampLines(lines) : 'No fissures match those filters right now.');
+  const stale = worldStateStaleNote();
+  return stale ? embed.setFooter({ text: stale }) : embed;
 }
 
 export function sortieEmbed(ws: WorldState): EmbedBuilder {

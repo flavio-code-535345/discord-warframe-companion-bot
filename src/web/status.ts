@@ -9,6 +9,7 @@ import {
   archimedeaName,
   getWorldState,
   worldStateInfo,
+  SOURCE_LAG_MS,
   isBaroHere,
   resurgenceItemName,
   rewardText,
@@ -48,7 +49,7 @@ export interface StatusData {
   /** The knowledge archive Ordis answers questions from; null when it is switched off. */
   archive: { pages: number; total: number | null; syncing: boolean } | null;
   /** Calls to the world state source (warframestat.us): whether they are on, when the last one was and how it went. */
-  warframeApi: { enabled: boolean; intervalSeconds: number; lastCallAt: string | null; lastOk: boolean | null; lastDetail: string | null; smart?: boolean; maxMinutes?: number; nextCallAt?: string | null };
+  warframeApi: { enabled: boolean; intervalSeconds: number; lastCallAt: string | null; lastOk: boolean | null; lastDetail: string | null; smart?: boolean; maxMinutes?: number; nextCallAt?: string | null; sourceLagMinutes?: number | null };
   upcomingEvents: { id: number; title: string; startsAt: string; going: number; maybe: number }[];
   /** null when the worldstate could not be loaded. */
   cycles: CycleStatus[] | null;
@@ -77,7 +78,7 @@ function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
     cycle('Cetus', p.cetus.isDay ? 'day' : 'night', p.cetus.expiry),
     cycle('Orb Vallis', p.vallis.isWarm ? 'warm' : 'cold', p.vallis.expiry),
     cycle('Cambion Drift', p.cambion.state, p.cambion.expiry),
-    cycle('Zariman', ws.zarimanCycle.state, ws.zarimanCycle.expiry, { suffix: ' control' }),
+    cycle('Zariman', p.zariman.state, p.zariman.expiry, { suffix: ' control' }),
     cycle('Earth', p.earth.isDay ? 'day' : 'night', p.earth.expiry),
     cycle('Duviri', ws.duviriCycle.state, ws.duviriCycle.expiry, { note: circuit.length ? `Circuit: ${circuit.join(', ')}` : undefined }),
   ];
@@ -191,7 +192,8 @@ function apiPill(a: StatusData['warframeApi']): string {
   const cadence = a.smart ? `smart, at least every ${a.maxMinutes} min` : `every ${Math.round(a.intervalSeconds / 60)} min`;
   if (!a.lastCallAt) return `not called yet · ${cadence}`;
   const ago = formatDuration(Math.max(0, Date.now() - Date.parse(a.lastCallAt)));
-  return `last call ${ago} ago · ${a.lastOk ? 'ok' : (a.lastDetail ?? 'failed').replace(/^Worldstate request failed: /, '')} · ${cadence}`;
+  const behind = a.sourceLagMinutes ? ` · source data ${a.sourceLagMinutes} min behind` : '';
+  return `last call ${ago} ago · ${a.lastOk ? 'ok' : (a.lastDetail ?? 'failed').replace(/^Worldstate request failed: /, '')} · ${cadence}${behind}`;
 }
 
 function archiveProgress(): StatusData['archive'] {
@@ -212,6 +214,7 @@ function warframeApiStatus(): StatusData['warframeApi'] {
     smart: i.smart,
     maxMinutes: i.maxMinutes,
     nextCallAt: i.nextCallAt === null ? null : new Date(i.nextCallAt).toISOString(),
+    sourceLagMinutes: i.sourceLagMs !== null && i.sourceLagMs > SOURCE_LAG_MS ? Math.round(i.sourceLagMs / 60_000) : null,
   };
 }
 

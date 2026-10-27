@@ -101,16 +101,21 @@ export function worldStateFreshness(now = Date.now()): { at: number | null; stal
 /** A sentence for answers when the live data may be outdated (the API is unavailable), else null. */
 export function worldStateStaleNote(now = Date.now()): string | null {
   const f = worldStateFreshness(now);
-  if (!f.stale || f.at === null) return null;
-  const mins = Math.max(1, Math.round((now - f.at) / 60_000));
-  return `Live data may be outdated: last updated ${mins >= 120 ? `${Math.round(mins / 60)} h` : `${mins} min`} ago, the world state source (warframestat.us) is not answering right now.`;
+  const span = (mins: number) => (mins >= 120 ? `${Math.round(mins / 60)} h` : `${mins} min`);
+  if (f.stale && f.at !== null) {
+    return `Live data may be outdated: last updated ${span(Math.max(1, Math.round((now - f.at) / 60_000)))} ago, the world state source (warframestat.us) is not answering right now.`;
+  }
+  if (cached && cached.lag > SOURCE_LAG_MS) {
+    return `The world state source (warframestat.us) was serving data ${span(Math.round(cached.lag / 60_000))} old when last checked, so the newest changes (new fissures, alerts, Duviri rotation) may be missing.`;
+  }
+  return null;
 }
 
 /** The API client's view of the feed's host, for the status displays. */
 export const feedHostBlockedMs = (): number => api.blockedFor(new URL(feedUrl).host);
 
 /** What the status page shows about the Warframe API: whether it is on, when it was last called and what came back. */
-export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null; smart: boolean; maxMinutes: number; nextCallAt: number | null } {
+export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null; smart: boolean; maxMinutes: number; nextCallAt: number | null; sourceLagMs: number | null } {
   return {
     enabled,
     intervalSeconds: Math.round(ttlMs / 1000),
@@ -120,10 +125,11 @@ export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; l
     smart: smartPoll,
     maxMinutes: Math.round(maxPollMs / 60_000),
     nextCallAt: lastCall?.ok ? (cached?.due ?? lastCall.at + ttlMs) : (lastCall?.retryAt ?? null),
+    sourceLagMs: cached?.lag ?? null,
   };
 }
 
-let cached: { at: number; ws: WorldState; /** When the next call is due. */ due: number } | null = null;
+let cached: { at: number; ws: WorldState; /** When the next call is due. */ due: number; /** How old the source's own data was when it was fetched (ms). */ lag: number } | null = null;
 let inflight: Promise<WorldState> | null = null;
 
 /** The warframestat.us answer is the parsed world state as JSON; dates are ISO strings (every reader goes through `toMs`). */
@@ -192,6 +198,15 @@ export function nextRefreshDelay(ws: WorldState, now: number, opts: { minMs: num
   return Math.min(opts.maxMs, Math.max(opts.minMs, wanted));
 }
 
+/** The source's data (its own `timestamp`) being this much older than the moment it was fetched means the source itself is lagging. */
+export const SOURCE_LAG_MS = 20 * 60_000;
+
+/** How old the source's data was when it was fetched at `at`; 0 when it has no timestamp. */
+function lagOf(ws: WorldState, at: number): number {
+  const ts = toMs((ws as unknown as { timestamp?: string }).timestamp as never);
+  return Number.isFinite(ts) ? Math.max(0, at - ts) : 0;
+}
+
 /** When the answer fetched at `at` should be refreshed. */
 const dueFor = (ws: WorldState, at: number): number => at + (smartPoll ? nextRefreshDelay(ws, at, { minMs: ttlMs, maxMs: maxPollMs }) : ttlMs);
 
@@ -250,7 +265,7 @@ export async function getWorldState(): Promise<WorldState> {
   if (!cached && lastCall?.ok && cacheFile) {
     const saved = await readFile(cacheFile, 'utf8').then(parseOrNull, () => null);
     if (saved) {
-      cached = { at: lastCall.at, ws: saved, due: dueFor(saved, lastCall.at) };
+      cached = { at: lastCall.at, ws: saved, due: dueFor(saved, lastCall.at), lag: lagOf(saved, lastCall.at) };
       if (now < cached.due) return saved;
     }
   }
@@ -262,7 +277,7 @@ export async function getWorldState(): Promise<WorldState> {
   inflight ??= fetchWorldState()
     .then((ws) => {
       const at = Date.now();
-      cached = { at, ws, due: dueFor(ws, at) };
+      cached = { at, ws, due: dueFor(ws, at), lag: lagOf(ws, at) };
       return ws;
     })
     .catch((err: unknown) => {
