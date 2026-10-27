@@ -47,7 +47,7 @@ const RIVEN_JS = String.raw`(() => {
     ev.preventDefault();
     const f = file.files && file.files[0];
     if (!f) { alert('Choose a screenshot first.'); return; }
-    if (!/^image\/(png|jpeg)$/.test(f.type)) { alert('The screenshot must be a PNG or JPG.'); return; }
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { alert('The screenshot must be a PNG, JPG or WebP.'); return; }
     if (f.size > 8 * 1024 * 1024) { alert('That file is over 8 MB.'); return; }
     btn.disabled = true;
     const t0 = Date.now();
@@ -112,7 +112,7 @@ export function registerRivenRoutes({ router, ctx, pc, html, action, audit, chan
 ${current ? `<p>${actionButton(p.session, '/admin/rivens/off', 'Turn scanning off', { danger: true, confirm: true })}</p>` : ''}</div>
 <h2>Try a screenshot</h2>
 <div class="card"><form class="stack" id="rvform"><input type="hidden" id="rvcsrf" value="${e(p.session?.csrf ?? '')}">
-<label>Riven card (PNG or JPG, up to 8 MB)<input type="file" id="rvfile" accept="image/png,image/jpeg"></label>
+<label>Riven card (PNG, JPG or WebP, up to 8 MB)<input type="file" id="rvfile" accept="image/png,image/jpeg,image/webp"></label>
 <div><button id="rvgo" type="submit">Scan</button></div></form>
 <div id="rvout" class="stack" style="margin-top:12px"></div></div>
 <h2>Latest scans</h2>
@@ -144,8 +144,8 @@ ${status.failing.length ? `<h2>Market read problems</h2><div class="card"><table
     }),
   );
 
-  router.post('/rivens/scan', express.raw({ type: ['image/png', 'image/jpeg'], limit: MAX_BYTES }), async (req, res) => {
-    if (!Buffer.isBuffer(req.body) || !req.body.length) return void res.status(400).json({ error: 'Send a PNG or JPG image as the request body.' });
+  router.post('/rivens/scan', express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: MAX_BYTES }), async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return void res.status(400).json({ error: 'Send a PNG, JPG or WebP image as the request body.' });
     const mime = (req.get('content-type') ?? '').split(';')[0]!.trim();
     const session = res.locals.session as PanelSession;
     let ticket: ReturnType<typeof screenshotQueue.join>;

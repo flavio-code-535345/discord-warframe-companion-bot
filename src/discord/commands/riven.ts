@@ -23,7 +23,7 @@ const weaponOption = (o: SlashCommandStringOption) => o.setName('weapon').setDes
 async function scan(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   const image = interaction.options.getAttachment('image', true);
   const mime = (image.contentType ?? '').split(';')[0]!.trim();
-  if (mime !== 'image/png' && mime !== 'image/jpeg') throw new UserError('Attach a PNG or JPG screenshot (other formats cannot be read).');
+  if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') throw new UserError('Attach a PNG, JPG or WebP screenshot (other formats cannot be read).');
   if (image.size > MAX_IMAGE_BYTES) throw new UserError('That picture is over 8 MB. Crop it to the riven card and try again.');
 
   const queueText = (n: number) => `⏳ **Ordis is reading other screenshots.** ${n <= 1 ? "You're **next in line**" : `You're **#${n}** in the queue`}.`;
@@ -75,7 +75,7 @@ export const riven: Command = {
       s
         .setName('scan')
         .setDescription('Grade a riven from a screenshot of its card')
-        .addAttachmentOption((o) => o.setName('image').setDescription('A PNG or JPG of the unveiled riven card (cropped to the card works best)').setRequired(true)),
+        .addAttachmentOption((o) => o.setName('image').setDescription('A PNG, JPG or WebP of the unveiled riven card (cropped to the card works best)').setRequired(true)),
     )
     .addSubcommand((s) => s.setName('top').setDescription('Which rolls the expensive rivens of a weapon have').addStringOption(weaponOption))
     .addSubcommand((s) => s.setName('status').setDescription('How much riven data the bot has gathered'))

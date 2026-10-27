@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { Store } from '../src/db.js';
@@ -250,12 +252,36 @@ describe('scanning a riven', () => {
   });
 
   it('turns an unreadable picture or a failing reader into a plain explanation', async () => {
-    await assert.rejects(scanCard(ctx(), new Uint8Array([1, 2, 3]), 'image/png', async () => []), /PNG and JPEG/);
+    await assert.rejects(scanCard(ctx(), new Uint8Array([1, 2, 3]), 'image/png', async () => []), /PNG, JPEG and WebP/);
     await assert.rejects(
       scanCard(ctx(), picture, 'image/png', async () => {
         throw new Error('worker died');
       }),
       /could not read that picture/,
     );
+  });
+});
+
+describe('WebP screenshots', () => {
+  it('decodes a WebP picture and prepares it for OCR like a PNG', async () => {
+    const require = createRequire(import.meta.url);
+    const wasmWebp = require('@saschazar/wasm-webp') as (o: object) => any;
+    const defaults = require('@saschazar/wasm-webp/options') as object;
+    const wasmBinary = readFileSync(require.resolve('@saschazar/wasm-webp/wasm_webp.wasm'));
+    const { decodeWebp, webpToPng } = await import('../src/imaging/webp.js');
+    // Make a WebP with the same module's encoder: a dark picture with light stripes, 120x60.
+    const rgb = new Uint8Array(120 * 60 * 3);
+    for (let i = 0; i < 120 * 60; i++) rgb.fill((i % 120) % 9 === 0 ? 230 : 20, i * 3, i * 3 + 3);
+    const webp: Uint8Array = await new Promise((resolve) => {
+      wasmWebp({ wasmBinary, onRuntimeInitialized(this: any) { resolve(Uint8Array.from(this.encode(rgb, 120, 60, 3, defaults))); this.free(); } });
+    });
+    const px = (await decodeWebp(webp))!;
+    assert.deepEqual([px.width, px.height, px.data.length], [120, 60, 120 * 60 * 4]);
+    assert.ok(px.data[0]! > 150 && px.data[4 * 1]! < 80, 'the stripe pattern survived');
+    const png = (await webpToPng(webp))!;
+    const prepared = prepareForOcr(png, 'image/png')!;
+    assert.deepEqual([prepared.width, prepared.height, prepared.inverted], [360, 180, true]);
+    assert.equal(await decodeWebp(new Uint8Array([1, 2, 3])), null, 'a damaged file is refused');
+    assert.ok(await decodeWebp(webp), 'and the decoder still works afterwards');
   });
 });

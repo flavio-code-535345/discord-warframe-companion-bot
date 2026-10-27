@@ -1,4 +1,5 @@
 import type { AppContext } from '../context.js';
+import { webpToPng } from '../imaging/webp.js';
 import { UserError } from '../services/clan.js';
 import type { OcrLine } from '../ssroles/parse.js';
 import { ocr } from '../ssroles/ocr.js';
@@ -29,14 +30,23 @@ export interface ScanResult {
 const enough = (r: CardReading): boolean => r.weapon !== null && r.positives.length >= 2;
 const richness = (r: CardReading): number => (r.weapon ? 2 : 0) + r.positives.length + (r.negative ? 1 : 0);
 
-export async function scanCard(ctx: AppContext, bytes: Uint8Array, mime: string, recognize: Recognize = (b) => ocr.recognize(b)): Promise<ScanResult> {
+export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime: string, recognize: Recognize = (b) => ocr.recognize(b)): Promise<ScanResult> {
   const t0 = Date.now();
+  // A WebP is turned into a PNG first; everything after that only knows PNG and JPEG.
+  let bytes = picture;
+  let mime = pictureMime;
   const [weapons, attrs] = await Promise.all([getRivenWeapons(), getRivenAttributes()]).catch(() => {
     throw new UserError("I couldn't load the riven weapon and stat lists from warframe.market just now. Try again in a minute.");
   });
   if (!weapons.length || !attrs.length) throw new UserError("I couldn't load the riven weapon and stat lists from warframe.market just now. Try again in a minute.");
+  if (mime === 'image/webp') {
+    const png = await webpToPng(bytes);
+    if (!png) throw new UserError('I could not open that WebP file (is it damaged?). Try a PNG or JPG.');
+    bytes = png;
+    mime = 'image/png';
+  }
   const prepared = prepareForOcr(bytes, mime);
-  if (!prepared) throw new UserError('I can read PNG and JPEG screenshots (not other formats, or damaged files).');
+  if (!prepared) throw new UserError('I can read PNG, JPEG and WebP screenshots (not other formats, or damaged files).');
 
   const read = async (image: Uint8Array) => {
     try {

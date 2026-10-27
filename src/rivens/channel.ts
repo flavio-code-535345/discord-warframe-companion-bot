@@ -8,11 +8,11 @@ import { type ScanResult, scanCard } from './scan.js';
 /**
  * The riven channel (/setup rivens): members post screenshots of their rivens and Ordis answers each one with a short grade card.
  * Nothing is deleted or stored: the picture only lives in memory while it is read, and the member's message stays where it is.
- * Messages without a PNG/JPEG picture are left alone, so people can still talk in the channel.
+ * Messages without a PNG/JPEG/WebP picture are left alone, so people can still talk in the channel.
  */
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const IMAGE_TYPES = new Set(['image/png', 'image/jpeg']);
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_IMAGES = 3;
 const SCAN_LIMIT_MS = 90_000;
 const WORKING = '🔎';

@@ -102,6 +102,15 @@ describe('riven channel', () => {
     assert.equal(t.replies[0]!.embeds!.length, 2);
   });
 
+  it('also reads a WebP picture', async () => {
+    const t = setup([{ name: 'a.webp', type: 'image/webp' }]);
+    const mimes: string[] = [];
+    const scan = (ctx: AppContext, bytes: Uint8Array, mime: string) => (mimes.push(mime), reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage')(ctx, bytes, 'image/png'));
+    assert.equal(await handleRivenMessage(t.message as never, t.ctx as never, scan), true);
+    assert.deepEqual(mimes, ['image/webp'], 'the handler hands the WebP to the scanner, which converts it');
+    assert.equal(t.replies[0]!.embeds!.length, 1);
+  });
+
   it('ignores other channels, bots and messages without a PNG/JPEG picture', async () => {
     const other = setup([{ name: 'a.png', type: 'image/png' }], 'elsewhere');
     assert.equal(await handleRivenMessage(other.message as never, other.ctx as never, reads('x')), false);
