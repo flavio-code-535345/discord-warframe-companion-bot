@@ -16,6 +16,7 @@ import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
 import { validImageUrl } from '../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
+import { disableRivenChannel, setupRivenChannel } from '../rivens/channel.js';
 import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
@@ -649,7 +650,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel and the honeypot trap channel (+ its action). null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action) and the riven scanning channel. null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
@@ -662,6 +663,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         level_channel_id: snowflake.nullable().optional().describe('Where level-ups are announced; null announces where the member is talking'),
         honeypot_channel_id: snowflake.nullable().optional().describe('Trap channel: anyone without moderator powers who posts there is removed. Posts a "do not post" notice in it.'),
         honeypot_action: z.enum(HONEYPOT_ACTIONS).optional().describe('softban (default: remove + clear the last hour of messages, can rejoin), ban or kick'),
+        riven_channel_id: snowflake.nullable().optional().describe('Riven channel: members post a screenshot of an unveiled riven and Ordis answers with a picture grading every stat. Posts a one-line note in it; null turns it off'),
         lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
         auto_vc_hub_channel_id: snowflake.nullable().optional().describe('Join-to-create lobby: a voice channel that gives whoever joins it their own temporary room next to it; null turns it off'),
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
@@ -696,6 +698,11 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         disableHoneypot(ctx);
       } else if (args.honeypot_action) {
         ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { honeypotAction: args.honeypot_action });
+      }
+      if (args.riven_channel_id) {
+        await setupRivenChannel(ctx, args.riven_channel_id);
+      } else if (args.riven_channel_id === null) {
+        disableRivenChannel(ctx);
       }
       return ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
     }),
