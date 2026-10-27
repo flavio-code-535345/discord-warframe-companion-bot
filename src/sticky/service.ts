@@ -121,7 +121,7 @@ export interface StickyInput {
 export async function checkStickyChannel(ctx: AppContext, channelId: string, deleteOthers: boolean): Promise<void> {
   const s = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
   if (channelId === s.honeypotChannelId) throw new UserError('That is the honeypot trap channel. Nobody should write there.');
-  if (deleteOthers && [s.chatChannelId, s.ssRolesChannelId, s.verifyChannelId].includes(channelId)) {
+  if (deleteOthers && [s.chatChannelId, s.ssRolesChannelId, s.verifyChannelId, s.rivenChannelId].includes(channelId)) {
     throw new UserError('Ordis reads messages in that channel (chat or screenshots) before removing them, so clean mode is not available there. The screenshot channel already deletes everything itself.');
   }
   const channel = await ctx.client.channels.fetch(channelId).catch(() => null);

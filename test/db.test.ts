@@ -74,6 +74,7 @@ test('settings: partial updates keep other fields', () => {
     levelChannelId: null,
     auditLogChannelId: null,
     statusChannelId: null,
+    rivenChannelId: null,
     lfgVoiceCategoryId: null,
     lfgVoiceGraceMinutes: null,
     autoVcHubChannelId: null,

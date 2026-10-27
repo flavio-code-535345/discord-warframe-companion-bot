@@ -130,6 +130,55 @@ export function rivenReadEmbed(r: ScanResult): EmbedBuilder {
   return embed.setFooter({ text: `Read by OCR in ${(r.ms / 1000).toFixed(1)} s. Something wrong? Type it with /riven grade.` });
 }
 
+/**
+ * The short answer for a scanned riven: the weapon, the letter, the stats as read and what it sells for. No explanations; a failed
+ * read is one line. Used by the riven channel and /riven scan (/riven grade keeps the detailed card).
+ */
+export function rivenCompactEmbed(r: ScanResult): EmbedBuilder {
+  const s = scanSummary(r);
+  const embed = new EmbedBuilder();
+  if (s.weapon) embed.setTitle(`🎲 ${s.weapon}`);
+  if (s.error) return embed.setColor(0xe74c3c).setDescription(`❌ ${s.error}`);
+  return embed.setColor(s.letter ? LETTER_COLOR[s.letter] : COLORS.brand).setDescription(s.letter ? `# ${s.letter}\n${s.stats}${s.price ? `\n💰 ${s.price}` : ''}` : `${s.stats}\nNot enough listings to grade.`);
+}
+
+export interface ScanSummary {
+  weapon: string | null;
+  /** "+Critical Chance 168.7 · +Multishot 90 · −Zoom 45" */
+  stats: string;
+  letter: Letter | null;
+  /** What it sells for ("40p–200p, median 80p", "from 150p", "none for sale"), when known. */
+  price: string | null;
+  /** One short sentence when nothing could be graded because the picture was not readable. */
+  error: string | null;
+}
+
+/** The short facts of a scan, for the compact embed and the admin page. */
+export function scanSummary(r: ScanResult): ScanSummary {
+  const name = (slug: string) => r.names[slug] ?? slug;
+  const rd = r.reading;
+  const val = (v: number | null | undefined) => (v === null || v === undefined ? '' : ` ${v}`);
+  const stats = [...rd.positives.map((p) => `+${name(p.slug)}${val(p.value)}`), ...(rd.negative ? [`−${name(rd.negative.slug)}${val(rd.negative.value)}`] : [])].join(' · ');
+  const out = (error: string | null, letter: Letter | null = null, price: string | null = null): ScanSummary => ({ weapon: rd.weapon?.name ?? null, stats, letter, price, error });
+  if (!rd.weapon) return out("Couldn't find the weapon name. Crop the picture to the riven card.");
+  if (rd.unknown.length) return out("Couldn't read every stat line (is the mouse over the card?). Try another screenshot.");
+  if (rd.positives.length < 2) return out("Couldn't read the stats. Crop the picture to the riven card.");
+  if (!r.report) return out("Couldn't grade this one.");
+  const g = r.report.grade;
+  if (!g) return out(null);
+  const c = g.comparable;
+  const price = c
+    ? c.source === 'top' || !c.complete
+      ? `from ${plat(c.min)}`
+      : c.count === 1
+        ? plat(c.min)
+        : `${plat(c.min)}–${plat(c.max)}, median ${plat(c.median)}`
+    : g.marketChecked
+      ? 'none for sale'
+      : null;
+  return out(null, g.letter, price);
+}
+
 export function rivenStatusEmbed(s: RivenStatus): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)

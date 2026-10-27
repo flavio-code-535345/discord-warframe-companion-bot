@@ -312,3 +312,34 @@ test('the Screenshots test page runs one reader per request and needs the CSRF h
   assert.equal(results.cloud.status, 'skipped');
   assert.match(results.cloud.note, /FREE_AI_KEY/);
 });
+
+test('the Rivens page shows the scan channel, needs the CSRF header to scan, and turns scanning off', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
+  const realFetch = globalThis.fetch;
+  // The page asks for the weapon list; keep the test off the network (loopback requests to the test server still go through).
+  globalThis.fetch = ((url: string, init?: RequestInit) => (String(url).startsWith(baseUrl) ? realFetch(url, init) : Promise.reject(new Error('offline')))) as typeof fetch;
+  try {
+    store.updateSettings(GUILD, { rivenChannelId: '222222222222222222' });
+    const page = await get('/admin/rivens', cookie);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /<h1>Rivens<\/h1>/);
+    assert.match(html, /Scan channel/);
+    assert.match(html, /Turn scanning off/);
+    assert.match(html, /<a href="\/admin\/rivens" class="on">Rivens<\/a>/);
+
+    const scan = (headers: Record<string, string>, body: Uint8Array | string = new Uint8Array([1, 2, 3]), type = 'image/png') =>
+      fetch(`${baseUrl}/admin/rivens/scan`, { method: 'POST', redirect: 'manual', headers: { cookie, 'content-type': type, ...headers }, body });
+    assert.equal((await scan({})).status, 403, 'no token');
+    assert.equal((await scan({ 'x-csrf-token': 'csrf-token' }, 'x', 'text/plain')).status, 400, 'not an image');
+
+    assert.match(flash(await post('/admin/rivens/off', { _csrf: 'csrf-token' }, cookie)), /Tick "sure"/);
+    assert.equal(store.getSettings(GUILD).rivenChannelId, '222222222222222222');
+    assert.match(flash(await post('/admin/rivens/off', { confirm: 'yes', _csrf: 'csrf-token' }, cookie)), /off/);
+    assert.equal(store.getSettings(GUILD).rivenChannelId, null);
+    assert.match(flash(await post('/admin/rivens/channel', { _csrf: 'csrf-token' }, cookie)), /Pick a channel/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

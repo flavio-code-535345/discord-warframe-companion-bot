@@ -16,6 +16,7 @@ import { handleButton } from './buttons.js';
 import { handleVoiceStateUpdate } from '../lfg/autovc.js';
 import { handleHoneypotMessage } from '../moderation/honeypot.js';
 import { handleLevelMessage } from '../leveling/service.js';
+import { handleRivenMessage } from '../rivens/channel.js';
 import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { handleChatMessage } from './chat.js';
@@ -93,7 +94,7 @@ export function attachHandlers(ctx: AppContext): void {
     stickyKeeper(ctx).onMessage(message);
     void handleLevelMessage(message, ctx).catch((err) => console.error('[levels] message handler failed:', err));
     void handleHoneypotMessage(message, ctx)
-      .then((trapped) => (trapped ? true : handleSsMessage(message, ctx)))
+      .then(async (trapped) => (trapped ? true : (await handleSsMessage(message, ctx)) || (await handleRivenMessage(message, ctx))))
       .then((handled) => (handled ? undefined : handleChatMessage(message, ctx)))
       .catch((err) => console.error('[discord] message handler failed:', err));
   });

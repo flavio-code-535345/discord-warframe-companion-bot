@@ -2,6 +2,7 @@ import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashComm
 import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
 import { disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
+import { disableRivenChannel, setupRivenChannel } from '../../rivens/channel.js';
 import { disableSsRoles, resetSsClaims, setupSsRoles } from '../../ssroles/service.js';
 import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
@@ -36,6 +37,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
         value: s.lfgVoiceCategoryId ? `category <#${s.lfgVoiceCategoryId}> · host grace ${s.lfgVoiceGraceMinutes ?? 5} min` : '*off* (squads post without a voice channel)',
       },
       { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}${flags.ENABLE_MESSAGE_CONTENT ? '' : ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see screenshots'}` : '*off*' },
+      { name: 'Riven scanning', value: s.rivenChannelId ? `${ch(s.rivenChannelId)}${flags.ENABLE_MESSAGE_CONTENT ? '' : ' · ⚠️ needs ENABLE_MESSAGE_CONTENT=true to see screenshots'}` : '*off*' },
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
@@ -112,6 +114,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('rivens')
+        .setDescription('Channel where members post riven screenshots and Ordis grades them')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel for rivens').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('ssreset')
         .setDescription('Forget which cards were used, so every screenshot is accepted again')
         .addBooleanOption((o) => o.setName('keep_example').setDescription('Keep refusing a copy of the example card (default: no, so you can test with it)')))
@@ -176,6 +184,7 @@ export const setup: Command = {
               { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
               { name: 'Screenshot roles', value: 'ssroles' },
+              { name: 'Riven scanning', value: 'rivens' },
               { name: 'Leveling', value: 'levels' },
               { name: 'Squad voice channels', value: 'lfgvoice' },
               { name: 'Join-to-create voice', value: 'autovc' },
@@ -263,6 +272,12 @@ export const setup: Command = {
         });
         return;
       }
+      case 'rivens': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await setupRivenChannel(ctx, channelId());
+        await interaction.editReply({ embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
+        return;
+      }
       case 'honeypot': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await setupHoneypot(ctx, channelId(), honeypotAction(interaction.options.getString('action')));
@@ -290,6 +305,11 @@ export const setup: Command = {
         }
         if (feature === 'ssroles') {
           disableSsRoles(ctx);
+          settings = ctx.store.getSettings(guildId);
+          break;
+        }
+        if (feature === 'rivens') {
+          disableRivenChannel(ctx);
           settings = ctx.store.getSettings(guildId);
           break;
         }

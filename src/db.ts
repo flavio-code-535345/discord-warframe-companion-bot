@@ -39,6 +39,8 @@ export interface GuildSettings {
   auditLogChannelId: string | null;
   /** Staff channel for the bot's start / shutdown / restart reports. */
   statusChannelId: string | null;
+  /** Riven scanning: members post riven screenshots here and Ordis grades them. */
+  rivenChannelId: string | null;
 }
 
 /** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, a direct lookup (prices, drops, world state...), or a saved, verified answer (the cache). */
@@ -129,6 +131,7 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['levelChannelId', 'level_channel_id'],
   ['auditLogChannelId', 'audit_log_channel_id'],
   ['statusChannelId', 'status_channel_id'],
+  ['rivenChannelId', 'riven_channel_id'],
 ];
 const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
 
@@ -514,6 +517,9 @@ const MIGRATIONS: string[] = [
     listings INTEGER NOT NULL DEFAULT 0,
     error TEXT
   );
+  `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN riven_channel_id TEXT;
   `,
 ];
 

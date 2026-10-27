@@ -51,6 +51,7 @@ function sampleBackup(): ServerBackup {
       levelChannelId: null,
       auditLogChannelId: null,
       statusChannelId: null,
+      rivenChannelId: null,
       lfgVoiceCategoryId: null,
       lfgVoiceGraceMinutes: null,
       autoVcHubChannelId: null,

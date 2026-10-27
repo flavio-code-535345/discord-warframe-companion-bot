@@ -1,13 +1,14 @@
 import { type ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder, type SlashCommandStringOption } from 'discord.js';
 import type { AppContext } from '../../context.js';
 import { QueueFullError, screenshotQueue } from '../../queue.js';
+import { recordResult } from '../../rivens/channel.js';
 import { getRivenWeapons } from '../../rivens/market.js';
 import { scanCard } from '../../rivens/scan.js';
 import { gradeFor, rivenStatus, topFor } from '../../rivens/service.js';
 import { UserError } from '../../services/clan.js';
 import { searchItems } from '../../warframe/market.js';
 import type { Command } from '../command.js';
-import { rivenGradeEmbed, rivenReadEmbed, rivenStatusEmbed, rivenTopEmbed } from '../riven-embeds.js';
+import { rivenCompactEmbed, rivenGradeEmbed, rivenStatusEmbed, rivenTopEmbed } from '../riven-embeds.js';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const SCAN_LIMIT_MS = 90_000;
@@ -51,7 +52,8 @@ async function scan(interaction: ChatInputCommandInteraction, ctx: AppContext): 
       download.then((bytes) => scanCard(ctx, bytes, mime)),
       new Promise<never>((_, reject) => setTimeout(() => reject(new UserError('That took too long, so I gave up. Try again in a minute.')), SCAN_LIMIT_MS).unref()),
     ]);
-    await interaction.editReply({ content: '', embeds: [rivenReadEmbed(result), ...(result.report ? [rivenGradeEmbed(result.report)] : [])] });
+    recordResult('command', interaction.user.username, result);
+    await interaction.editReply({ content: '', embeds: [rivenCompactEmbed(result)] });
   } finally {
     ticket.release();
   }

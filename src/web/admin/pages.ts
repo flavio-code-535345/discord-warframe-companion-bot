@@ -21,6 +21,7 @@ const NAV: [string, string][] = [
   ['ai', 'AI'],
   ['brain', 'Brain'],
   ['sstest', 'Screenshots'],
+  ['rivens', 'Rivens'],
   ['config', 'Config'],
   ['announce', 'Announce'],
   ['events', 'Events'],

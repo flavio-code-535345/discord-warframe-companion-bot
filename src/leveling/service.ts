@@ -50,7 +50,7 @@ export async function handleLevelMessage(message: Message, ctx: AppContext): Pro
   if (message.author.bot || message.webhookId || message.system || !message.member) return;
   if (!levelingOn(ctx)) return;
   const s = ctx.store.getSettings(message.guildId);
-  if ([s.honeypotChannelId, s.ssRolesChannelId, s.verifyChannelId].includes(message.channelId)) return;
+  if ([s.honeypotChannelId, s.ssRolesChannelId, s.verifyChannelId, s.rivenChannelId].includes(message.channelId)) return;
   if (ctx.store.getSticky(message.channelId)?.deleteOthers) return;
   if (ctx.store.xpIgnoredChannels(message.guildId).includes(message.channelId)) return;
 
