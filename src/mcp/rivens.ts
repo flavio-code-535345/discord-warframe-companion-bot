@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { rivenTrace, scanLog, scanTotals } from '../rivens/channel.js';
+import { auditListings } from '../rivens/audit.js';
 import { getRivenWeapons } from '../rivens/market.js';
 import { gradeFor, rivenStatus, topFor } from '../rivens/service.js';
 import { READ_ONLY, tool } from './util.js';
@@ -65,6 +66,22 @@ export function registerRivenTools(server: McpServer, ctx: AppContext): void {
         combinations: r.top.combos.map((c) => ({ stats: c.slugs.map(name), listings: c.count, medianPrice: c.median })),
         dataReadAt: r.fetchedAt ? new Date(r.fetchedAt).toISOString() : null,
       };
+    }),
+  );
+
+  server.registerTool(
+    'riven_table_check',
+    {
+      title: 'Check the riven ranges against stored listings',
+      description:
+        "Grades every stored warframe.market listing against the fixed riven ranges the grader uses and reports, per kind of weapon, how many fit, which stats have no range or fall outside it, and where each stat's rolls sit in its range (they should span about -10 to +10 with a mean near 0). Reads only stored data, no market requests.",
+      inputSchema: {},
+      annotations: { ...READ_ONLY, openWorldHint: false },
+    },
+    tool(async () => {
+      const weapons = await getRivenWeapons().catch(() => []);
+      const kinds = auditListings(weapons.map((weapon) => ({ weapon, listings: ctx.store.rivenListings(weapon.slug) })));
+      return { weapons: weapons.length, kinds };
     }),
   );
 
