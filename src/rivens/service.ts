@@ -4,6 +4,7 @@ import { ApiBlockedError, api } from '../warframe/fetch.js';
 import { searchItems } from '../warframe/market.js';
 import { type Grade, type MarketComparable, type StatInput, type TopRolls, gradeRiven, topRolls } from './grade.js';
 import { RIVEN_SCOPE, fetchComparable, fetchListings, getRivenAttributes, getRivenWeapons } from './market.js';
+import { type RollGrade, gradeRolls } from './rolls.js';
 import { parseStatList, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenListing, RivenWeapon } from './types.js';
 
@@ -92,6 +93,8 @@ export interface GradeReport {
   names: Record<string, string>;
   /** null when warframe.market lists too few rivens for this weapon to compare with. */
   grade: Grade | null;
+  /** How good each rolled value is, stat by stat (see rolls.ts). */
+  rolls: RollGrade[];
   listings: number;
   fetchedAt: number | null;
   stale: boolean;
@@ -125,7 +128,7 @@ export async function gradeResolved(ctx: AppContext, weapon: RivenWeapon, attrs:
   }
   const loaded = await loadListings(ctx, weapon);
   const market = await comparableFor(weapon.slug, positives.map((p) => p.slug), negative?.slug ?? null);
-  return { weapon, names: attributeNames(attrs), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
+  return { weapon, names: attributeNames(attrs), rolls: gradeRolls(loaded.listings, positives, negative), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
 }
 
 export interface TopReport {

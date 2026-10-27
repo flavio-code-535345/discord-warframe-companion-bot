@@ -1,6 +1,7 @@
 import { distance } from '../ssroles/parse.js';
 import type { OcrLine } from '../ssroles/parse.js';
 import type { StatInput } from './grade.js';
+import type { Box } from './pointer.js';
 import { norm, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenWeapon } from './types.js';
 
@@ -24,6 +25,8 @@ export interface CardReading {
   statLines: string[];
   /** Stats whose name was unreadable and were worked out from what was left (see `interpretUnknown`). */
   guessed: string[];
+  /** The card's text block (name to footer) in the coordinates of the picture OCR read; null when the name was not found by its hyphenated title. */
+  box?: Box | null;
 }
 
 const MINUS = /[-−–—‒]/;
@@ -110,7 +113,8 @@ export function findWeapon(weapons: RivenWeapon[], lines: string[]): RivenWeapon
 }
 
 export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapons: RivenWeapon[]): CardReading {
-  const texts = [...lines].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0).map((l) => l.text.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const entries = [...lines].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0).map((line) => ({ line, text: line.text.replace(/\s+/g, ' ').trim() })).filter((e) => e.text);
+  const texts = entries.map((e) => e.text);
   const weapon = findWeapon(weapons, texts);
   // The stat lines sit under the riven's name and above the footer ("MR 16", rank, re-rolls). OCR also finds noise in the artwork above the
   // name, and a signed number in it must not count as a stat (it would push a real one out, or block grading as unreadable).
@@ -158,7 +162,15 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
     else positives.push({ slug: s.attr.slug, value: s.value });
   });
 
-  return { weapon, positives: positives.slice(0, 3), negative, unsureSign, unknown, statLines: stats.map((s) => s.line), guessed: [] };
+  // Where the card's text block (name down to the footer) sits in the picture, so a screenshot of a whole screen can be cropped to the card.
+  let box: Box | null = null;
+  if (title) {
+    const last = footer >= 0 ? footer : title.index + body.length;
+    for (const { line } of entries.slice(title.index, last + 1)) {
+      box = box ? { x0: Math.min(box.x0, line.x0), y0: Math.min(box.y0, line.y0), x1: Math.max(box.x1, line.x1), y1: Math.max(box.y1, line.y1) } : { x0: line.x0, y0: line.y0, x1: line.x1, y1: line.y1 };
+    }
+  }
+  return { weapon, positives: positives.slice(0, 3), negative, unsureSign, unknown, statLines: stats.map((s) => s.line), guessed: [], box };
 }
 
 /** Stats that are on most rivens people ask about: a tie-breaker when the garbled text fits several names about equally. */

@@ -52,7 +52,7 @@ afterEach(() => {
 function setup(files: { name: string; type: string }[], channelId = 'c') {
   const store = new Store(':memory:');
   store.updateSettings('g', { rivenChannelId: 'c' });
-  const replies: { content?: string; embeds?: { data: { title?: string; description?: string } }[] }[] = [];
+  const replies: { content?: string; embeds?: { data: { title?: string; description?: string } }[]; files?: { name: string; attachment: unknown }[] }[] = [];
   const reactions: string[] = [];
   const message = {
     inGuild: () => true,
@@ -77,10 +77,12 @@ describe('riven channel', () => {
     const handled = await handleRivenMessage(t.message as never, t.ctx as never, reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage', '+95.3% Multishot', '-42.1% Zoom'));
     assert.equal(handled, true);
     assert.equal(t.replies.length, 1);
-    const embeds = t.replies[0]!.embeds!;
-    assert.equal(embeds.length, 1);
-    assert.equal(embeds[0]!.data.title, '🎲 Kuva Bramma');
-    assert.match(embeds[0]!.data.description!, /^# S\n\+Critical Chance 168\.7 · \+Critical Damage 112\.5 · \+Multishot 95\.3 · −Zoom 42\.1\n💰 /);
+    assert.deepEqual(t.replies[0]!.embeds, [], 'the answer is the picture, not an embed');
+    const files = t.replies[0]!.files!;
+    assert.equal(files.length, 1);
+    assert.equal(files[0]!.name, 'riven-1.png');
+    const png = PNG.sync.read(files[0]!.attachment as Buffer);
+    assert.ok(png.width > 400 && png.height > 200, 'the card and the stat panel are drawn side by side');
     assert.equal(t.replies[0]!.content, undefined, 'no chatter around the card');
     assert.deepEqual(screenshotQueue.snapshot(), { running: 0, waiting: 0 });
     assert.equal(scanTotals().scans, before + 1);
@@ -98,8 +100,9 @@ describe('riven channel', () => {
   it('grades a card with one smudged stat line anyway, and marks the interpreted stat with a ?', async () => {
     const t = setup([{ name: 'a.png', type: 'image/png' }]);
     await handleRivenMessage(t.message as never, t.ctx as never, reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Cr#t?cal Dam#ge', '+95.3% Multishot'));
-    const d = t.replies[0]!.embeds![0]!.data.description!;
-    assert.match(d, /^# [SABCD]\n/, 'it is graded, not refused');
+    assert.equal(t.replies[0]!.files!.length, 1, 'it is graded (drawn), not refused');
+    const r = await scanCard(t.ctx as never, picture, 'image/png', async () => card('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Cr#t?cal Dam#ge', '+95.3% Multishot'));
+    const d = rivenCompactEmbed(r).data.description!;
     assert.match(d, /\+Critical Damage 112\.5\?/);
     assert.doesNotMatch(d, /Critical Chance 168\.7\?/, 'only the interpreted stat carries the mark');
   });
@@ -108,7 +111,7 @@ describe('riven channel', () => {
     const t = setup([{ name: 'a.png', type: 'image/png' }, { name: 'b.png', type: 'image/png' }]);
     await handleRivenMessage(t.message as never, t.ctx as never, reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage'));
     assert.equal(t.replies.length, 1);
-    assert.equal(t.replies[0]!.embeds!.length, 2);
+    assert.equal(t.replies[0]!.files!.length, 2, 'one picture per riven');
   });
 
   it('also reads a WebP picture', async () => {
@@ -117,7 +120,7 @@ describe('riven channel', () => {
     const scan = (ctx: AppContext, bytes: Uint8Array, mime: string) => (mimes.push(mime), reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage')(ctx, bytes, 'image/png'));
     assert.equal(await handleRivenMessage(t.message as never, t.ctx as never, scan), true);
     assert.deepEqual(mimes, ['image/webp'], 'the handler hands the WebP to the scanner, which converts it');
-    assert.equal(t.replies[0]!.embeds!.length, 1);
+    assert.equal(t.replies[0]!.files!.length, 1);
   });
 
   it('ignores other channels, bots and messages without a PNG/JPEG picture', async () => {

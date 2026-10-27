@@ -17,6 +17,8 @@ export interface Prepared {
   scale: number;
   /** True when the picture was shrunk first because it was huge. */
   shrunk: boolean;
+  /** Pixels of the prepared picture per pixel of the one that was handed in (the enlargement, or 1/k when it was shrunk by k). */
+  sourceScale: number;
 }
 
 export function scaleFor(width: number, height: number): number {
@@ -53,7 +55,8 @@ export function prepareForOcr(bytes: Uint8Array, mime: string): Prepared | null 
   if (!decoded) return null;
   const longest = Math.max(decoded.width, decoded.height);
   const shrunk = longest > BIG_SIDE;
-  const img = shrunk ? shrink(decoded, Math.ceil(longest / TARGET_SIDE)) : decoded;
+  const k = Math.ceil(longest / TARGET_SIDE);
+  const img = shrunk ? shrink(decoded, k) : decoded;
   const { width, height, data } = img;
   const gray = new Uint8Array(width * height);
   const histogram = new Array<number>(256).fill(0);
@@ -103,5 +106,5 @@ export function prepareForOcr(bytes: Uint8Array, mime: string): Prepared | null 
       out.data[o + 3] = 255;
     }
   }
-  return { png: PNG.sync.write(out), width: w, height: h, inverted, scale, shrunk };
+  return { png: PNG.sync.write(out), width: w, height: h, inverted, scale, shrunk, sourceScale: shrunk ? scale / k : scale };
 }

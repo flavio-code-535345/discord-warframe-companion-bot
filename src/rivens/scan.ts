@@ -5,7 +5,7 @@ import type { OcrLine } from '../ssroles/parse.js';
 import { ocr } from '../ssroles/ocr.js';
 import { type CardReading, interpretUnknown, parseRivenCard } from './card.js';
 import { getRivenAttributes, getRivenWeapons } from './market.js';
-import { erasePointer } from './pointer.js';
+import { type Box, erasePointer } from './pointer.js';
 import { prepareForOcr } from './prepare.js';
 import { type GradeReport, attributeNames, gradeResolved } from './service.js';
 
@@ -26,6 +26,10 @@ export interface ScanResult {
   ms: number;
   /** How many text lines OCR found in the picture it used. */
   lines: number;
+  /** The picture that was read (a WebP as PNG), for drawing the answer next to it; null only when it was not decodable. */
+  image: { bytes: Uint8Array; mime: string } | null;
+  /** The card's text block in pixels of that picture, when it was found. */
+  box: Box | null;
 }
 
 /** What the bytes really are (from the file header); Discord's content type can be wrong, e.g. a PNG labelled WebP. Null when unknown. */
@@ -70,19 +74,19 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   }
 
   const variants: OcrLine[][] = [];
-  const read = async (image: Uint8Array, scale: number) => {
+  const read = async (image: Uint8Array, sourceScale: number) => {
     try {
       const t = Date.now();
       const lines = await recognize(image);
       console.log(`[riven] OCR ${Date.now() - t} ms, ${lines.length} lines (picture ${prepared.width}x${prepared.height}, from ${Math.round(picture.length / 1024)} KB ${pictureMime})`);
       variants.push(lines);
-      return { lines: lines.length, ocrLines: lines, scale, reading: parseRivenCard(lines, attrs, weapons) };
+      return { lines: lines.length, ocrLines: lines, sourceScale, reading: parseRivenCard(lines, attrs, weapons) };
     } catch (err) {
       console.error('[riven] OCR failed:', err instanceof Error ? err.message : err);
       throw new UserError('I could not read that picture (the text reader failed). Try again, or use /riven grade.');
     }
   };
-  let best = await read(prepared.png, prepared.scale);
+  let best = await read(prepared.png, prepared.sourceScale);
   // (not for a huge picture: reading it unshrunk takes minutes)
   if (!enough(best.reading) && !prepared.shrunk) {
     const original = await read(bytes, 1);
@@ -92,17 +96,19 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   if (best.reading.weapon && best.reading.unknown.length && !prepared.shrunk) {
     const first = best.reading.unknown[0]!;
     const line = best.ocrLines.find((l) => tidy(l.text) === first);
-    const erased = line ? erasePointer(bytes, mime, { x0: line.x0 / best.scale, y0: line.y0 / best.scale, x1: line.x1 / best.scale, y1: line.y1 / best.scale }) : null;
+    const erased = line ? erasePointer(bytes, mime, { x0: line.x0 / best.sourceScale, y0: line.y0 / best.sourceScale, x1: line.x1 / best.sourceScale, y1: line.y1 / best.sourceScale }) : null;
     const again = erased ? prepareForOcr(erased, 'image/png') : null;
     if (again) {
-      const fixed = await read(again.png, again.scale);
+      const fixed = await read(again.png, again.sourceScale);
       if (fixed.reading.unknown.length < best.reading.unknown.length || richness(fixed.reading) > richness(best.reading)) best = fixed;
     }
   }
   // Whatever is still unreadable is interpreted from the value, the sign and what is left of the name, and shown with a "?".
   const reading = interpretUnknown(best.reading, variants.flatMap((v) => v.map((l) => tidy(l.text))), attrs);
   const names = attributeNames(attrs);
-  const done = (report: GradeReport | null, problem: string | null): ScanResult => ({ reading, names, report, problem, ms: Date.now() - t0, lines: best.lines });
+  const found = best.reading.box;
+  const box: Box | null = found ? { x0: found.x0 / best.sourceScale, y0: found.y0 / best.sourceScale, x1: found.x1 / best.sourceScale, y1: found.y1 / best.sourceScale } : null;
+  const done = (report: GradeReport | null, problem: string | null): ScanResult => ({ reading, names, report, problem, ms: Date.now() - t0, lines: best.lines, image: { bytes, mime }, box });
 
   if (!reading.weapon) return done(null, "I couldn't find the weapon's name on the card. Crop the picture to the riven card (its name is at the top), unveiled and in focus.");
   if (reading.unknown.length) {

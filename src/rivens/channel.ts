@@ -1,8 +1,8 @@
-import type { EmbedBuilder, Message } from 'discord.js';
+import type { AttachmentBuilder, EmbedBuilder, Message } from 'discord.js';
 import type { AppContext } from '../context.js';
-import { rivenCompactEmbed } from '../discord/riven-embeds.js';
 import { QueueFullError, screenshotQueue } from '../queue.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
+import { rivenReply } from './reply.js';
 import { type ScanResult, scanCard } from './scan.js';
 
 /**
@@ -92,17 +92,20 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
       await message.react(WORKING).catch(() => {});
     }
     const embeds: EmbedBuilder[] = [];
+    const files: AttachmentBuilder[] = [];
     await Promise.race([
       (async () => {
         for (const { bytes, mime } of await downloads) {
           const result = await scan(ctx, bytes, mime);
           recordResult('channel', message.author.username, result);
-          embeds.push(rivenCompactEmbed(result));
+          const part = await rivenReply(result, `riven-${files.length + embeds.length + 1}.png`);
+          embeds.push(...part.embeds);
+          files.push(...part.files);
         }
       })(),
       new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("That took too long, so I gave up.")), SCAN_LIMIT_MS).unref()),
     ]);
-    await message.reply({ embeds, allowedMentions: { repliedUser: false } });
+    await message.reply({ embeds, files, allowedMentions: { repliedUser: false } });
   } catch (err) {
     if (!(err instanceof UserError)) console.error('[riven] channel scan failed:', err instanceof Error ? err.message : err);
     recordScan({ via: 'channel', userName: message.author.username, weapon: null, letter: null, ms: 0, ok: false, note: err instanceof Error ? err.message : 'error' });
