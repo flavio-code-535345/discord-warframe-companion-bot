@@ -42,7 +42,14 @@ const group = (n: number) => n.toLocaleString('en-US');
 const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
 const alpha = (s: string) => s.replace(/[^a-z]/gi, '').length;
 
-const HEADER = /accolades|mastery.?rank|marked for death|syndicates|^clan$/i;
+/** Leading junk OCR makes of the emblem's edge ("ph The Rats Den 69"): one or two lowercase letters or symbols in front of the name. */
+const withoutJunk = (name: string): string => {
+  const words = name.split(' ');
+  while (words.length > 1 && /^([^A-Za-z0-9]+|[a-z]{1,2})$/.test(words[0]!)) words.shift();
+  return words.join(' ');
+};
+
+const HEADER =/accolades|mastery.?rank|marked for death|syndicates|^clan$/i;
 const NAME_TAG = /^([A-Za-z0-9_.\-]{3,})\s*#\s*(\d{3,4})\b/;
 const CLAN_LINE = /^(.+?)\s*#\s*(\d{2,4})\s*$/;
 
@@ -50,8 +57,10 @@ export function parseCard(lines: OcrLine[]): ParsedCard {
   const rows = lines.map((l) => ({ ...l, text: clean(l.text) })).filter((l) => l.text);
 
   // Mastery: the points total sits under the rank title, and "NEXT RANK: X IN n" under that.
-  const pointsIdx = rows.findIndex((l) => /^[\d][\d ,.]{3,}$/.test(l.text) && parsePoints(l.text) !== null);
-  const points = pointsIdx >= 0 ? parsePoints(rows[pointsIdx]!.text) : null;
+  // A few stray characters in front of the number are the card's artwork ("Nd 2,637,138"), not part of it.
+  const POINTS_LINE = /^[^\d]{0,4}(\d[\d ,.]{3,})$/;
+  const pointsIdx = rows.findIndex((l) => POINTS_LINE.test(l.text) && parsePoints(POINTS_LINE.exec(l.text)![1]!) !== null);
+  const points = pointsIdx >= 0 ? parsePoints(POINTS_LINE.exec(rows[pointsIdx]!.text)![1]!) : null;
   const nextMatch = rows.map((l) => /next rank\W*(.+?)\s+in\s+([\d ,.]+)/i.exec(l.text)).find(Boolean) ?? null;
   const titleLine = rows.find((l) => /legendary\s*\d+/i.test(l.text) && !/next rank/i.test(l.text)) ?? (pointsIdx > 0 ? rows[pointsIdx - 1]! : null);
   const legendary = titleLine ? /legendary\s*(\d+)/i.exec(titleLine.text) : null;
@@ -73,7 +82,7 @@ export function parseCard(lines: OcrLine[]): ParsedCard {
     const m = CLAN_LINE.exec(rows[i]!.text);
     if (m && /clan\s*rank|\bclan\b/i.test(rows[i + 1]!.text)) {
       clanLine = rows[i]!;
-      clanName = clean(m[1]!);
+      clanName = withoutJunk(clean(m[1]!));
       clanTag = m[2]!;
       tier = rows[i + 1]!.text;
       break;

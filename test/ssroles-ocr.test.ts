@@ -103,3 +103,24 @@ test('the emblem is found above the name and compares equal at another size, dif
   assert.ok(similarity(fp, fingerprint(small.img, findEmblem(small.img, small.name)!)) >= MATCH_THRESHOLD);
   assert.ok(similarity(fp, fingerprint(other.img, findEmblem(other.img, other.name)!)) < MATCH_THRESHOLD);
 });
+
+// A real card (Legendary 2) of a whole screen: OCR put stray characters in front of the points ("Nd 2,637,138") and in front of the clan
+// name ("ph The Rats Den 69#043"), which made the card look unreadable and sent it to the vision model (which misread the clan).
+test('reads a whole-screen card whose points and clan lines have stray characters in front', () => {
+  const lines = [
+    line('~ Flavio11113#10858', 48, 39), line("Vay Hek's Nightmare", 95, 75), line('pS SYNDICATES CHALLENGES ~~ WISHLIST', 144, 56),
+    line('"3 — ACCOLADES w—m', 207, 58), line('DEN HEIRLOOM', 377, 68), line('| Wily \ Ten Year Supporter', 380, 72),
+    line('i — &MASTERYRANK —m', 497, 28), line('RY LEGENDARY 2', 677, 76), line('Nd 2,637,138', 708, 71),
+    line('NEXT RANK: LEGENDARY 3 IN 55,362', 751, 83), line('4 CLAN', 835, 65), line('ph The Rats Den 69#043', 1015, 78), line('; GHOST CLAN RANK 10', 1050, 73),
+  ];
+  const p = parseCard(lines);
+  assert.equal(p.complete, true);
+  assert.equal(p.reading.clan_name, 'The Rats Den 69');
+  assert.equal(p.reading.clan_tag, '043');
+  assert.equal(p.reading.mastery_rank_number, 32);
+  assert.equal(p.reading.mastery_points, '2,637,138');
+  // A real clan whose name merely contains ours is not accepted by dropping words: only short lowercase junk in front is removed.
+  assert.equal(parseCard([...lines.slice(0, 11), line('Fake The Rats Den 69#043', 1015, 78), line('; GHOST CLAN RANK 10', 1050, 73)]).reading.clan_name, 'Fake The Rats Den 69');
+  // And the "NEXT RANK" line is still not taken for the points.
+  assert.equal(parseCard([line('NEXT RANK: LEGENDARY 3 IN 55,362', 10)]).reading.mastery_points, null);
+});
