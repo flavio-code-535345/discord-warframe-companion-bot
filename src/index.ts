@@ -9,6 +9,7 @@ import { loadBrain } from './agent/brain.js';
 import { loadAiToggles } from './ai/settings.js';
 import { reportStart, reportStop } from './lifecycle.js';
 import { AnswerRefresher } from './answers/cache.js';
+import { RivenCrawler } from './rivens/crawler.js';
 import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
@@ -84,6 +85,7 @@ const backups = new BackupScheduler(ctx);
 const squadVoice = new LfgVoiceSweeper(ctx);
 const voiceXp = new LevelVoiceTicker(ctx);
 const answerRefresh = new AnswerRefresher(ctx);
+const rivenCrawler = new RivenCrawler(ctx);
 // The wiki index lives in its own file: it is big, rebuildable, and must not bloat the main database or backups.
 const wikiIndex = config.WIKI_INDEX ? new WikiIndex(join(config.DATA_DIR, 'wiki.db')) : null;
 setWikiIndex(wikiIndex);
@@ -94,6 +96,7 @@ client.once('clientReady', () => {
   squadVoice.start();
   voiceXp.start();
   answerRefresh.start();
+  rivenCrawler.start();
   wikiCrawler?.start();
   void reportStart(ctx);
   // A start with live code patches counts as good once it has stayed up this long (see overlay.ts).
@@ -122,6 +125,7 @@ async function shutdown(signal: string): Promise<void> {
   squadVoice.stop();
   voiceXp.stop();
   answerRefresh.stop();
+  rivenCrawler.stop();
   wikiCrawler?.stop();
   http.close();
   await client.destroy();

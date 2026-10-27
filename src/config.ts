@@ -89,6 +89,11 @@ export const EnvSchema = z.object({
   QUEUE_SCREENSHOTS_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
   /** How many may wait in each queue; beyond that people are asked to try again later. */
   QUEUE_MAX_WAITING: z.coerce.number().int().min(1).max(100).default(20),
+  /** Riven analyzer (rivens/): the slow background read of warframe.market's riven listings (one weapon per interval), how old a weapon may get before it is read again, and the price line that counts as high value. */
+  RIVEN_CRAWL_ENABLED: bool.default(true),
+  RIVEN_CRAWL_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(45),
+  RIVEN_REFRESH_DAYS: z.coerce.number().int().min(1).max(30).default(3),
+  RIVEN_HIGH_PRICE: z.coerce.number().int().min(50).max(100_000).default(1000),
   /** A self-hosted SearXNG (JSON format enabled), e.g. http://192.168.178.45:8888: adds fresh Warframe web results to answers. */
   SEARXNG_URL: z.string().url().optional(),
   MCP_ALLOWED_HOSTS: z

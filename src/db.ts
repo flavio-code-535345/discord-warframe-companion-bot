@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { RivenCrawlRow, RivenListing, RivenStat } from './rivens/types.js';
 
 export type RsvpStatus = 'going' | 'maybe' | 'declined';
 
@@ -496,9 +497,31 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX api_cache_at ON api_cache (fetched_at);
   `,
+  `
+  CREATE TABLE riven_listings (
+    auction_id TEXT PRIMARY KEY,
+    weapon TEXT NOT NULL,
+    price INTEGER NOT NULL,
+    polarity TEXT NOT NULL,
+    rerolls INTEGER NOT NULL,
+    stats TEXT NOT NULL
+  );
+  CREATE INDEX riven_listings_weapon ON riven_listings (weapon);
+  CREATE TABLE riven_crawl (
+    weapon TEXT PRIMARY KEY,
+    fetched_at INTEGER,
+    attempted_at INTEGER NOT NULL,
+    listings INTEGER NOT NULL DEFAULT 0,
+    error TEXT
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+function toCrawlRow(r: Row): RivenCrawlRow {
+  return { weapon: String(r.weapon), fetchedAt: r.fetched_at === null ? null : Number(r.fetched_at), attemptedAt: Number(r.attempted_at), listings: Number(r.listings), error: str(r.error) };
+}
 
 function toCached(r: Row): CachedAnswer {
   let tools: string[] = [];
@@ -902,6 +925,66 @@ export class Store {
   apiCacheSize(): { entries: number; bytes: number } {
     const r = this.db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(body)), 0) AS b FROM api_cache').get() as Row;
     return { entries: Number(r.n), bytes: Number(r.b) };
+  }
+
+  // --- riven listings (see rivens/) ---
+
+  /** Replaces everything held for a weapon with what was just read (the market's current top listings), in one go. */
+  replaceRivenListings(weapon: string, listings: RivenListing[], now: number): void {
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('DELETE FROM riven_listings WHERE weapon = ?').run(weapon);
+      const insert = this.db.prepare('INSERT OR REPLACE INTO riven_listings (auction_id, weapon, price, polarity, rerolls, stats) VALUES (?, ?, ?, ?, ?, ?)');
+      for (const l of listings) insert.run(l.id, weapon, l.price, l.polarity, l.rerolls, JSON.stringify(l.stats));
+      this.db
+        .prepare(
+          `INSERT INTO riven_crawl (weapon, fetched_at, attempted_at, listings, error) VALUES (?, ?, ?, ?, NULL)
+           ON CONFLICT (weapon) DO UPDATE SET fetched_at = excluded.fetched_at, attempted_at = excluded.attempted_at, listings = excluded.listings, error = NULL`,
+        )
+        .run(weapon, now, now, listings.length);
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
+  /** A failed read: the old listings stay, the try is recorded so it is not repeated at once. */
+  markRivenFailure(weapon: string, error: string, now: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO riven_crawl (weapon, fetched_at, attempted_at, listings, error) VALUES (?, NULL, ?, 0, ?)
+         ON CONFLICT (weapon) DO UPDATE SET attempted_at = excluded.attempted_at, error = excluded.error`,
+      )
+      .run(weapon, now, error.slice(0, 300));
+  }
+
+  rivenListings(weapon: string): RivenListing[] {
+    const rows = this.db.prepare('SELECT * FROM riven_listings WHERE weapon = ?').all(weapon) as Row[];
+    return rows.map((r) => {
+      let stats: RivenStat[] = [];
+      try {
+        const s: unknown = JSON.parse(String(r.stats));
+        if (Array.isArray(s)) stats = s as RivenStat[];
+      } catch {
+        // Unreadable row: treated as having no stats.
+      }
+      return { id: String(r.auction_id), weapon: String(r.weapon), price: Number(r.price), polarity: String(r.polarity), rerolls: Number(r.rerolls), stats };
+    });
+  }
+
+  rivenCrawlRow(weapon: string): RivenCrawlRow | null {
+    const r = this.db.prepare('SELECT * FROM riven_crawl WHERE weapon = ?').get(weapon) as Row | undefined;
+    return r ? toCrawlRow(r) : null;
+  }
+
+  rivenCrawlRows(): RivenCrawlRow[] {
+    return (this.db.prepare('SELECT * FROM riven_crawl').all() as Row[]).map(toCrawlRow);
+  }
+
+  rivenTotals(): { weapons: number; listings: number } {
+    const r = this.db.prepare('SELECT COUNT(DISTINCT weapon) AS w, COUNT(*) AS n FROM riven_listings').get() as Row;
+    return { weapons: Number(r.w), listings: Number(r.n) };
   }
 
   // --- answer cache (see answers/cache.ts) ---

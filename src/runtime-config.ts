@@ -64,6 +64,11 @@ export const SETTINGS: SettingDef[] = [
   { key: 'ANSWER_REFRESH_MAX', group: 'Answer cache', kind: 'int', label: 'Questions per refresh', help: 'At most this many per run (1 to 30).' },
   { key: 'ANSWER_REFRESH_HOUR_UTC', group: 'Answer cache', kind: 'int', label: 'Refresh hour (UTC)', help: '0 to 23.' },
 
+  { key: 'RIVEN_CRAWL_ENABLED', group: 'Riven analyzer', kind: 'bool', label: 'Slow background read', help: "Read warframe.market's riven listings one weapon at a time, so grades are ready. Off = listings are only read when someone asks for a grade." },
+  { key: 'RIVEN_CRAWL_INTERVAL_SECONDS', group: 'Riven analyzer', kind: 'int', label: 'Seconds between weapons', help: 'One request per weapon (about 420 weapons). 10 to 3600; the default of 45 reads them all in about five hours.' },
+  { key: 'RIVEN_REFRESH_DAYS', group: 'Riven analyzer', kind: 'int', label: 'Read each weapon again after (days)', help: '1 to 30.' },
+  { key: 'RIVEN_HIGH_PRICE', group: 'Riven analyzer', kind: 'int', label: 'High-value price line (platinum)', help: 'Rivens listed at or above this count as high value when grading (50 to 100000).' },
+
   { key: 'AI_MODEL', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'text', label: 'Claude model', help: 'Only used when an Anthropic key is set.' },
   { key: 'AI_EFFORT', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'select', options: ['low', 'medium', 'high'], label: 'Claude effort', help: 'Reasoning effort.' },
   { key: 'AI_WEB_SEARCH', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'bool', label: 'Claude web search', help: "Let Claude use its web search tool on Warframe sites." },

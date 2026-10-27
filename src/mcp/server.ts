@@ -16,6 +16,7 @@ import { registerCodeTools } from './code.js';
 import { registerBrainTools } from './brain.js';
 import { registerInsightTools } from './insights.js';
 import { registerOllamaTools } from './ollama.js';
+import { registerRivenTools } from './rivens.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
 
@@ -345,6 +346,7 @@ export function createMcpServer(ctx: AppContext): McpServer {
   registerOllamaTools(server, ctx);
   registerInsightTools(server, ctx);
   registerBrainTools(server, ctx);
+  registerRivenTools(server, ctx);
 
   return server;
 }

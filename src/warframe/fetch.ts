@@ -210,9 +210,11 @@ export class ApiClient {
   }
 
   /** One rate-limited request with retries. Returns any response that is not a rate limit, block or server failure (404 and 304 included). */
-  async send(url: string, headers: Record<string, string> = {}, opts: { background?: boolean } = {}): Promise<Response> {
+  async send(url: string, headers: Record<string, string> = {}, opts: { background?: boolean; scope?: string } = {}): Promise<Response> {
     const u = new URL(url);
-    const host = u.host;
+    // A scope gives one feature its own gap and its own cooldown on the host, so a 403 or 429 on an experimental endpoint can't take
+    // the host's other calls (prices) down with it. The global per-minute window is shared either way.
+    const host = opts.scope ? `${u.host}#${opts.scope}` : u.host;
     for (let attempt = 0; ; attempt++) {
       const wait = this.blockedFor(host);
       if (wait > 0) {
@@ -302,7 +304,7 @@ export class ApiClient {
    * re-checked with If-None-Match / If-Modified-Since when the server gave one; and when the API cannot be used (blocked,
    * limited, down) an expired entry is returned with `stale: true` instead of an error, within the kind's maximum age.
    */
-  get(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string>; background?: boolean }): Promise<ApiResult> {
+  get(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string>; background?: boolean; scope?: string }): Promise<ApiResult> {
     const headers = opts.headers ?? {};
     const key = `${url}|${Object.entries(headers).sort().map(([k, v]) => `${k}=${v}`).join('&')}`;
     const now = this.deps.now();
@@ -318,17 +320,17 @@ export class ApiClient {
       this.stats.deduped++;
       return running;
     }
-    const p = this.refresh(url, key, headers, entry, opts.kind, opts.background).finally(() => this.inflight.delete(key));
+    const p = this.refresh(url, key, headers, entry, opts.kind, { background: opts.background, scope: opts.scope }).finally(() => this.inflight.delete(key));
     this.inflight.set(key, p);
     return p;
   }
 
-  private async refresh(url: string, key: string, headers: Record<string, string>, entry: CacheEntry | null, kind: CacheKind, background?: boolean): Promise<ApiResult> {
+  private async refresh(url: string, key: string, headers: Record<string, string>, entry: CacheEntry | null, kind: CacheKind, sendOpts: { background?: boolean | undefined; scope?: string | undefined }): Promise<ApiResult> {
     const conditional: Record<string, string> = {};
     if (entry?.etag) conditional['If-None-Match'] = entry.etag;
     else if (entry?.lastModified) conditional['If-Modified-Since'] = entry.lastModified;
     try {
-      const res = await this.send(url, { ...headers, ...conditional }, { background });
+      const res = await this.send(url, { ...headers, ...conditional }, sendOpts);
       const now = this.deps.now();
       if (res.status === 304 && entry) {
         const fresh = { ...entry, fetchedAt: now };
@@ -369,7 +371,7 @@ export function configureApi(opts: { limits?: Partial<ApiLimits>; store?: ApiCac
 }
 
 /** A rate-limited fetch (no caching) for callers that handle their own: world state, the wiki crawler. */
-export function apiFetch(url: string, headers: Record<string, string> = {}, opts: { background?: boolean } = {}): Promise<Response> {
+export function apiFetch(url: string, headers: Record<string, string> = {}, opts: { background?: boolean; scope?: string } = {}): Promise<Response> {
   return api.send(url, headers, opts);
 }
 
@@ -383,7 +385,7 @@ export interface JsonResult<T> {
 }
 
 /** A cached GET parsed as JSON. A 404 returns `status: 404` with `data` null; any other non-OK answer throws. */
-export async function apiJson<T>(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string> }): Promise<JsonResult<T | null>> {
+export async function apiJson<T>(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string>; background?: boolean; scope?: string }): Promise<JsonResult<T | null>> {
   const r = await api.get(url, opts);
   if (r.status === 404) return { data: null, stale: r.stale, ageMs: Date.now() - r.fetchedAt, status: 404 };
   if (r.status < 200 || r.status >= 300) throw new ApiHttpError(r.status, new URL(url).host);
