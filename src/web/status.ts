@@ -48,7 +48,7 @@ export interface StatusData {
   /** The knowledge archive Ordis answers questions from; null when it is switched off. */
   archive: { pages: number; total: number | null; syncing: boolean } | null;
   /** Calls to the world state source (warframestat.us): whether they are on, when the last one was and how it went. */
-  warframeApi: { enabled: boolean; intervalSeconds: number; lastCallAt: string | null; lastOk: boolean | null; lastDetail: string | null };
+  warframeApi: { enabled: boolean; intervalSeconds: number; lastCallAt: string | null; lastOk: boolean | null; lastDetail: string | null; smart?: boolean; maxMinutes?: number; nextCallAt?: string | null };
   upcomingEvents: { id: number; title: string; startsAt: string; going: number; maybe: number }[];
   /** null when the worldstate could not be loaded. */
   cycles: CycleStatus[] | null;
@@ -188,9 +188,10 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
 /** Collects everything the public status page shows. Uses only cached Discord data, so page views cost no API calls. */
 function apiPill(a: StatusData['warframeApi']): string {
   if (!a.enabled) return 'off';
-  if (!a.lastCallAt) return `not called yet · every ${Math.round(a.intervalSeconds / 60)} min`;
+  const cadence = a.smart ? `smart, at least every ${a.maxMinutes} min` : `every ${Math.round(a.intervalSeconds / 60)} min`;
+  if (!a.lastCallAt) return `not called yet · ${cadence}`;
   const ago = formatDuration(Math.max(0, Date.now() - Date.parse(a.lastCallAt)));
-  return `last call ${ago} ago · ${a.lastOk ? 'ok' : (a.lastDetail ?? 'failed').replace(/^Worldstate request failed: /, '')} · every ${Math.round(a.intervalSeconds / 60)} min`;
+  return `last call ${ago} ago · ${a.lastOk ? 'ok' : (a.lastDetail ?? 'failed').replace(/^Worldstate request failed: /, '')} · ${cadence}`;
 }
 
 function archiveProgress(): StatusData['archive'] {
@@ -202,7 +203,16 @@ function archiveProgress(): StatusData['archive'] {
 
 function warframeApiStatus(): StatusData['warframeApi'] {
   const i = worldStateInfo();
-  return { enabled: i.enabled, intervalSeconds: i.intervalSeconds, lastCallAt: i.lastCallAt === null ? null : new Date(i.lastCallAt).toISOString(), lastOk: i.lastOk, lastDetail: i.lastDetail };
+  return {
+    enabled: i.enabled,
+    intervalSeconds: i.intervalSeconds,
+    lastCallAt: i.lastCallAt === null ? null : new Date(i.lastCallAt).toISOString(),
+    lastOk: i.lastOk,
+    lastDetail: i.lastDetail,
+    smart: i.smart,
+    maxMinutes: i.maxMinutes,
+    nextCallAt: i.nextCallAt === null ? null : new Date(i.nextCallAt).toISOString(),
+  };
 }
 
 export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise<WorldState> = getWorldState): Promise<StatusData> {

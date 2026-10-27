@@ -57,6 +57,8 @@ interface MetaStore {
 let feedUrl = feedUrlFor();
 let enabled = true;
 let ttlMs = 600_000;
+let smartPoll = false;
+let maxPollMs = 30 * 60_000;
 let meta: MetaStore | null = null;
 let cacheFile: string | null = null;
 let lastCall: LastCall | null = null;
@@ -65,13 +67,16 @@ let lastCall: LastCall | null = null;
  * Called once at startup from the config. The feed is called at most once per `intervalSeconds` (and the last call and
  * its raw answer survive restarts, so deploys don't cause extra calls).
  */
-export function configureWorldState(opts: { url?: string | undefined; platform?: string; enabled: boolean; intervalSeconds?: number; store?: MetaStore; cacheFile?: string }): void {
+export function configureWorldState(opts: { url?: string | undefined; platform?: string; enabled: boolean; intervalSeconds?: number; smartPoll?: boolean; maxPollMinutes?: number; store?: MetaStore; cacheFile?: string }): void {
   const next = usableFeedUrl(opts.url) ?? feedUrlFor(opts.platform);
   // Another source (or platform) means the data held in memory is not its answer.
   if (next !== feedUrl) cached = null;
   feedUrl = next;
   enabled = opts.enabled;
   ttlMs = (opts.intervalSeconds ?? 600) * 1000;
+  smartPoll = opts.smartPoll ?? false;
+  maxPollMs = Math.max(ttlMs, (opts.maxPollMinutes ?? 30) * 60_000);
+  if (cached) cached.due = dueFor(cached.ws, cached.at);
   meta = opts.store ?? null;
   cacheFile = opts.cacheFile ?? null;
   try {
@@ -105,11 +110,20 @@ export function worldStateStaleNote(now = Date.now()): string | null {
 export const feedHostBlockedMs = (): number => api.blockedFor(new URL(feedUrl).host);
 
 /** What the status page shows about the Warframe API: whether it is on, when it was last called and what came back. */
-export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null } {
-  return { enabled, intervalSeconds: Math.round(ttlMs / 1000), lastCallAt: lastCall?.at ?? null, lastOk: lastCall?.ok ?? null, lastDetail: lastCall?.detail ?? null };
+export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null; smart: boolean; maxMinutes: number; nextCallAt: number | null } {
+  return {
+    enabled,
+    intervalSeconds: Math.round(ttlMs / 1000),
+    lastCallAt: lastCall?.at ?? null,
+    lastOk: lastCall?.ok ?? null,
+    lastDetail: lastCall?.detail ?? null,
+    smart: smartPoll,
+    maxMinutes: Math.round(maxPollMs / 60_000),
+    nextCallAt: lastCall?.ok ? (cached?.due ?? lastCall.at + ttlMs) : (lastCall?.retryAt ?? null),
+  };
 }
 
-let cached: { at: number; ws: WorldState } | null = null;
+let cached: { at: number; ws: WorldState; /** When the next call is due. */ due: number } | null = null;
 let inflight: Promise<WorldState> | null = null;
 
 /** The warframestat.us answer is the parsed world state as JSON; dates are ISO strings (every reader goes through `toMs`). */
@@ -151,6 +165,35 @@ const parseOrNull = (text: string): WorldState | null => {
     return null;
   }
 };
+
+/** Rollovers that change what members see besides the fissures: the times the world state is worth refreshing for. Missing or odd values are skipped. */
+function rolloverTimes(ws: WorldState, now: number): number[] {
+  const w = ws as unknown as Record<string, unknown>;
+  const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v as Record<string, unknown>[]) : v && typeof v === 'object' ? [v as Record<string, unknown>] : []);
+  const out: number[] = [];
+  for (const key of ['alerts', 'sortie', 'archonHunt', 'events', 'dailyDeals', 'zarimanCycle', 'duviriCycle', 'steelPath', 'syndicateMissions']) {
+    for (const item of list(w[key])) out.push(toMs(item.expiry as never));
+  }
+  // Baro: when he arrives while he is away, when he leaves while he is here.
+  for (const t of list(w.voidTrader)) out.push(toMs((toMs(t.activation as never) > now ? t.activation : t.expiry) as never));
+  return out.filter((t) => Number.isFinite(t) && t > now);
+}
+
+/**
+ * How long until the world state is worth fetching again, when smart polling is on: the soonest rollover (alerts, sortie, the
+ * archon hunt, events, Baro, daily deals, Zariman and Duviri, Steel Path rotation, bounties) plus a short grace, but never sooner
+ * than the normal poll interval and never later than the cap. Fissures are left out on purpose: there are dozens and one is
+ * always about to end, which would mean polling at the minimum all the time; they are refreshed by the cap, and ones that have ended
+ * are simply filtered out of what is shown in the meantime.
+ */
+export function nextRefreshDelay(ws: WorldState, now: number, opts: { minMs: number; maxMs: number; graceMs?: number }): number {
+  const soonest = Math.min(Infinity, ...rolloverTimes(ws, now));
+  const wanted = Number.isFinite(soonest) ? soonest - now + (opts.graceMs ?? 20_000) : opts.maxMs;
+  return Math.min(opts.maxMs, Math.max(opts.minMs, wanted));
+}
+
+/** When the answer fetched at `at` should be refreshed. */
+const dueFor = (ws: WorldState, at: number): number => at + (smartPoll ? nextRefreshDelay(ws, at, { minMs: ttlMs, maxMs: maxPollMs }) : ttlMs);
 
 function record(call: LastCall): void {
   lastCall = call;
@@ -202,22 +245,24 @@ async function fetchWorldState(): Promise<WorldState> {
 export async function getWorldState(): Promise<WorldState> {
   if (!enabled) throw new UserError('Live Warframe world data is switched off right now (WORLDSTATE_ENABLED=false), so there are no fissures, alerts or cycles to show.');
   const now = Date.now();
-  if (cached && now - cached.at < ttlMs) return cached.ws;
-  // Too soon for another call: serve what we have (after a restart, the saved answer), or repeat the last failure.
-  const wait = lastCall ? (lastCall.ok ? ttlMs : Math.max((lastCall.retryAt ?? lastCall.at + FAILURE_COOLDOWN_MS) - lastCall.at, 0)) : 0;
-  if (lastCall && now - lastCall.at < wait) {
+  if (cached && now < cached.due) return cached.ws;
+  // After a restart: the last answer was saved to disk, so it is served for as long as it is not due for a refresh.
+  if (!cached && lastCall?.ok && cacheFile) {
+    const saved = await readFile(cacheFile, 'utf8').then(parseOrNull, () => null);
+    if (saved) {
+      cached = { at: lastCall.at, ws: saved, due: dueFor(saved, lastCall.at) };
+      if (now < cached.due) return saved;
+    }
+  }
+  // Too soon after a failure: serve what we have, or repeat the failure.
+  if (lastCall && !lastCall.ok && now < (lastCall.retryAt ?? lastCall.at + FAILURE_COOLDOWN_MS)) {
     if (cached) return cached.ws;
-    if (lastCall.ok && cacheFile) {
-      const saved = await readFile(cacheFile, 'utf8').then(parseOrNull, () => null);
-      if (saved) {
-        cached = { at: lastCall.at, ws: saved };
-        return saved;
-      }
-    } else if (!lastCall.ok) throw new Error(lastCall.detail);
+    throw new Error(lastCall.detail);
   }
   inflight ??= fetchWorldState()
     .then((ws) => {
-      cached = { at: Date.now(), ws };
+      const at = Date.now();
+      cached = { at, ws, due: dueFor(ws, at) };
       return ws;
     })
     .catch((err: unknown) => {

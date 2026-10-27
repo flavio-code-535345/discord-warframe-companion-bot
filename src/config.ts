@@ -18,6 +18,10 @@ export const EnvSchema = z.object({
   /** A warframestat.us-compatible world state endpoint to read instead of api.warframestat.us/<platform>, e.g. a self-hosted one. */
   WORLDSTATE_URL: z.string().url().optional(),
   /** Minimum seconds between calls to the worldstate feed (everything shares one cached copy). */
+  /** Refresh when something in the world state is due to change instead of on a fixed timer (see nextRefreshDelay in warframe/worldstate.ts). */
+  WORLDSTATE_SMART_POLL: bool.default(false),
+  /** The longest the world state is left without a refresh when smart polling is on. */
+  WORLDSTATE_MAX_POLL_MINUTES: z.coerce.number().int().min(5).max(720).default(30),
   WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(60).default(600),
   ENABLE_WELCOME: bool.default(false),
   HTTP_HOST: z.string().default('0.0.0.0'),

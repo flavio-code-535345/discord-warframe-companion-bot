@@ -29,6 +29,8 @@ export interface SettingDef {
 
 export const SETTINGS: SettingDef[] = [
   { key: 'WORLDSTATE_ENABLED', group: 'Warframe data', kind: 'bool', label: 'Live world state', help: 'Fetch alerts, fissures, cycles and the rest from the warframestat.us API (never from Digital Extremes directly).' },
+  { key: 'WORLDSTATE_SMART_POLL', group: 'Warframe data', kind: 'bool', label: 'Smart polling', help: 'Refresh when something is due to change (alerts, sortie, Baro, daily deals, bounties...) instead of on a fixed timer. Fewer calls; new fissures and alerts can show up a little later. The poll interval below is the minimum gap.' },
+  { key: 'WORLDSTATE_MAX_POLL_MINUTES', group: 'Warframe data', kind: 'int', label: 'Smart polling: longest wait (minutes)', help: 'The most time that passes without a refresh when smart polling is on. 5 to 720.' },
   { key: 'WORLDSTATE_URL', group: 'Warframe data', kind: 'text', label: 'World state relay URL', help: 'A warframestat.us-compatible endpoint (the parsed world state as JSON), instead of api.warframestat.us/<platform>. Empty = the public API.' },
   { key: 'WORLDSTATE_POLL_SECONDS', group: 'Warframe data', kind: 'int', label: 'World state poll interval (seconds)', help: 'Minimum time between calls to the feed. At least 60.' },
   { key: 'WARFRAME_PLATFORM', group: 'Warframe data', kind: 'select', options: ['pc', 'ps4', 'xbox', 'switch', 'mobile'], label: 'Platform', help: 'Which platform /price and Ordis look at on warframe.market, and which world state (pc, ps4, xbox, switch) is shown.' },
