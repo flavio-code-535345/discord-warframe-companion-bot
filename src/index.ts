@@ -1,4 +1,3 @@
-import 'reflect-metadata';
 import { join } from 'node:path';
 import { AskLimiter } from './ai/limits.js';
 import { BackupScheduler } from './backup/service.js';
@@ -48,7 +47,7 @@ const ai = config.ANTHROPIC_API_KEY
   ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
   : null;
 if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: chat answers and /ask are disabled.');
-configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
+configureWorldState({ url: config.WORLDSTATE_URL, platform: config.WARFRAME_PLATFORM, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
 setChosenModel(store.getMeta(LOCAL_MODEL_META) || null);
 loadAiToggles(store);
 loadBrain(store);
@@ -56,7 +55,7 @@ const ctx: AppContext = { config, store, client, ai };
 // A few settings need more than a changed value when they change at runtime.
 onSettingChange((key) => {
   if (key.startsWith('API_')) applyApiConfig();
-  if (key.startsWith('WORLDSTATE_')) configureWorldState({ url: config.WORLDSTATE_URL, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
+  if (key.startsWith('WORLDSTATE_') || key === 'WARFRAME_PLATFORM') configureWorldState({ url: config.WORLDSTATE_URL, platform: config.WARFRAME_PLATFORM, enabled: config.WORLDSTATE_ENABLED, intervalSeconds: config.WORLDSTATE_POLL_SECONDS, store, cacheFile: join(config.DATA_DIR, 'worldstate.cache') });
   if (key === 'BOT_NAME' && client.isReady()) void syncIdentity(ctx).catch((err) => console.warn('[identity] could not update the bot name:', err));
 });
 

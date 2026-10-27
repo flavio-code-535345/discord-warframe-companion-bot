@@ -28,10 +28,10 @@ export interface SettingDef {
 }
 
 export const SETTINGS: SettingDef[] = [
-  { key: 'WORLDSTATE_ENABLED', group: 'Warframe data', kind: 'bool', label: 'Live world state', help: 'Fetch alerts, fissures, cycles and the rest from Digital Extremes. Off while their servers block our IP (HTTP 403).' },
-  { key: 'WORLDSTATE_URL', group: 'Warframe data', kind: 'text', label: 'World state relay URL', help: "A relay serving the raw worldState.php feed, instead of DE's own address. Empty = DE's." },
+  { key: 'WORLDSTATE_ENABLED', group: 'Warframe data', kind: 'bool', label: 'Live world state', help: 'Fetch alerts, fissures, cycles and the rest from the warframestat.us API (never from Digital Extremes directly).' },
+  { key: 'WORLDSTATE_URL', group: 'Warframe data', kind: 'text', label: 'World state relay URL', help: 'A warframestat.us-compatible endpoint (the parsed world state as JSON), instead of api.warframestat.us/<platform>. Empty = the public API.' },
   { key: 'WORLDSTATE_POLL_SECONDS', group: 'Warframe data', kind: 'int', label: 'World state poll interval (seconds)', help: 'Minimum time between calls to the feed. At least 60.' },
-  { key: 'WARFRAME_PLATFORM', group: 'Warframe data', kind: 'select', options: ['pc', 'ps4', 'xbox', 'switch', 'mobile'], label: 'Platform for prices', help: 'Which warframe.market platform /price and Ordis look at.' },
+  { key: 'WARFRAME_PLATFORM', group: 'Warframe data', kind: 'select', options: ['pc', 'ps4', 'xbox', 'switch', 'mobile'], label: 'Platform', help: 'Which platform /price and Ordis look at on warframe.market, and which world state (pc, ps4, xbox, switch) is shown.' },
 
   { key: 'API_MIN_INTERVAL_MS', group: 'API limits and cache', kind: 'int', label: 'Minimum gap between requests (ms)', help: 'Between two requests to the same host (warframestat.us, warframe.market, the wiki, DE). 0 to 10000.' },
   { key: 'API_RATE_LIMIT_PER_MINUTE', group: 'API limits and cache', kind: 'int', label: 'Requests per minute (all hosts)', help: 'Global cap. Background work (the wiki crawler) may only use half of it. 5 to 600.' },

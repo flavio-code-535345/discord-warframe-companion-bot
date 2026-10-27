@@ -2,8 +2,8 @@
 const USER_AGENT = 'cephalon-ordis/1.0 (Discord bot for the Warframe clan The Rats Den 69)';
 
 /**
- * The one place every third-party Warframe API call goes through (warframestat.us, warframe.market, the wiki, DE's
- * world state feed). It gives every command the same rules:
+ * The one place every third-party Warframe API call goes through (warframestat.us, warframe.market, the wiki, and the
+ * warframestat.us world state). It gives every command the same rules:
  *
  *  - Rate limiting: a minimum gap between requests to the same host, and a global requests-per-minute cap. Background work
  *    (the wiki crawler) may only use half of that cap, so it can never starve a member's command.

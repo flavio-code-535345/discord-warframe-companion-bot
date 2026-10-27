@@ -323,8 +323,8 @@ read/write scope rather than the account password). The image name defaults to `
 
 ## Data sources
 
-- World state: Digital Extremes' official feed (`api.warframe.com/cdn/worldState.php`), parsed locally with
-  [`warframe-worldstate-parser`](https://github.com/WFCD/warframe-worldstate-parser)
+- World state: the community [warframestat.us](https://docs.warframestat.us) API (`api.warframestat.us/<platform>`). The bot does not
+  call Digital Extremes' own `api.warframe.com`, which their terms don't allow and which can get an IP blocked from logging in to the game
 - Prices: [warframe.market](https://warframe.market) API v2
 - Drop tables and item data: [warframestat.us](https://docs.warframestat.us)
 - Wiki summaries: [wiki.warframe.com](https://wiki.warframe.com) (MediaWiki API)

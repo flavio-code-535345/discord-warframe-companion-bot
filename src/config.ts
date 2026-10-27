@@ -13,9 +13,9 @@ export const EnvSchema = z.object({
   BOT_NAME: z.string().min(2).max(32).default('Cephalon Ordis'),
   WARFRAME_PLATFORM: z.enum(['pc', 'ps4', 'xbox', 'switch', 'mobile']).default('pc'),
   DATA_DIR: z.string().default('./data'),
-  /** Fetch the worldstate from DE at all. Off by default while DE's CDN blocks our IP (HTTP 403); alerts, fissures and the world tiles are paused meanwhile. */
+  /** Fetch the live world state (from warframestat.us) at all. Off by default; alerts, fissures and the world tiles are paused while it is off. */
   WORLDSTATE_ENABLED: bool.default(false),
-  /** Raw worldState.php feed to read instead of DE's own, e.g. a relay on another IP. */
+  /** A warframestat.us-compatible world state endpoint to read instead of api.warframestat.us/<platform>, e.g. a self-hosted one. */
   WORLDSTATE_URL: z.string().url().optional(),
   /** Minimum seconds between calls to the worldstate feed (everything shares one cached copy). */
   WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(60).default(600),

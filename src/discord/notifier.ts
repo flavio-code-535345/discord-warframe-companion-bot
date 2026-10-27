@@ -82,7 +82,7 @@ export class Notifier {
     if (this.running) return;
     this.running = true;
     try {
-      // Reminders don't depend on the worldstate, so they still go out when DE's feed is down.
+      // Reminders don't depend on the worldstate, so they still go out when the world state source is down.
       await this.sendEventReminders();
       if (!worldStateEnabled()) return;
       const ws = await getWorldState();

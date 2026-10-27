@@ -1,13 +1,18 @@
-// The parser's models use decorators that need the Reflect metadata polyfill loaded first.
-import 'reflect-metadata';
-import WorldStateParser from 'warframe-worldstate-parser';
+// Only the parser's types are used: the world state comes already parsed from warframestat.us, as JSON.
+import type WorldStateParser from 'warframe-worldstate-parser';
 import { readFile, writeFile } from 'node:fs/promises';
 import { toMs } from '../time.js';
 import { UserError } from '../services/clan.js';
 import { ApiBlockedError, api, apiFetch } from './fetch.js';
 
-/** Official, cross-platform worldstate feed published by Digital Extremes. */
-const DE_URL = 'https://api.warframe.com/cdn/worldState.php';
+/**
+ * The community warframestat.us API, which serves the parsed world state as JSON per platform. The bot never calls Digital
+ * Extremes' own api.warframe.com: that is against their terms, and an IP that gets blocked there can't log in to the game either.
+ */
+const STATS_BASE = 'https://api.warframestat.us';
+/** warframe.market platform names (the bot's WARFRAME_PLATFORM) to warframestat.us ones. */
+const PLATFORM_PATH: Record<string, string> = { pc: 'pc', ps4: 'ps4', xbox: 'xb1', switch: 'swi' };
+export const feedUrlFor = (platform = 'pc'): string => `${STATS_BASE}/${PLATFORM_PATH[platform] ?? 'pc'}`;
 /** After a temporary failure the feed is left alone this long; a 403 or 429 pauses it for the cooldown / Retry-After the API client decided (see fetch.ts). */
 const FAILURE_COOLDOWN_MS = 5 * 60_000;
 const META_KEY = 'worldstate_last_call';
@@ -23,6 +28,8 @@ interface LastCall {
   detail: string;
   /** Not before this time is the feed called again (set after a failure). */
   retryAt?: number;
+  /** Which feed the call went to, so a record of another source (an older version used DE's) is not held against this one. */
+  url?: string;
 }
 
 interface MetaStore {
@@ -30,7 +37,7 @@ interface MetaStore {
   setMeta(key: string, value: string): void;
 }
 
-let feedUrl = DE_URL;
+let feedUrl = feedUrlFor();
 let enabled = true;
 let ttlMs = 600_000;
 let meta: MetaStore | null = null;
@@ -41,8 +48,11 @@ let lastCall: LastCall | null = null;
  * Called once at startup from the config. The feed is called at most once per `intervalSeconds` (and the last call and
  * its raw answer survive restarts, so deploys don't cause extra calls).
  */
-export function configureWorldState(opts: { url?: string | undefined; enabled: boolean; intervalSeconds?: number; store?: MetaStore; cacheFile?: string }): void {
-  feedUrl = opts.url ?? DE_URL;
+export function configureWorldState(opts: { url?: string | undefined; platform?: string; enabled: boolean; intervalSeconds?: number; store?: MetaStore; cacheFile?: string }): void {
+  const next = opts.url || feedUrlFor(opts.platform);
+  // Another source (or platform) means the data held in memory is not its answer.
+  if (next !== feedUrl) cached = null;
+  feedUrl = next;
   enabled = opts.enabled;
   ttlMs = (opts.intervalSeconds ?? 600) * 1000;
   meta = opts.store ?? null;
@@ -51,6 +61,10 @@ export function configureWorldState(opts: { url?: string | undefined; enabled: b
     lastCall = meta ? (JSON.parse(meta.getMeta(META_KEY) ?? 'null') as LastCall | null) : null;
   } catch {
     lastCall = null;
+  }
+  if (lastCall && lastCall.url !== feedUrl) {
+    lastCall = null;
+    cached = null;
   }
 }
 
@@ -67,7 +81,7 @@ export function worldStateStaleNote(now = Date.now()): string | null {
   const f = worldStateFreshness(now);
   if (!f.stale || f.at === null) return null;
   const mins = Math.max(1, Math.round((now - f.at) / 60_000));
-  return `Live data may be outdated: last updated ${mins >= 120 ? `${Math.round(mins / 60)} h` : `${mins} min`} ago, the Warframe API is not answering right now.`;
+  return `Live data may be outdated: last updated ${mins >= 120 ? `${Math.round(mins / 60)} h` : `${mins} min`} ago, the world state source (warframestat.us) is not answering right now.`;
 }
 
 /** The API client's view of the feed's host, for the status displays. */
@@ -78,12 +92,30 @@ export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; l
   return { enabled, intervalSeconds: Math.round(ttlMs / 1000), lastCallAt: lastCall?.at ?? null, lastOk: lastCall?.ok ?? null, lastDetail: lastCall?.detail ?? null };
 }
 
-const quietLogger = { debug: () => {} };
-
 let cached: { at: number; ws: WorldState } | null = null;
 let inflight: Promise<WorldState> | null = null;
 
-const parse = (text: string) => WorldStateParser.build(text, { locale: 'en', logger: quietLogger });
+/** The warframestat.us answer is the parsed world state as JSON; dates are ISO strings (every reader goes through `toMs`). */
+function parse(text: string): WorldState {
+  let data: Record<string, unknown> | null;
+  try {
+    data = JSON.parse(text) as Record<string, unknown> | null;
+  } catch {
+    data = null;
+  }
+  if (!data || typeof data !== 'object' || !data.cetusCycle || !Array.isArray(data.fissures)) {
+    throw new Error('The world state source did not answer with the expected JSON (WORLDSTATE_URL must point at a warframestat.us-compatible server).');
+  }
+  return data as unknown as WorldState;
+}
+
+const parseOrNull = (text: string): WorldState | null => {
+  try {
+    return parse(text);
+  } catch {
+    return null;
+  }
+};
 
 function record(call: LastCall): void {
   lastCall = call;
@@ -97,26 +129,27 @@ function record(call: LastCall): void {
 async function fetchWorldState(): Promise<WorldState> {
   try {
     // Ask only for what changed when the server gave validators last time (an unchanged feed answers 304 without a body).
-    let validators: { etag?: string; lastModified?: string } = {};
+    let validators: { etag?: string; lastModified?: string; url?: string } = {};
     try {
       validators = JSON.parse(meta?.getMeta(VALIDATORS_KEY) ?? '{}') as typeof validators;
     } catch {
       validators = {};
     }
-    const saved = cacheFile && (validators.etag || validators.lastModified) ? await readFile(cacheFile, 'utf8').catch(() => null) : null;
+    const usable = validators.url === feedUrl && (validators.etag || validators.lastModified);
+    const saved = cacheFile && usable ? await readFile(cacheFile, 'utf8').catch(() => null) : null;
     const conditional: Record<string, string> = saved ? (validators.etag ? { 'If-None-Match': validators.etag } : { 'If-Modified-Since': validators.lastModified! }) : {};
     const res = await apiFetch(feedUrl, conditional);
     if (res.status === 304 && saved) {
-      const ws = await parse(saved);
-      record({ at: Date.now(), ok: true, detail: 'HTTP 304 (unchanged)' });
+      const ws = parse(saved);
+      record({ at: Date.now(), ok: true, detail: 'HTTP 304 (unchanged)', url: feedUrl });
       return ws;
     }
     if (!res.ok) throw new Error(`Worldstate request failed: HTTP ${res.status}`);
     const text = await res.text();
-    const ws = await parse(text);
-    record({ at: Date.now(), ok: true, detail: `HTTP ${res.status}` });
+    const ws = parse(text);
+    record({ at: Date.now(), ok: true, detail: `HTTP ${res.status}`, url: feedUrl });
     try {
-      meta?.setMeta(VALIDATORS_KEY, JSON.stringify({ etag: res.headers.get('etag') ?? undefined, lastModified: res.headers.get('last-modified') ?? undefined }));
+      meta?.setMeta(VALIDATORS_KEY, JSON.stringify({ etag: res.headers.get('etag') ?? undefined, lastModified: res.headers.get('last-modified') ?? undefined, url: feedUrl }));
     } catch {
       // Validators only save bandwidth.
     }
@@ -125,7 +158,7 @@ async function fetchWorldState(): Promise<WorldState> {
   } catch (err) {
     const now = Date.now();
     // A 403 or 429 already put the host on hold in the API client; remember when it may be called again.
-    record({ at: now, ok: false, detail: err instanceof Error ? err.message : String(err), retryAt: err instanceof ApiBlockedError ? err.until : now + FAILURE_COOLDOWN_MS });
+    record({ at: now, ok: false, detail: err instanceof Error ? err.message : String(err), retryAt: err instanceof ApiBlockedError ? err.until : now + FAILURE_COOLDOWN_MS, url: feedUrl });
     throw err;
   }
 }
@@ -140,7 +173,7 @@ export async function getWorldState(): Promise<WorldState> {
   if (lastCall && now - lastCall.at < wait) {
     if (cached) return cached.ws;
     if (lastCall.ok && cacheFile) {
-      const saved = await readFile(cacheFile, 'utf8').then(parse, () => null);
+      const saved = await readFile(cacheFile, 'utf8').then(parseOrNull, () => null);
       if (saved) {
         cached = { at: lastCall.at, ws: saved };
         return saved;

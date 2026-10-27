@@ -47,7 +47,7 @@ export interface StatusData {
   registeredMembers: number;
   /** The knowledge archive Ordis answers questions from; null when it is switched off. */
   archive: { pages: number; total: number | null; syncing: boolean } | null;
-  /** Calls to Digital Extremes' worldstate feed: whether they are on, when the last one was and how it went. */
+  /** Calls to the world state source (warframestat.us): whether they are on, when the last one was and how it went. */
   warframeApi: { enabled: boolean; intervalSeconds: number; lastCallAt: string | null; lastOk: boolean | null; lastDetail: string | null };
   upcomingEvents: { id: number; title: string; startsAt: string; going: number; maybe: number }[];
   /** null when the worldstate could not be loaded. */
@@ -317,7 +317,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
     `<span class="pill">up <b>${e(formatDuration(s.uptimeSeconds * 1000))}</b></span>`,
     `<span class="pill"><b>${e(String(s.server?.memberCount ?? '—'))}</b> members</span>`,
     `<span class="pill"><b>${s.registeredMembers}</b> registered</span>`,
-    `<span class="pill">Warframe API <b>${e(apiPill(s.warframeApi))}</b></span>`,
+    `<span class="pill">World state <b>${e(apiPill(s.warframeApi))}</b></span>`,
     s.archive ? `<span class="pill">archive <b>${s.archive.pages.toLocaleString('en-US')}${s.archive.syncing && s.archive.total ? ` / ${s.archive.total.toLocaleString('en-US')}` : ''}</b>${s.archive.syncing ? ' · syncing' : ''}</span>` : '',
   ].join('');
 
@@ -447,7 +447,7 @@ ${s.archive?.syncing ? '<meta http-equiv="refresh" content="15">' : ''}
 <div class="tiles">
 ${clan}${cycles}${fissures}${sortie}${archon}${baro}${steel}${darvo}${invasions}${events}${nightwave}${archimedea}${resurgence}
 </div>
-<footer>World state from Digital Extremes · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
+<footer>World state from warframestat.us · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
 </main>
 <script nonce="${nonce}">${SCRIPT}</script>
 </body>
