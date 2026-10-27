@@ -235,6 +235,13 @@ describe('scanning a riven', () => {
     return PNG.sync.write(p);
   })();
 
+  it('goes by what the file really is, not by the content type Discord gave', async () => {
+    const r = await scanCard(ctx(), picture, 'image/webp', async () => card('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage'));
+    assert.ok(r.report, 'a PNG labelled WebP is still read');
+    const { sniffMime } = await import('../src/rivens/scan.js');
+    assert.deepEqual([sniffMime(picture), sniffMime(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])), sniffMime(new Uint8Array([1, 2, 3]))], ['image/png', 'image/jpeg', null]);
+  });
+
   it('reads a card with OCR and grades what it found', async () => {
     const calls: number[] = [];
     const r = await scanCard(ctx(), picture, 'image/png', async (image) => {
