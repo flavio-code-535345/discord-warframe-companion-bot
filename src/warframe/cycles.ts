@@ -41,8 +41,10 @@ export function projectCycles(ws: Pick<WorldState, 'cetusCycle' | 'vallisCycle' 
   const c = rollTwoPhase(ws.cetusCycle.isDay, toMs(ws.cetusCycle.expiry), CETUS.day, CETUS.night, now);
   const v = rollTwoPhase(ws.vallisCycle.isWarm, toMs(ws.vallisCycle.expiry), VALLIS.warm, VALLIS.cold, now);
   const e = rollTwoPhase(ws.earthCycle.isDay, toMs(ws.earthCycle.expiry), EARTH.day, EARTH.night, now);
-  const zCorpus = String(ws.zarimanCycle.state).toLowerCase() === 'corpus' || (ws.zarimanCycle as { isCorpus?: boolean }).isCorpus === true;
-  const z = rollTwoPhase(zCorpus, toMs(ws.zarimanCycle.expiry), ZARIMAN.corpus, ZARIMAN.grineer, now);
+  // A world state without Zariman data (an older answer, or a test fixture) is left alone rather than breaking the other cycles.
+  const zc = (ws.zarimanCycle ?? { state: 'grineer', expiry: Number.NaN }) as { state?: string; isCorpus?: boolean; expiry: unknown };
+  const zCorpus = String(zc.state).toLowerCase() === 'corpus' || zc.isCorpus === true;
+  const z = rollTwoPhase(zCorpus, toMs(zc.expiry as never), ZARIMAN.corpus, ZARIMAN.grineer, now);
   // Cambion Drift is Fass while it is day on Cetus and Vome at night, ending together with it.
   const cambion = c.projected
     ? { state: c.first ? 'fass' : 'vome', expiry: c.expiry, projected: true }

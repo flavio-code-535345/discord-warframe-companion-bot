@@ -254,6 +254,7 @@ describe('cycle projection', () => {
       vallisCycle: { isWarm: true, expiry: new Date(now + 60_000) },
       earthCycle: { isDay: true, expiry: new Date(now + 60_000) },
       cambionCycle: { state: 'fass', expiry: new Date(now - 10 * 60_000) },
+      zarimanCycle: { state: 'grineer', expiry: new Date(now + 60_000) },
     } as unknown as Parameters<typeof projectCycles>[0];
     const p = projectCycles(ws, now);
     assert.equal(p.cetus.isDay, false);
