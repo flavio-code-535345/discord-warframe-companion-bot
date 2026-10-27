@@ -96,6 +96,24 @@ let cached: { at: number; ws: WorldState } | null = null;
 let inflight: Promise<WorldState> | null = null;
 
 /** The warframestat.us answer is the parsed world state as JSON; dates are ISO strings (every reader goes through `toMs`). */
+/** A short, secret-free description of an unexpected answer, for the error message and the status page. */
+function describeAnswer(text: string): string {
+  let at = feedUrl;
+  try {
+    const u = new URL(feedUrl);
+    at = `${u.host}${u.pathname}`;
+  } catch {
+    // Keep the raw text.
+  }
+  try {
+    const data = JSON.parse(text) as unknown;
+    if (data && typeof data === 'object') return `${at} answered JSON with ${Array.isArray(data) ? `a list of ${data.length}` : `the keys ${Object.keys(data).slice(0, 8).join(', ') || '(none)'}`}`;
+    return `${at} answered JSON that is not an object`;
+  } catch {
+    return `${at} answered something that is not JSON: "${text.replace(/s+/g, ' ').trim().slice(0, 80)}"`;
+  }
+}
+
 function parse(text: string): WorldState {
   let data: Record<string, unknown> | null;
   try {
@@ -104,7 +122,7 @@ function parse(text: string): WorldState {
     data = null;
   }
   if (!data || typeof data !== 'object' || !data.cetusCycle || !Array.isArray(data.fissures)) {
-    throw new Error('The world state source did not answer with the expected JSON (WORLDSTATE_URL must point at a warframestat.us-compatible server).');
+    throw new Error(`Unexpected world state answer: ${describeAnswer(text)}. It must be the warframestat.us JSON (WORLDSTATE_URL has to point at a compatible server).`);
   }
   return data as unknown as WorldState;
 }

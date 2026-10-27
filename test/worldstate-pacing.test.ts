@@ -67,7 +67,7 @@ describe('worldstate pacing', () => {
   it('refuses an answer that is not warframestat.us JSON (such as the raw DE feed)', async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({ Events: [], Alerts: [], WorldSeed: 'abc' }), { status: 200 })) as typeof fetch;
     configureWorldState({ enabled: true, platform: 'pc', intervalSeconds: 600, store: new Store(':memory:') });
-    await assert.rejects(getWorldState(), /expected JSON/);
+    await assert.rejects(getWorldState(), /Unexpected world state answer: api\.warframestat\.us\/pc answered JSON with the keys Events, Alerts, WorldSeed/);
     assert.equal(worldStateInfo().lastOk, false);
   });
 
