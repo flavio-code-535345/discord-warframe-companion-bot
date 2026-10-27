@@ -171,6 +171,12 @@ describe('preparing a picture for OCR', () => {
     assert.equal(light.inverted, false);
   });
 
+  it('shrinks huge pictures before reading them, so a 4K screenshot does not take minutes', () => {
+    const big = prepareForOcr(png(3840, 2160, 20, 230), 'image/png')!;
+    assert.deepEqual([big.width, big.height, big.scale], [1920, 1080, 1], '3840 wide is halved');
+    assert.equal(prepareForOcr(png(2600, 1400, 20, 230), 'image/png')!.scale, 1, 'a 2600 wide picture is left alone');
+  });
+
   it('keeps big pictures at their size, never builds a huge one, and refuses what it cannot decode', () => {
     assert.equal(scaleFor(1920, 1080), 1);
     assert.equal(scaleFor(1000, 600), 2);

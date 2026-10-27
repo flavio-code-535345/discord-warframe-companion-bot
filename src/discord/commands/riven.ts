@@ -54,6 +54,10 @@ async function scan(interaction: ChatInputCommandInteraction, ctx: AppContext): 
     ]);
     recordResult('command', interaction.user.username, result);
     await interaction.editReply({ content: '', embeds: [rivenCompactEmbed(result)] });
+  } catch (err) {
+    // Replace the "Reading your riven…" placeholder with the problem, otherwise it stays on screen as if still working.
+    if (!(err instanceof UserError)) console.error('[riven] /riven scan failed:', err instanceof Error ? (err.stack ?? err.message) : err);
+    await interaction.editReply({ content: `❌ ${err instanceof UserError ? err.message : 'Something went wrong reading that. Try again in a minute.'}`, embeds: [] }).catch(() => {});
   } finally {
     ticket.release();
   }

@@ -50,7 +50,9 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
 
   const read = async (image: Uint8Array) => {
     try {
+      const t = Date.now();
       const lines = await recognize(image);
+      console.log(`[riven] OCR ${Date.now() - t} ms, ${lines.length} lines (picture ${prepared.width}x${prepared.height}, from ${Math.round(picture.length / 1024)} KB ${pictureMime})`);
       return { lines: lines.length, reading: parseRivenCard(lines, attrs, weapons) };
     } catch (err) {
       console.error('[riven] OCR failed:', err instanceof Error ? err.message : err);
@@ -58,7 +60,8 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
     }
   };
   let best = await read(prepared.png);
-  if (!enough(best.reading)) {
+  // (not for a huge picture: reading it unshrunk takes minutes)
+  if (!enough(best.reading) && !prepared.shrunk) {
     const original = await read(bytes);
     if (richness(original.reading) > richness(best.reading)) best = original;
   }

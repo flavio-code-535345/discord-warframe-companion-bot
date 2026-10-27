@@ -15,6 +15,8 @@ export interface Prepared {
   height: number;
   inverted: boolean;
   scale: number;
+  /** True when the picture was shrunk first because it was huge. */
+  shrunk: boolean;
 }
 
 export function scaleFor(width: number, height: number): number {
@@ -24,9 +26,34 @@ export function scaleFor(width: number, height: number): number {
   return scale;
 }
 
+/** Pictures wider than this are shrunk (4K screenshots make tesseract take minutes, and the card text is large enough to read at half size). */
+const BIG_SIDE = 2600;
+const TARGET_SIDE = 2000;
+
+/** Averages k x k blocks of an RGBA picture. */
+function shrink(img: { width: number; height: number; data: Uint8Array }, k: number): { width: number; height: number; data: Uint8Array } {
+  const width = Math.floor(img.width / k);
+  const height = Math.floor(img.height / k);
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      for (let c = 0; c < 3; c++) {
+        let sum = 0;
+        for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) sum += img.data[(((y * k + dy) * img.width) + x * k + dx) * 4 + c]!;
+        data[(y * width + x) * 4 + c] = Math.round(sum / (k * k));
+      }
+      data[(y * width + x) * 4 + 3] = 255;
+    }
+  }
+  return { width, height, data };
+}
+
 export function prepareForOcr(bytes: Uint8Array, mime: string): Prepared | null {
-  const img = decodeImage(bytes, mime);
-  if (!img) return null;
+  const decoded = decodeImage(bytes, mime);
+  if (!decoded) return null;
+  const longest = Math.max(decoded.width, decoded.height);
+  const shrunk = longest > BIG_SIDE;
+  const img = shrunk ? shrink(decoded, Math.ceil(longest / TARGET_SIDE)) : decoded;
   const { width, height, data } = img;
   const gray = new Uint8Array(width * height);
   const histogram = new Array<number>(256).fill(0);
@@ -76,5 +103,5 @@ export function prepareForOcr(bytes: Uint8Array, mime: string): Prepared | null 
       out.data[o + 3] = 255;
     }
   }
-  return { png: PNG.sync.write(out), width: w, height: h, inverted, scale };
+  return { png: PNG.sync.write(out), width: w, height: h, inverted, scale, shrunk };
 }
