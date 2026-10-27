@@ -42,19 +42,28 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   const t0 = Date.now();
   // A WebP is turned into a PNG first; everything after that only knows PNG and JPEG.
   let bytes = picture;
-  let mime = sniffMime(picture) ?? pictureMime;
+  const sniffed = sniffMime(picture);
+  let mime = sniffed ?? pictureMime;
+  // Shown when a picture can't be opened, so the problem can be told apart (a wrong label, a damaged file, a format nobody reads).
+  const what = `file header: ${sniffed ?? 'unknown'}, labelled ${pictureMime || 'nothing'}, ${Math.max(1, Math.round(picture.length / 1024))} KB`;
   const [weapons, attrs] = await Promise.all([getRivenWeapons(), getRivenAttributes()]).catch(() => {
     throw new UserError("I couldn't load the riven weapon and stat lists from warframe.market just now. Try again in a minute.");
   });
   if (!weapons.length || !attrs.length) throw new UserError("I couldn't load the riven weapon and stat lists from warframe.market just now. Try again in a minute.");
   if (mime === 'image/webp') {
     const png = await webpToPng(bytes);
-    if (!png) throw new UserError('I could not open that WebP file (is it damaged?). Try a PNG or JPG.');
+    if (!png) {
+      console.error(`[riven] WebP decode failed (${what})`);
+      throw new UserError(`I could not open that WebP file (${what}). Try saving it as a PNG or JPG.`);
+    }
     bytes = png;
     mime = 'image/png';
   }
   const prepared = prepareForOcr(bytes, mime);
-  if (!prepared) throw new UserError('I can read PNG, JPEG and WebP screenshots (not other formats, or damaged files).');
+  if (!prepared) {
+    console.error(`[riven] could not decode the picture (${what})`);
+    throw new UserError(`I can read PNG, JPEG and WebP screenshots, but I couldn't open this one (${what}). Is it damaged or another format?`);
+  }
 
   const read = async (image: Uint8Array) => {
     try {

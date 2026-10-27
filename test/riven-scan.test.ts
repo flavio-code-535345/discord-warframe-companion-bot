@@ -163,6 +163,24 @@ describe('elemental stat lines', () => {
   });
 });
 
+/** OCR also reads noise in the card's artwork above the name; real output for the Nataruk card. */
+describe('noise around the stat lines', () => {
+  const real: RivenAttribute[] = ['Ammo Maximum', 'Cold', 'Corrosive', 'Critical Chance', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/ /g, '_'), name, positiveOnly: false, negativeOnly: false }));
+  const lines = (rows: string[]) => rows.map((text, i) => ({ text, x0: 0, y0: i * 40, x1: 900, y1: i * 40 + 30, confidence: 60 }));
+  const weapons = [{ slug: 'nataruk', name: 'Nataruk' }];
+  it('ignores signed numbers in the artwork above the name and the footer below the stats', () => {
+    const r = parseRivenCard(lines(['p = 0.0.0.0 p,', '- 2a Pe 3', '+7.5% Fob Barr', '2 Nataruk Crita-corido', '+98.3% *# Cold', '+102.6% & Corrosive', '+180.1% Critical Chance', '-56.9% Zoom', '» MR 16 0 33 V', '-12.5% Ammo Zzz']), real, weapons);
+    assert.deepEqual(r.positives.map((p) => p.slug), ['cold', 'corrosive', 'critical_chance']);
+    assert.deepEqual(r.negative, { slug: 'zoom', value: 56.9 });
+    assert.deepEqual(r.unknown, []);
+  });
+
+  it('still reads every line when the name could not be found', () => {
+    const r = parseRivenCard(lines(['+98.3% Cold', '+102.6% Corrosive']), real, weapons);
+    assert.equal(r.positives.length, 2);
+  });
+});
+
 describe('preparing a picture for OCR', () => {
   const png = (width: number, height: number, background: number, ink: number): Uint8Array => {
     const p = new PNG({ width, height });
@@ -278,7 +296,7 @@ describe('scanning a riven', () => {
   });
 
   it('turns an unreadable picture or a failing reader into a plain explanation', async () => {
-    await assert.rejects(scanCard(ctx(), new Uint8Array([1, 2, 3]), 'image/png', async () => []), /PNG, JPEG and WebP/);
+    await assert.rejects(scanCard(ctx(), new Uint8Array([1, 2, 3]), 'image/png', async () => []), /couldn't open this one \(file header: unknown, labelled image\/png, 1 KB\)/);
     await assert.rejects(
       scanCard(ctx(), picture, 'image/png', async () => {
         throw new Error('worker died');

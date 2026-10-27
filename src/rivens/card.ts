@@ -64,8 +64,8 @@ export function matchName(attrs: RivenAttribute[], name: string): RivenAttribute
  * A riven's name is the weapon followed by one hyphenated word ("Zarr Crita-parciata", "Kuva Bramma Hexa-tox"), so the words before
  * that hyphenated word are the weapon, and a wrong letter can be forgiven there more freely than anywhere else on the card.
  */
-function weaponFromTitle(weapons: RivenWeapon[], lines: string[]): RivenWeapon | null {
-  for (const line of lines) {
+function weaponFromTitle(weapons: RivenWeapon[], lines: string[]): { weapon: RivenWeapon; index: number } | null {
+  for (const [index, line] of lines.entries()) {
     const title = /\b[A-Za-z]{3,}-[A-Za-z]{3,}\b/.exec(line);
     if (!title) continue;
     // Drop stray symbols and digits in front ("2 Zarr", "© Kuva Bramma").
@@ -79,7 +79,7 @@ function weaponFromTitle(weapons: RivenWeapon[], lines: string[]): RivenWeapon |
       const d = distance(norm(words.slice(words.length - k).join(' ')), target);
       if (d <= Math.max(1, Math.floor(target.length / 6)) && (!best || d < best.d || (d === best.d && target.length > norm(best.w.name).length))) best = { w, d };
     }
-    if (best) return best.w;
+    if (best) return { weapon: best.w, index };
   }
   return null;
 }
@@ -87,7 +87,7 @@ function weaponFromTitle(weapons: RivenWeapon[], lines: string[]): RivenWeapon |
 /** The weapon whose name starts (or sits in) a line of the card, forgiving a wrong letter in longer names. The longest name wins. */
 export function findWeapon(weapons: RivenWeapon[], lines: string[]): RivenWeapon | null {
   const fromTitle = weaponFromTitle(weapons, lines);
-  if (fromTitle) return fromTitle;
+  if (fromTitle) return fromTitle.weapon;
   let best: { w: RivenWeapon; score: number } | null = null;
   for (const line of lines) {
     const words = norm(line).split(' ').filter(Boolean);
@@ -110,10 +110,15 @@ export function findWeapon(weapons: RivenWeapon[], lines: string[]): RivenWeapon
 export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapons: RivenWeapon[]): CardReading {
   const texts = [...lines].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0).map((l) => l.text.replace(/\s+/g, ' ').trim()).filter(Boolean);
   const weapon = findWeapon(weapons, texts);
+  // The stat lines sit under the riven's name and above the footer ("MR 16", rank, re-rolls). OCR also finds noise in the artwork above the
+  // name, and a signed number in it must not count as a stat (it would push a real one out, or block grading as unreadable).
+  const title = weaponFromTitle(weapons, texts);
+  const footer = texts.findIndex((t, i) => i > (title?.index ?? -1) && /(^|[^A-Za-z])MR *[0-9]/.test(t));
+  const body = texts.slice(title ? title.index + 1 : 0, footer >= 0 ? footer : undefined);
 
   const found: { attr: RivenAttribute; value: number; sign: '+' | '-' | null; line: string }[] = [];
   const unknown: string[] = [];
-  for (const text of texts) {
+  for (const text of body) {
     const m = STAT_LINE.exec(text);
     if (!m) continue;
     const [, sign, number, unit, name] = m;

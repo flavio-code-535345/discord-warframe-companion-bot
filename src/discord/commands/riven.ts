@@ -1,7 +1,7 @@
 import { type ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder, type SlashCommandStringOption } from 'discord.js';
 import type { AppContext } from '../../context.js';
 import { QueueFullError, screenshotQueue } from '../../queue.js';
-import { recordResult } from '../../rivens/channel.js';
+import { recordResult, recordScan } from '../../rivens/channel.js';
 import { getRivenWeapons } from '../../rivens/market.js';
 import { scanCard } from '../../rivens/scan.js';
 import { gradeFor, rivenStatus, topFor } from '../../rivens/service.js';
@@ -56,6 +56,7 @@ async function scan(interaction: ChatInputCommandInteraction, ctx: AppContext): 
     await interaction.editReply({ content: '', embeds: [rivenCompactEmbed(result)] });
   } catch (err) {
     // Replace the "Reading your riven…" placeholder with the problem, otherwise it stays on screen as if still working.
+    recordScan({ via: 'command', userName: interaction.user.username, weapon: null, letter: null, ms: 0, ok: false, note: err instanceof Error ? err.message : 'error' });
     if (!(err instanceof UserError)) console.error('[riven] /riven scan failed:', err instanceof Error ? (err.stack ?? err.message) : err);
     await interaction.editReply({ content: `❌ ${err instanceof UserError ? err.message : 'Something went wrong reading that. Try again in a minute.'}`, embeds: [] }).catch(() => {});
   } finally {
