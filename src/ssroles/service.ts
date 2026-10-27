@@ -4,6 +4,7 @@ import type { AppContext } from '../context.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { modLog } from '../moderation/service.js';
+import { normalizeImage } from '../imaging/sniff.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
 import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEmblem, fingerprint } from './emblem.js';
 import { ocr } from './ocr.js';
@@ -409,7 +410,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   progress = await channel.send({ content: waited ? queueText(latest) : readingText, allowedMentions: mention }).catch(() => null);
   if (progress && waited && latest !== ticket.position()) await progress.edit({ content: queueText(ticket.position()), allowedMentions: mention }).catch(() => {});
   // The pictures are downloaded and taken off Discord straight away, so they only sit in memory while the line moves.
-  const prepare = Promise.all(images.map(async (image) => ({ bytes: await download(image.url), mime: mimeOf(image.contentType) }))).then(async (downloaded) => {
+  const prepare = Promise.all(images.map(async (image) => normalizeImage(await download(image.url), mimeOf(image.contentType)))).then(async (downloaded) => {
     await message.delete().catch(() => {});
     return downloaded;
   });
@@ -476,9 +477,10 @@ export async function learnReferences(ctx: AppContext, images: { mime: string; d
   let clanText: string | null = null;
   for (const [i, image] of images.entries()) {
     const which = images.length > 1 ? `Picture ${i + 1}: ` : '';
-    const pixels = decodeImage(image.data, image.mime);
-    if (!pixels) throw new UserError(`${which}the reference must be a PNG or JPG screenshot (not WebP).`);
-    const lines = await ocr.recognize(image.data);
+    const real = await normalizeImage(image.data, image.mime);
+    const pixels = decodeImage(real.bytes, real.mime);
+    if (!pixels) throw new UserError(`${which}the reference must be a PNG, JPG or WebP screenshot.`);
+    const lines = await ocr.recognize(real.bytes);
     const parsed = parseCard(lines);
     const { reading } = parsed;
     if (!parsed.complete) {

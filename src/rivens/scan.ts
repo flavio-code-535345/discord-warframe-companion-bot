@@ -1,4 +1,5 @@
 import type { AppContext } from '../context.js';
+import { sniffMime } from '../imaging/sniff.js';
 import { webpToPng } from '../imaging/webp.js';
 import { UserError } from '../services/clan.js';
 import type { OcrLine } from '../ssroles/parse.js';
@@ -15,6 +16,8 @@ import { type GradeReport, attributeNames, gradeResolved } from './service.js';
  * lives in memory. What was read is always returned with the grade, because the person has to be able to check it.
  */
 
+export { sniffMime };
+
 export type Recognize = (image: Uint8Array) => Promise<OcrLine[]>;
 
 export interface ScanResult {
@@ -30,14 +33,6 @@ export interface ScanResult {
   image: { bytes: Uint8Array; mime: string } | null;
   /** The card's text block in pixels of that picture, when it was found. */
   box: Box | null;
-}
-
-/** What the bytes really are (from the file header); Discord's content type can be wrong, e.g. a PNG labelled WebP. Null when unknown. */
-export function sniffMime(b: Uint8Array): 'image/png' | 'image/jpeg' | 'image/webp' | null {
-  if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
-  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
-  if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
-  return null;
 }
 
 /** A line of OCR text the way the card parser sees it (single spaces, trimmed). */

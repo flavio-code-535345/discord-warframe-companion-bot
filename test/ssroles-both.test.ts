@@ -72,6 +72,15 @@ describe('profile card and clan row in one message', () => {
     assert.deepEqual([...t.held.keys()].sort(), ['clan', 'lr3']);
   });
 
+  it('reads a PNG that Discord labels as WebP (it goes by the file header, so OCR can read it)', async () => {
+    const t = setup(['ss-roles-example.png'], 'u11');
+    for (const a of (t.message.attachments as Collection<string, { contentType: string }>).values()) a.contentType = 'image/webp';
+    await handleSsMessage(t.message as never, t.ctx as never);
+    const last = t.sent.at(-1)!;
+    assert.equal(last.embeds?.length, 1);
+    assert.match(last.embeds![0]!.data.title!, /Profile card verified/);
+  });
+
   it('still handles a single picture', async () => {
     const t = setup(['ss-roles-example.png'], 'u2');
     await handleSsMessage(t.message as never, t.ctx as never);

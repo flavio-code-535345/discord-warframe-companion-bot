@@ -1,4 +1,5 @@
 import express, { type Request, type Response, type Router } from 'express';
+import { normalizeImage } from '../../imaging/sniff.js';
 import { localModelOf } from '../../ai/ollama.js';
 import type { AppContext } from '../../context.js';
 import { readWithOcr, visionRead } from '../../ssroles/service.js';
@@ -45,8 +46,11 @@ export interface TestResult {
 
 const base = (method: Method): TestResult => ({ t: 'result', method, status: 'skipped', ms: 0, model: null, note: '', size: null, lines: [], emblemSimilarity: null, reading: null, rankRows: [], verdict: null });
 
-export async function runMethod(ctx: AppContext, method: Method, image: { mime: string; data: Uint8Array }): Promise<TestResult> {
+export async function runMethod(ctx: AppContext, method: Method, upload: { mime: string; data: Uint8Array }): Promise<TestResult> {
   const { config, store } = ctx;
+  // The label on an upload can be wrong (a PNG sent as WebP): go by the file header, as the channel does.
+  const real = await normalizeImage(upload.data, upload.mime);
+  const image = { mime: real.mime, data: real.bytes };
   const reference = store.getSsReference(config.DISCORD_GUILD_ID);
   const out = base(method);
   const finish = (read: ReturnType<typeof visionRead> | null): TestResult => {
