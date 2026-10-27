@@ -81,8 +81,17 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
   seen.configured = channelId ?? null;
   if (!channelId || message.channelId !== channelId) return false;
 
-  const images = [...message.attachments.filter((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES).values()].slice(0, MAX_IMAGES);
-  noteTrace(`${message.author.username}: ${message.attachments.size} attachment(s) [${[...message.attachments.values()].map((a) => `${a.contentType ?? 'no type'} ${a.size}B`).join(', ')}], ${images.length} usable`);
+  // Without the Message Content intent the gateway delivers messages with no attachments at all; reading the message again over REST
+  // returns them, so the channel works whether or not the privileged intent is switched on.
+  let source: Message = message;
+  if (!message.attachments.size && !config.ENABLE_MESSAGE_CONTENT) {
+    source = await message.fetch().catch((err) => {
+      noteTrace(`could not re-read the message: ${err instanceof Error ? err.message : err}`);
+      return message;
+    });
+  }
+  const images = [...source.attachments.filter((a) => IMAGE_TYPES.has(mimeOf(a.contentType)) && a.size <= MAX_IMAGE_BYTES).values()].slice(0, MAX_IMAGES);
+  noteTrace(`${message.author.username}: ${source.attachments.size} attachment(s)${source === message ? '' : ' (re-read)'} [${[...source.attachments.values()].map((a) => `${a.contentType ?? 'no type'} ${a.size}B`).join(', ')}], ${images.length} usable`);
   if (!images.length) return false;
 
   const clearReactions = async () => {

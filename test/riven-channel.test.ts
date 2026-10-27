@@ -63,6 +63,7 @@ function setup(files: { name: string; type: string }[], channelId = 'c') {
     reactions: { cache: new Map() },
     react: async (e: string) => void reactions.push(e),
     reply: async (p: (typeof replies)[number]) => void replies.push(p),
+    fetch: async (): Promise<unknown> => message,
   };
   const ctx = { config: { DISCORD_GUILD_ID: 'g', RIVEN_HIGH_PRICE: 1000 }, store, client: { user: { id: 'bot' } } };
   return { ctx, message, replies, reactions };
@@ -121,6 +122,24 @@ describe('riven channel', () => {
     assert.equal(await handleRivenMessage(t.message as never, t.ctx as never, scan), true);
     assert.deepEqual(mimes, ['image/webp'], 'the handler hands the WebP to the scanner, which converts it');
     assert.equal(t.replies[0]!.files!.length, 1);
+  });
+
+  it('re-reads a message that arrived without attachments (Message Content intent off)', async () => {
+    const t = setup([{ name: 'a.png', type: 'image/png' }]);
+    const full = t.message.attachments;
+    (t.message as { attachments: unknown }).attachments = new Collection();
+    let fetched = 0;
+    t.message.fetch = async () => ((fetched++, { ...t.message, attachments: full }));
+    await handleRivenMessage(t.message as never, t.ctx as never, reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage'));
+    assert.equal(fetched, 1);
+    assert.equal(t.replies[0]!.files!.length, 1, 'graded from the re-read message');
+    // With the intent on, a message without attachments is simply not a screenshot: no extra request.
+    const on = setup([]);
+    (on.ctx.config as { ENABLE_MESSAGE_CONTENT?: boolean }).ENABLE_MESSAGE_CONTENT = true;
+    let again = 0;
+    on.message.fetch = async () => (again++, on.message);
+    assert.equal(await handleRivenMessage(on.message as never, on.ctx as never, reads('x')), false);
+    assert.equal(again, 0);
   });
 
   it('ignores other channels, bots and messages without a PNG/JPEG picture', async () => {
