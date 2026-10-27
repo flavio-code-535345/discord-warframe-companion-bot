@@ -48,8 +48,45 @@ export function closestAttribute(attrs: RivenAttribute[], text: string): RivenAt
   return best?.a ?? null;
 }
 
+/** A stat name as OCR gave it, which may have stray letters at the end ("Damage p", "Zoom b" from the card's frame): the whole text first, then without trailing one- or two-letter tokens. */
+export function matchName(attrs: RivenAttribute[], name: string): RivenAttribute | null {
+  const tokens = name.split(/\s+/).filter(Boolean);
+  for (let drop = 0; drop <= 2 && tokens.length - drop >= 1; drop++) {
+    if (drop > 0 && tokens[tokens.length - drop]!.length > 2) break;
+    const hit = closestAttribute(attrs, tokens.slice(0, tokens.length - drop).join(' '));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * A riven's name is the weapon followed by one hyphenated word ("Zarr Crita-parciata", "Kuva Bramma Hexa-tox"), so the words before
+ * that hyphenated word are the weapon, and a wrong letter can be forgiven there more freely than anywhere else on the card.
+ */
+function weaponFromTitle(weapons: RivenWeapon[], lines: string[]): RivenWeapon | null {
+  for (const line of lines) {
+    const title = /\b[A-Za-z]{3,}-[A-Za-z]{3,}\b/.exec(line);
+    if (!title) continue;
+    // Drop stray symbols and digits in front ("2 Zarr", "© Kuva Bramma").
+    const words = line.slice(0, title.index).split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z']*$/.test(w) && w.length > 1);
+    if (!words.length) continue;
+    let best: { w: RivenWeapon; d: number } | null = null;
+    for (const w of weapons) {
+      const target = norm(w.name);
+      const k = target.split(' ').length;
+      if (words.length < k) continue;
+      const d = distance(norm(words.slice(words.length - k).join(' ')), target);
+      if (d <= Math.max(1, Math.floor(target.length / 6)) && (!best || d < best.d || (d === best.d && target.length > norm(best.w.name).length))) best = { w, d };
+    }
+    if (best) return best.w;
+  }
+  return null;
+}
+
 /** The weapon whose name starts (or sits in) a line of the card, forgiving a wrong letter in longer names. The longest name wins. */
 export function findWeapon(weapons: RivenWeapon[], lines: string[]): RivenWeapon | null {
+  const fromTitle = weaponFromTitle(weapons, lines);
+  if (fromTitle) return fromTitle;
   let best: { w: RivenWeapon; score: number } | null = null;
   for (const line of lines) {
     const words = norm(line).split(' ').filter(Boolean);
@@ -81,9 +118,10 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
     const [, sign, number, unit, name] = m;
     // A stat line has a % or an explicit sign; "Rank 0/8" or "MR 15" don't, and the name must not be a bare unit letter.
     if (!unit && !sign) continue;
-    const attr = closestAttribute(attrs, name!.trim());
+    const attr = matchName(attrs, name!.trim());
     if (!attr) {
-      unknown.push(text);
+      // Only a signed value or one with a decimal point is surely a stat ("1% MR 9" from the card's footer is not).
+      if (sign || number!.includes('.') || number!.includes(',')) unknown.push(text);
       continue;
     }
     found.push({ attr, value: Number(number!.replace(',', '.')), sign: sign ? (MINUS.test(sign) ? '-' : '+') : null, line: text });

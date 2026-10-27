@@ -57,6 +57,15 @@ export async function scanCard(ctx: AppContext, bytes: Uint8Array, mime: string,
   const done = (report: GradeReport | null, problem: string | null): ScanResult => ({ reading, names, report, problem, ms: Date.now() - t0, lines: best.lines });
 
   if (!reading.weapon) return done(null, "I couldn't find the weapon's name on the card. Crop the picture to the riven card (its name is at the top), unveiled and in focus.");
+  if (reading.unknown.length) {
+    // A stat line that can't be read means the reading is incomplete, and a missing stat changes the grade: never grade around it.
+    const read = [...reading.positives.map((p) => `${names[p.slug] ?? p.slug}${p.value != null ? ` ${p.value}` : ''}`), ...(reading.negative ? [`curse ${names[reading.negative.slug] ?? reading.negative.slug}`] : [])];
+    const lines = reading.unknown.map((u) => `"${u}"`).join(', ');
+    return done(
+      null,
+      `I couldn't read ${reading.unknown.length === 1 ? 'one of the stat lines' : 'some of the stat lines'} (${lines}), and a missing stat changes the grade, so I won't guess. If the mouse pointer or something else covers the text, move it away and take the screenshot again. Or type it in with /riven grade: weapon ${reading.weapon.name}, ${read.join(', ')}${read.length ? ' and ' : ''}the stat I couldn't read.`,
+    );
+  }
   if (reading.positives.length < 2) return done(null, `I only found ${reading.positives.length} bonus stat${reading.positives.length === 1 ? '' : 's'} (a riven has 2 or 3). Crop the picture to the card so every stat line is readable.`);
   try {
     return done(await gradeResolved(ctx, reading.weapon, attrs, reading.positives, reading.negative), null);

@@ -91,6 +91,63 @@ describe('reading a riven card', () => {
   });
 });
 
+/** What the real OCR engine returned for a real in-game riven card (Zarr Crita-parciata), with the mouse pointer over "Critical Chance". */
+describe('a real screenshot', () => {
+  const real: RivenAttribute[] = ['Critical Chance', 'Critical Damage', 'Ammo Efficiency', 'Damage', 'Zoom', 'Multishot'].map((name) => ({ slug: name.toLowerCase().replace(/ /g, '_'), name, positiveOnly: false, negativeOnly: false }));
+  const zarr: RivenWeapon[] = [{ slug: 'zarr', name: 'Zarr' }, { slug: 'zakti', name: 'Zakti' }];
+  const at = (rows: [number, string][]): OcrLine[] => rows.map(([y0, text]) => ({ text, x0: 0, y0, x1: 900, y1: y0 + 60, confidence: 50 }));
+
+  const cleaned = at([
+    [75, '. ’ ; CR , — ag ='], [149, 'Lh % BAA - KE 9='], [675, '% 4 NY > ve ) § Py sal A'], [802, 'ANE CI'],
+    [960, '2 Zarr Crita-parciata'], [1080, '+183.5% clk] al'], [1173, '+54.4% Ammo ETiiciency'], [1262, '+172.2% Damage p'], [1351, 'vy & -50.9% Zoom'], [1477, '“1% MR 9 O 141 2%’'],
+  ]);
+  const original = at([
+    [41, 'ARN. Tend'], [320, '2 Zar Crita-parciata'], [360, '+183.5% SHlic hares'], [389, '+54.4% Ammo ENiciency'], [418, '+172.2% Damage Ps'], [446, 'vy -50.9% Zoom b'], [493, '(7% MR 9 O 141'],
+  ]);
+
+  it('reads the weapon, the stats it can, forgives the stray letters, and flags the line the pointer covers', () => {
+    for (const lines of [cleaned, original]) {
+      const r = parseRivenCard(lines, real, zarr);
+      assert.equal(r.weapon!.slug, 'zarr', 'also from "2 Zar Crita-parciata", because the name before a hyphenated word is the weapon');
+      assert.deepEqual(r.positives, [{ slug: 'ammo_efficiency', value: 54.4 }, { slug: 'damage', value: 172.2 }]);
+      assert.deepEqual(r.negative, { slug: 'zoom', value: 50.9 });
+      assert.equal(r.unknown.length, 1, 'the covered Critical Chance line, and not the footer "MR 9"');
+      assert.match(r.unknown[0]!, /^\+183\.5%/);
+    }
+  });
+
+  it('refuses to grade around a stat it could not read, and explains how to fix it', async () => {
+    const store = new Store(':memory:');
+    const ctx = { store, config: { RIVEN_HIGH_PRICE: 1000 } } as never;
+    const realFetch = globalThis.fetch;
+    api.reset();
+    resetRivenLists();
+    globalThis.fetch = (async (url: string) => {
+      const p = new URL(String(url)).pathname;
+      if (p === '/v2/riven/weapons') return new Response(JSON.stringify({ data: zarr.map((w) => ({ slug: w.slug, i18n: { en: { name: w.name } } })) }));
+      if (p === '/v2/riven/attributes') return new Response(JSON.stringify({ data: real.map((a) => ({ slug: a.slug, i18n: { en: { name: a.name } } })) }));
+      return new Response('?', { status: 500 });
+    }) as typeof fetch;
+    try {
+      const pic = new PNG({ width: 30, height: 30 });
+      pic.data.fill(255);
+      const result = await scanCard(ctx, PNG.sync.write(pic), 'image/png', async () => cleaned);
+      assert.equal(result.report, null);
+      assert.match(result.problem!, /couldn't read one of the stat lines.*\+183\.5%.*won't guess.*mouse pointer/);
+      assert.match(result.problem!, /weapon Zarr, Ammo Efficiency 54\.4, Damage 172\.2, curse Zoom and the stat I couldn't read/);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('grades it once nothing covers the text', () => {
+    const clear = at([[960, '2 Zarr Crita-parciata'], [1080, '+183.5% Critical Chance'], [1173, '+54.4% Ammo Efficiency'], [1262, '+172.2% Damage'], [1351, '-50.9% Zoom']]);
+    const r = parseRivenCard(clear, real, zarr);
+    assert.deepEqual(r.positives.map((p) => p.slug), ['critical_chance', 'ammo_efficiency', 'damage']);
+    assert.deepEqual(r.unknown, []);
+  });
+});
+
 describe('preparing a picture for OCR', () => {
   const png = (width: number, height: number, background: number, ink: number): Uint8Array => {
     const p = new PNG({ width, height });
