@@ -30,7 +30,9 @@ import { searchWiki } from '../warframe/wiki.js';
 import type { AiSource } from '../db.js';
 import { composeDetailed } from './compose.js';
 import { agentAnswer, useAgent } from '../agent/answer.js';
-import { reportStatus, withStatus } from './status.js';
+import { type StatusListener, reportStatus, withStatus } from './status.js';
+import { QueueFullError } from '../queue.js';
+import { withAsker, withModelSlot } from './slot.js';
 import { brain } from '../agent/brain.js';
 import { cacheAllowedFor, getCachedAnswer, noteCacheHit } from './cache.js';
 import { isOperatorId, operatorAnswer, useOperatorMode } from './operator.js';
@@ -114,7 +116,7 @@ async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> 
   }
   reportStatus('✍️ Writing the answer');
   // With a free-tier model configured, the excerpts are worded into a real answer; the source stays below it.
-  const written = await composeDetailed(ctx.config, query, [...results, ...asPassages(web)]);
+  const written = await withModelSlot(() => composeDetailed(ctx.config, query, [...results, ...asPassages(web)]));
   if (written) return { content: written.text, embeds: [wikiEmbed(query, results.length ? results : asPassages(web), true)], found: true, source: written.via, model: written.model };
   if (!results.length) return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, asPassages(web))], found: true, source: 'excerpt' };
   return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true, source: 'excerpt' };
@@ -214,8 +216,15 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
 }
 
 /** Answers a chat question from live data and the wiki, without any AI model. */
-export function smartAnswer(question: string, ctx: AppContext, asker?: { id: string; name: string }, onStatus?: (status: string) => void): Promise<SmartAnswer> {
-  return withStatus(onStatus, () => smartAnswerInner(question, ctx, asker));
+export function smartAnswer(question: string, ctx: AppContext, asker?: { id: string; name: string }, onStatus?: StatusListener): Promise<SmartAnswer> {
+  return withStatus(onStatus, () =>
+    withAsker(asker?.id ?? '', () => smartAnswerInner(question, ctx, asker)).catch((err: unknown) => {
+      if (!(err instanceof QueueFullError)) throw err;
+      // Too many waiting: say so instead of failing, and keep it out of the saved answers (source 'lookup', intent 'busy').
+      const content = err.reason === 'user' ? 'Ordis is already working on two of your questions, Operator. Wait for those answers first.' : 'Ordis has a long line of questions right now, Operator. Please ask again in a few minutes.';
+      return { content, embeds: [], found: true, source: 'lookup', model: null, intent: 'busy', ms: 0 } as SmartAnswer;
+    }),
+  );
 }
 
 async function smartAnswerInner(question: string, ctx: AppContext, asker?: { id: string; name: string }): Promise<SmartAnswer> {
@@ -233,8 +242,8 @@ async function smartAnswerInner(question: string, ctx: AppContext, asker?: { id:
   }
   // The agent (tools it picks itself, see src/agent) comes first where it is switched on; the operator answer and the plain lookups are the fallbacks.
   const who = asker ?? { id: '', name: 'a clan member' };
-  const agent = useAgent(ctx, who.id, intent.kind) ? await agentAnswer(ctx, question, who) : null;
-  const operator = !agent && asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await operatorAnswer(ctx, question, asker.name) : null;
+  const agent = useAgent(ctx, who.id, intent.kind) ? await withModelSlot(() => agentAnswer(ctx, question, who)) : null;
+  const operator = !agent && asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await withModelSlot(() => operatorAnswer(ctx, question, asker.name)) : null;
   const answer = agent ?? operator ?? (await answerIntent(intent, question, ctx));
   return { ...answer, source: answer.source ?? 'lookup', model: answer.model ?? null, intent: answer.intent ?? intent.kind, ms: Date.now() - started };
 }

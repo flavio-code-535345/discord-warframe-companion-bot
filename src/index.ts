@@ -16,6 +16,7 @@ import { OrdisBrain } from './ai/ordis.js';
 import { loadConfig } from './config.js';
 import { initRuntimeConfig, onSettingChange } from './runtime-config.js';
 import { configureApi } from './warframe/fetch.js';
+import { questionQueue, screenshotQueue } from './queue.js';
 import { syncIdentity } from './discord/identity.js';
 import type { AppContext } from './context.js';
 import { Store } from './db.js';
@@ -42,6 +43,11 @@ const applyApiConfig = () =>
     },
   });
 applyApiConfig();
+const applyQueueConfig = () => {
+  questionQueue.configure({ concurrency: config.QUEUE_QUESTIONS_CONCURRENCY, maxWaiting: config.QUEUE_MAX_WAITING });
+  screenshotQueue.configure({ concurrency: config.QUEUE_SCREENSHOTS_CONCURRENCY, maxWaiting: config.QUEUE_MAX_WAITING });
+};
+applyQueueConfig();
 const client = createClient(config);
 const ai = config.ANTHROPIC_API_KEY
   ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
@@ -66,6 +72,7 @@ const ctx: AppContext = { config, store, client, ai };
 // A few settings need more than a changed value when they change at runtime.
 onSettingChange((key) => {
   if (key.startsWith('API_')) applyApiConfig();
+  if (key.startsWith('QUEUE_')) applyQueueConfig();
   if (key.startsWith('WORLDSTATE_') || key === 'WARFRAME_PLATFORM') applyWorldState();
   if (key === 'BOT_NAME' && client.isReady()) void syncIdentity(ctx).catch((err) => console.warn('[identity] could not update the bot name:', err));
 });

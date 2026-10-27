@@ -11,6 +11,7 @@ import { type RankRow, parseCard, parseRankRow, parseRankRows, rankFromTitle } f
 import { type CardReading, type RoleInfo, SELF_SERVE_RANKS, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
 import { readProfileCardVia } from './vision.js';
 import { saveSticky } from '../sticky/service.js';
+import { QueueFullError, screenshotQueue } from '../queue.js';
 
 /**
  * Screenshots are processed in memory only: nothing is written to disk or the database (just a hash and the
@@ -376,20 +377,45 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   }
   lastTry.set(message.author.id, Date.now());
 
-  // Answer at once so the member always sees something, then turn that message into the result (or the error).
-  const progress = await channel.send({ content: `<@${message.author.id}> 🔎 Reading your screenshot…`, allowedMentions: mention }).catch(() => null);
+  // Screenshots are read one at a time (a vision model on a CPU is slow), so take a place in line first.
+  const readingText = `<@${message.author.id}> 🔎 Reading your screenshot…`;
+  const queueText = (n: number) =>
+    `<@${message.author.id}> ⏳ **Ordis is reading other screenshots.** ${n <= 1 ? "You're **next in line**" : `You're **#${n}** in the queue`}. Yours is read as soon as it's your turn.
+-# Your picture is already off the channel; please don't post it again.`;
+  let progress: Message | null = null;
+  let latest = 0;
+  let ticket: ReturnType<typeof screenshotQueue.join>;
+  try {
+    ticket = screenshotQueue.join(message.author.id, (n) => {
+      latest = n;
+      if (progress && n > 0) void progress.edit({ content: queueText(n), allowedMentions: mention }).catch(() => {});
+    });
+  } catch (err) {
+    if (!(err instanceof QueueFullError)) throw err;
+    await message.delete().catch(() => {});
+    await say({ content: `<@${message.author.id}> ${err.reason === 'user' ? 'two of your screenshots are already waiting, Operator. Wait for those first.' : 'too many screenshots are waiting right now. Try again in a few minutes.'}`, allowedMentions: mention });
+    return true;
+  }
+  const waited = ticket.position() > 0;
+  latest = ticket.position();
+  // Answer at once so the member always sees something (their place in line, or that it is being read), then turn that message into the result (or the error).
+  progress = await channel.send({ content: waited ? queueText(latest) : readingText, allowedMentions: mention }).catch(() => null);
+  if (progress && waited && latest !== ticket.position()) await progress.edit({ content: queueText(ticket.position()), allowedMentions: mention }).catch(() => {});
+  // The pictures are downloaded and taken off Discord straight away, so they only sit in memory while the line moves.
+  const prepare = Promise.all(images.map(async (image) => ({ bytes: await download(image.url), mime: mimeOf(image.contentType) }))).then(async (downloaded) => {
+    await message.delete().catch(() => {});
+    return downloaded;
+  });
+  prepare.catch(() => {});
   // The reply only has to be seen for a moment: the full record goes to the mod log, so the channel stays clean.
   const finish = async (payload: { content: string; embeds?: EmbedBuilder[] }, ttlMs = 30_000) => {
     const edited = progress ? await progress.edit({ content: payload.content, embeds: payload.embeds ?? [], allowedMentions: mention }).then(() => progress, () => null) : null;
     const shown = edited ?? (await channel.send({ ...payload, allowedMentions: mention }).catch(() => null));
     if (shown) setTimeout(() => void shown.delete().catch(() => {}), ttlMs).unref();
   };
-  const work = async () => {
+  const work = async (downloads: { bytes: Uint8Array; mime: string }[]) => {
     const guild = message.guild;
     const [member, me] = await Promise.all([message.member ?? guild.members.fetch(message.author.id), guild.members.fetchMe()]);
-    // Every screenshot is in memory now; take the message off Discord straight away, whatever happens next.
-    const downloads = await Promise.all(images.map(async (image) => ({ bytes: await download(image.url), mime: mimeOf(image.contentType) })));
-    await message.delete().catch(() => {});
 
     // Read them all first, then handle profile cards before clan rows: the row's name has to be one a card just verified.
     const reference = store.getSsReference(guild.id);
@@ -410,11 +436,16 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     await finish({ content: `<@${message.author.id}>${extra ? ` ${extra}` : ''}`, embeds: outcomes.map((o) => o.embed) }, Math.max(...outcomes.map((o) => o.ttl)));
   };
   try {
-    await Promise.race([work(), new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("that took too long, so I gave up. Try again in a minute.")), 90_000).unref())]);
+    // Waiting in line does not count against the time limit; the reading does.
+    const [downloads] = await Promise.all([prepare, ticket.ready]);
+    if (waited && progress) await progress.edit({ content: readingText, allowedMentions: mention }).catch(() => {});
+    await Promise.race([work(downloads), new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("that took too long, so I gave up. Try again in a minute.")), 90_000).unref())]);
   } catch (err) {
     console.error('[ssroles] failed:', err instanceof Error ? err.message : err);
     await message.delete().catch(() => {});
     await finish({ content: `<@${message.author.id}> ${err instanceof UserError ? err.message : 'something went wrong reading that screenshot. Try again later.'}` });
+  } finally {
+    ticket.release();
   }
   return true;
 }

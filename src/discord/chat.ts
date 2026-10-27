@@ -85,7 +85,7 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
     // A slow answer (model, tools) shows a "thinking" notice with a progress bar; it is removed before the answer is posted.
     const progress = startProgress((text) => message.reply({ content: text, allowedMentions: { parse: [], repliedUser: false } }));
     try {
-      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName }, progress.set));
+      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName }, progress.listener));
       await progress.discard();
       if (!answer.found && inChatChannel && !mentioned) return;
       await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });

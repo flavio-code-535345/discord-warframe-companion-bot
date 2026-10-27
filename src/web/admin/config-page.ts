@@ -5,6 +5,7 @@ import { ENV_ONLY, SETTINGS, type SettingDef, type SettingState, adoptEnvironmen
 import { UserError } from '../../services/clan.js';
 import { scheduleRestart } from '../../selfupdate.js';
 import { api } from '../../warframe/fetch.js';
+import { questionQueue, screenshotQueue } from '../../queue.js';
 import { formatDuration } from '../../time.js';
 import { escapeHtml as e } from '../status.js';
 import { type PageContext, csrfField, layout } from './pages.js';
@@ -71,8 +72,10 @@ ${pending.length ? `<div class="flash err">Needs a restart to take effect: ${pen
     const activity = `<h2>API activity</h2><div class="card stack"><p class="flush muted">Since the last restart. Cached responses are kept in the bot's database (${size.entries} entries, ${Math.round(size.bytes / 1024)} KB) so they survive restarts.</p>
 <p class="flush">Requests sent <strong>${st.requests}</strong> · cache hits <strong>${st.cacheHits}</strong> · shared with an identical in-flight request <strong>${st.deduped}</strong> · revalidated (304) <strong>${st.revalidated}</strong> · stale answers served <strong>${st.staleServed}</strong> · retries <strong>${st.retries}</strong> · failures <strong>${st.failures}</strong> · 429s <strong>${st.rateLimited}</strong> · refused during a pause <strong>${st.blocked}</strong></p>
 ${holds.length ? holds.map((h) => `<p class="flush">⏸ <code>${e(h.host)}</code> paused for ${e(formatDuration(h.until - Date.now()))}: ${e(h.reason)}</p>`).join('') : '<p class="flush">No host is paused.</p>'}</div>`;
+    const line = (name: string, q: typeof questionQueue) => `<p class="flush"><strong>${name}</strong>: ${q.snapshot().running} running (up to ${q.config.concurrency}), ${q.snapshot().waiting} waiting · ${q.stats.served} served, ${q.stats.waitedOnce} had to wait, ${q.stats.refused} turned away since the last restart</p>`;
+    const queues = `<h2>Queues</h2><div class="card stack">${line('Questions', questionQueue)}${line('Screenshots', screenshotQueue)}</div>`;
     const envOnly = `<h2>Still environment-only</h2><div class="card">${ENV_ONLY.map((o) => `<p class="flush"><code>${o.names.map(e).join('</code> <code>')}</code><br><span class="muted">${e(o.why)}</span></p>`).join('<hr>')}</div>`;
-    html(res, layout('Config', `<h1>Config</h1>${intro}${forms}${activity}${envOnly}`, p));
+    html(res, layout('Config', `<h1>Config</h1>${intro}${forms}${queues}${activity}${envOnly}`, p));
   });
 
   router.post(

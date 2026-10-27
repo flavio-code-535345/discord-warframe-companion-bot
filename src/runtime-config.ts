@@ -35,6 +35,9 @@ export const SETTINGS: SettingDef[] = [
   { key: 'WORLDSTATE_POLL_SECONDS', group: 'Warframe data', kind: 'int', label: 'World state poll interval (seconds)', help: 'Minimum time between calls to the feed. At least 60.' },
   { key: 'WARFRAME_PLATFORM', group: 'Warframe data', kind: 'select', options: ['pc', 'ps4', 'xbox', 'switch', 'mobile'], label: 'Platform', help: 'Which platform /price and Ordis look at on warframe.market, and which world state (pc, ps4, xbox, switch) is shown.' },
 
+  { key: 'QUEUE_QUESTIONS_CONCURRENCY', group: 'Queues', kind: 'int', label: 'Questions answered at the same time', help: 'Questions that need the model wait in line; this many run at once (1 to 4). 1 suits a CPU model.' },
+  { key: 'QUEUE_SCREENSHOTS_CONCURRENCY', group: 'Queues', kind: 'int', label: 'Screenshots read at the same time', help: 'Screenshots wait in line too (1 to 4).' },
+  { key: 'QUEUE_MAX_WAITING', group: 'Queues', kind: 'int', label: 'Longest line', help: 'How many may wait in each queue (1 to 100). More than that are asked to try again later; one person can have 2 waiting.' },
   { key: 'API_MIN_INTERVAL_MS', group: 'API limits and cache', kind: 'int', label: 'Minimum gap between requests (ms)', help: 'Between two requests to the same host (warframestat.us, warframe.market, the wiki, DE). 0 to 10000.' },
   { key: 'API_RATE_LIMIT_PER_MINUTE', group: 'API limits and cache', kind: 'int', label: 'Requests per minute (all hosts)', help: 'Global cap. Background work (the wiki crawler) may only use half of it. 5 to 600.' },
   { key: 'API_COOLDOWN_MINUTES', group: 'API limits and cache', kind: 'int', label: 'Cooldown after a 403 (minutes)', help: 'A host that answers 403 is left completely alone this long. A 429 follows its Retry-After header instead.' },

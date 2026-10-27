@@ -84,6 +84,11 @@ export const EnvSchema = z.object({
   API_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   API_PRICE_CACHE_SECONDS: z.coerce.number().int().min(10).max(3600).default(120),
   API_STABLE_CACHE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  /** Queues for the slow jobs (queue.ts): model answers and screenshot reads each run this many at a time, the rest wait in order. */
+  QUEUE_QUESTIONS_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+  QUEUE_SCREENSHOTS_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+  /** How many may wait in each queue; beyond that people are asked to try again later. */
+  QUEUE_MAX_WAITING: z.coerce.number().int().min(1).max(100).default(20),
   /** A self-hosted SearXNG (JSON format enabled), e.g. http://192.168.178.45:8888: adds fresh Warframe web results to answers. */
   SEARXNG_URL: z.string().url().optional(),
   MCP_ALLOWED_HOSTS: z

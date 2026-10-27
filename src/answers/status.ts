@@ -3,10 +3,25 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 /**
  * Lets slow answer steps say what they are doing ("Searching the wiki", "Reading a wiki page"...) without every function
  * in between passing a callback along. `withStatus` scopes a listener to one answer; `reportStatus` is a no-op outside one.
+ * The listener may also have a `queue` function: it hears where the answer stands in the line for the model (see queue.ts).
  */
-const store = new AsyncLocalStorage<(status: string) => void>();
+export interface StatusListener {
+  (status: string): void;
+  /** 0 when it is the answer's turn (or there was no wait), 1 for next in line, 2 after that... */
+  queue?: (position: number) => void;
+}
 
-export const withStatus = <T>(listener: ((status: string) => void) | undefined, fn: () => Promise<T>): Promise<T> => (listener ? store.run(listener, fn) : fn());
+const store = new AsyncLocalStorage<StatusListener>();
+
+export const withStatus = <T>(listener: StatusListener | undefined, fn: () => Promise<T>): Promise<T> => (listener ? store.run(listener, fn) : fn());
+
+export function reportQueue(position: number): void {
+  try {
+    store.getStore()?.queue?.(position);
+  } catch {
+    // A broken listener must never break an answer.
+  }
+}
 
 export function reportStatus(status: string): void {
   try {

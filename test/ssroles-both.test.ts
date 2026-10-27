@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { after, afterEach, describe, it } from 'node:test';
 import { Collection } from 'discord.js';
 import { Store } from '../src/db.js';
+import { screenshotQueue } from '../src/queue.js';
 import { ocr } from '../src/ssroles/ocr.js';
 import { handleRankRow, handleSsMessage } from '../src/ssroles/service.js';
 
@@ -86,5 +87,35 @@ describe('clan rank also gives the clan role', () => {
     assert.match(out.embed.data.title!, /Clan rank verified/);
     assert.deepEqual([...t.held.keys()].sort(), ['clan', 'squire']);
     assert.match(out.embed.data.description!, /Roles added/);
+  });
+});
+
+describe('screenshot queue', () => {
+  it('tells a member who has to wait where they are, then switches to the reading message on their turn', async () => {
+    const t = setup(['ss-roles-example.png'], 'u5');
+    const busy = screenshotQueue.join('someone-else');
+    const run = handleSsMessage(t.message as never, t.ctx as never);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.match(t.sent[0]!.content!, /Ordis is reading other screenshots.*next in line/s, 'first message is the queue notice');
+    assert.equal(t.sent.length, 1, 'nothing is read while somebody else is being read');
+    busy.release();
+    await run;
+    assert.match(t.sent[1]!.content!, /Reading your screenshot/, 'then the normal message');
+    assert.equal(t.sent.at(-1)!.embeds?.length, 1, 'and finally the result');
+    assert.deepEqual(screenshotQueue.snapshot(), { running: 0, waiting: 0 });
+  });
+
+  it('answers at once with the normal message when nobody is ahead', async () => {
+    const t = setup(['ss-roles-example.png'], 'u6');
+    await handleSsMessage(t.message as never, t.ctx as never);
+    assert.match(t.sent[0]!.content!, /Reading your screenshot/);
+  });
+
+  it('turns away a member whose screenshots are already waiting, without reading anything', async () => {
+    const t = setup(['ss-roles-example.png'], 'u7');
+    const held = [screenshotQueue.join('u7'), screenshotQueue.join('u7')];
+    await handleSsMessage(t.message as never, t.ctx as never);
+    assert.match(t.sent.at(-1)!.content!, /already waiting/);
+    held.forEach((h) => h.release());
   });
 });

@@ -27,7 +27,7 @@ export const ask: Command = {
         await interaction.editReply({ content: `${quote}\n${text}`.slice(0, 2000), allowedMentions: { parse: [] } });
         return { edit: (p) => interaction.editReply({ ...p, allowedMentions: { parse: [] } }), delete: () => interaction.deleteReply() };
       });
-      const answer = await smartAnswer(question, ctx, { id: interaction.user.id, name: interaction.user.displayName }, progress.set).finally(() => progress.stop());
+      const answer = await smartAnswer(question, ctx, { id: interaction.user.id, name: interaction.user.displayName }, progress.listener).finally(() => progress.stop());
       await interaction.editReply({ content: `${quote}\n${answer.content}`.slice(0, 2000), embeds: answer.embeds, allowedMentions: { parse: [] } });
       logAnswer(ctx, { id: interaction.user.id, name: interaction.user.displayName, channelId: interaction.channelId, via: 'ask' }, question, answer);
       return;

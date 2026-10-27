@@ -1,4 +1,6 @@
 import { runAgent } from '../agent/run.js';
+import { QueueFullError } from '../queue.js';
+import { withModelSlot } from './slot.js';
 import type { AgentRun } from '../agent/traces.js';
 import { aiToggle } from '../ai/settings.js';
 import type { AppContext } from '../context.js';
@@ -197,8 +199,13 @@ export async function refreshAnswers(ctx: AppContext, opts: { max?: number } = {
     for (const c of picks) {
       let result: RefreshResult;
       try {
-        result = await researchAnswer(ctx, c.question, deps);
+        // The research uses the model like any answer, so it waits its turn in the question queue (and members' questions go first in line as they arrive).
+        result = await withModelSlot(() => researchAnswer(ctx, c.question, deps));
       } catch (err) {
+        if (err instanceof QueueFullError) {
+          summary.note = 'stopped early: the question queue was full';
+          break;
+        }
         result = { ok: false, reason: err instanceof Error ? err.message : String(err) };
       }
       if (result.ok) {
