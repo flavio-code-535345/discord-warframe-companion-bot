@@ -13,6 +13,23 @@ const STATS_BASE = 'https://api.warframestat.us';
 /** warframe.market platform names (the bot's WARFRAME_PLATFORM) to warframestat.us ones. */
 const PLATFORM_PATH: Record<string, string> = { pc: 'pc', ps4: 'ps4', xbox: 'xb1', switch: 'swi' };
 export const feedUrlFor = (platform = 'pc'): string => `${STATS_BASE}/${PLATFORM_PATH[platform] ?? 'pc'}`;
+
+/** warframestat.us sites that are web pages, not the data API (a pasted link to the docs or the hub is not a world state endpoint). */
+const PAGE_HOSTS = new Set(['docs.warframestat.us', 'hub.warframestat.us', 'warframestat.us', 'www.warframestat.us']);
+
+/** The configured URL when it can be a data endpoint; null for empty or a known web page (then the public API is used). */
+export function usableFeedUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    if (PAGE_HOSTS.has(new URL(url).host.toLowerCase())) {
+      console.warn(`[worldstate] WORLDSTATE_URL ${url} is a web page, not the data API: using ${STATS_BASE} instead. Clear the setting.`);
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return url;
+}
 /** After a temporary failure the feed is left alone this long; a 403 or 429 pauses it for the cooldown / Retry-After the API client decided (see fetch.ts). */
 const FAILURE_COOLDOWN_MS = 5 * 60_000;
 const META_KEY = 'worldstate_last_call';
@@ -49,7 +66,7 @@ let lastCall: LastCall | null = null;
  * its raw answer survive restarts, so deploys don't cause extra calls).
  */
 export function configureWorldState(opts: { url?: string | undefined; platform?: string; enabled: boolean; intervalSeconds?: number; store?: MetaStore; cacheFile?: string }): void {
-  const next = opts.url || feedUrlFor(opts.platform);
+  const next = usableFeedUrl(opts.url) ?? feedUrlFor(opts.platform);
   // Another source (or platform) means the data held in memory is not its answer.
   if (next !== feedUrl) cached = null;
   feedUrl = next;

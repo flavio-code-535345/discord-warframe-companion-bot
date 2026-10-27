@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Store } from '../src/db.js';
 import { api } from '../src/warframe/fetch.js';
-import { configureWorldState, feedUrlFor, getWorldState, worldStateInfo } from '../src/warframe/worldstate.js';
+import { configureWorldState, feedUrlFor, getWorldState, usableFeedUrl, worldStateInfo } from '../src/warframe/worldstate.js';
 
 const realFetch = globalThis.fetch;
 beforeEach(() => {
@@ -83,5 +83,18 @@ describe('worldstate pacing', () => {
     await getWorldState();
     assert.equal(calls, 1);
     assert.equal(worldStateInfo().lastOk, true);
+  });
+
+  it('ignores a WORLDSTATE_URL that is a warframestat.us web page and uses the public API', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ cetusCycle: {}, fissures: [] }), { status: 200 });
+    }) as typeof fetch;
+    configureWorldState({ url: 'https://docs.warframestat.us/', enabled: true, platform: 'pc', intervalSeconds: 0, store: new Store(':memory:') });
+    await getWorldState();
+    assert.deepEqual(urls, ['https://api.warframestat.us/pc']);
+    assert.equal(usableFeedUrl('https://hub.warframestat.us/'), null);
+    assert.equal(usableFeedUrl('http://relay.lan:8080/pc'), 'http://relay.lan:8080/pc');
   });
 });
