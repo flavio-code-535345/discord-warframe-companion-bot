@@ -77,19 +77,24 @@ export interface SummaryChannel {
   id: string;
   guildId: string;
   send(payload: { content?: string; embeds?: EmbedBuilder[]; allowedMentions: { parse?: []; roles?: string[] } }): Promise<{ id: string }>;
-  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[] }): Promise<unknown>; delete(messageId: string): Promise<unknown> };
+  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[] }): Promise<unknown>; delete(messageId: string): Promise<unknown>; fetch(messageId: string): Promise<unknown> };
 }
+
+/** An unchanged summary is not edited, so every so often it is checked that the message is still there (someone may have deleted it). */
+const SUMMARY_VERIFY_MS = 10 * 60_000;
 
 interface SummaryRecord {
   messageId: string;
   hash: string;
   at: number;
+  /** When the message was last seen to exist. */
+  checked: number;
 }
 
 const readRecord = (raw: string | null): SummaryRecord | null => {
   try {
     const r = JSON.parse(raw ?? 'null') as Partial<SummaryRecord> | null;
-    return r && typeof r.messageId === 'string' && typeof r.hash === 'string' ? { messageId: r.messageId, hash: r.hash, at: Number(r.at) || 0 } : null;
+    return r && typeof r.messageId === 'string' && typeof r.hash === 'string' ? { messageId: r.messageId, hash: r.hash, at: Number(r.at) || 0, checked: Number(r.checked) || Number(r.at) || 0 } : null;
   } catch {
     return null;
   }
@@ -115,20 +120,33 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
   const embed = summaryEmbed(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
   const hash = summaryHash(embed);
   const saved = readRecord(store.getMeta(key));
-  if (saved && (saved.hash === hash || (!opts.force && now - saved.at < SUMMARY_MIN_EDIT_MS))) return link(saved.messageId);
+  // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
+  const gone = (err: unknown) => {
+    if ((err as { code?: number }).code !== 10008) throw err;
+  };
+  let missing = false;
+  if (saved && saved.hash === hash && now - saved.checked >= SUMMARY_VERIFY_MS) {
+    try {
+      await channel.messages.fetch(saved.messageId);
+      store.setMeta(key, JSON.stringify({ ...saved, checked: now }));
+    } catch (err) {
+      gone(err);
+      missing = true;
+    }
+  }
+  if (saved && !missing && (saved.hash === hash || (!opts.force && now - saved.at < SUMMARY_MIN_EDIT_MS))) return link(saved.messageId);
   embed.setTimestamp(now);
-  if (saved) {
+  if (saved && !missing) {
     try {
       await channel.messages.edit(saved.messageId, { embeds: [embed] });
-      store.setMeta(key, JSON.stringify({ messageId: saved.messageId, hash, at: now }));
+      store.setMeta(key, JSON.stringify({ messageId: saved.messageId, hash, at: now, checked: now }));
       return link(saved.messageId);
     } catch (err) {
-      // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
-      if ((err as { code?: number }).code !== 10008) throw err;
+      gone(err);
     }
   }
   const sent = await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-  store.setMeta(key, JSON.stringify({ messageId: sent.id, hash, at: now }));
+  store.setMeta(key, JSON.stringify({ messageId: sent.id, hash, at: now, checked: now }));
   return link(sent.id);
 }
 

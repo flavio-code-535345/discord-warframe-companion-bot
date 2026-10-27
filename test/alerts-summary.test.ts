@@ -88,6 +88,7 @@ describe('keeping the message up to date', () => {
     const log: string[] = [];
     let n = 0;
     let failEdit: unknown = null;
+    let failFetch: unknown = null;
     const channel: SummaryChannel = {
       id: 'chan',
       guildId: 'g',
@@ -101,10 +102,14 @@ describe('keeping the message up to date', () => {
           if (failEdit) throw failEdit;
         },
         delete: async (id) => void log.push(`delete ${id}`),
+        fetch: async (id) => {
+          log.push(`fetch ${id}`);
+          if (failFetch) throw failFetch;
+        },
       },
     };
     const ctx = { store, client: {}, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
-    return { ctx, channel, log, store, breakEdit: (e: unknown) => (failEdit = e) };
+    return { ctx, channel, log, store, breakEdit: (e: unknown) => (failEdit = e), breakFetch: (e: unknown) => (failFetch = e) };
   };
 
   it('posts once, then edits only when something changed (at most every two minutes unless something new happened)', async () => {
@@ -129,6 +134,24 @@ describe('keeping the message up to date', () => {
     assert.deepEqual(log, ['send', 'edit m1', 'send']);
     breakEdit(Object.assign(new Error('Missing Permissions'), { code: 50013 }));
     await assert.rejects(updateSummaryMessage(ctx, channel, world({ fissures: [], alerts: [] }), { force: true, now: now + 2 * MIN }), /Missing Permissions/);
+  });
+
+  it('notices a deleted message even when nothing in it changed, checking only every ten minutes', async () => {
+    const { ctx, channel, log, breakFetch } = setup();
+    // Nothing in it expires during the test, so the content stays the same.
+    const calm = () => world({ cetusCycle: { isDay: true, expiry: at(600) }, vallisCycle: { isWarm: true, expiry: at(600) }, cambionCycle: { state: 'fass', expiry: at(600) }, alerts: [], fissures: [] });
+    await updateSummaryMessage(ctx, channel, calm(), { force: false, now });
+    await updateSummaryMessage(ctx, channel, calm(), { force: false, now: now + 9 * MIN });
+    assert.deepEqual(log, ['send'], 'no check yet');
+    await updateSummaryMessage(ctx, channel, calm(), { force: false, now: now + 11 * MIN });
+    assert.deepEqual(log, ['send', 'fetch m1'], 'checked, still there');
+    await updateSummaryMessage(ctx, channel, calm(), { force: false, now: now + 12 * MIN });
+    assert.deepEqual(log, ['send', 'fetch m1'], 'and not again right away');
+    breakFetch(Object.assign(new Error('Unknown Message'), { code: 10008 }));
+    assert.equal(await updateSummaryMessage(ctx, channel, calm(), { force: false, now: now + 22 * MIN }), 'https://discord.com/channels/g/chan/m2');
+    assert.deepEqual(log, ['send', 'fetch m1', 'fetch m1', 'send'], 'gone: posted again');
+    breakFetch(Object.assign(new Error('Missing Access'), { code: 50001 }));
+    await assert.rejects(updateSummaryMessage(ctx, channel, calm(), { force: false, now: now + 40 * MIN }), /Missing Access/);
   });
 
   it('keeps the same message across a restart', async () => {
@@ -165,7 +188,7 @@ describe('the notifier', () => {
         sent.push(p);
         return { id: `m${sent.length}` };
       },
-      messages: { edit: async (id: string) => void edits.push(id), delete: async (id: string) => void deleted.push(id) },
+      messages: { edit: async (id: string) => void edits.push(id), delete: async (id: string) => void deleted.push(id), fetch: async () => ({}) },
     };
     const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
     const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
@@ -198,7 +221,7 @@ describe('the notifier', () => {
     const store = new Store(':memory:');
     store.updateSettings('g', { alertsChannelId: 'chan' });
     const sent: { content?: string; embeds?: { toJSON(): { fields?: { value: string }[] } }[] }[] = [];
-    const channel = { id: 'chan', guildId: 'g', isSendable: () => true, send: async (p: (typeof sent)[number]) => (sent.push(p), { id: `m${sent.length}` }), messages: { edit: async () => {}, delete: async () => {} } };
+    const channel = { id: 'chan', guildId: 'g', isSendable: () => true, send: async (p: (typeof sent)[number]) => (sent.push(p), { id: `m${sent.length}` }), messages: { edit: async () => {}, delete: async () => {}, fetch: async () => ({}) } };
     const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
     const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
     const future = Date.now() + 3_600_000;
@@ -219,7 +242,7 @@ describe('the "something new" message', () => {
     const store = new Store(':memory:');
     const log: string[] = [];
     let n = 0;
-    const channel: SummaryChannel = { id: 'chan', guildId: 'g', send: async () => (log.push('send'), { id: `n${++n}` }), messages: { edit: async () => {}, delete: async (id) => void log.push(`delete ${id}`) } };
+    const channel: SummaryChannel = { id: 'chan', guildId: 'g', send: async () => (log.push('send'), { id: `n${++n}` }), messages: { edit: async () => {}, delete: async (id) => void log.push(`delete ${id}`), fetch: async () => ({}) } };
     const ctx = { store } as never;
     await postNote(ctx, channel, { content: 'one', allowedMentions: {} }, now);
     await postNote(ctx, channel, { content: 'two', allowedMentions: {} }, now + MIN);
