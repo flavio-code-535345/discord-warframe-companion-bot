@@ -1,6 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import type { Letter } from '../rivens/grade.js';
 import { MIN_LISTINGS } from '../rivens/grade.js';
+import type { ScanResult } from '../rivens/scan.js';
 import type { GradeReport, RivenStatus, TopReport } from '../rivens/service.js';
 import { COLORS } from './embeds.js';
 
@@ -108,6 +109,25 @@ export function rivenTopEmbed(r: TopReport): EmbedBuilder {
     value: t.combos.map((c) => `${c.slugs.map(name).join(' + ')}: ${c.count}× (median ${plat(c.median)})`).join('\n').slice(0, 1000) || '-',
   });
   return embed.setFooter({ text: `${FOOTER} · read ${ago(r.fetchedAt)}${r.stale ? ' (older: warframe.market could not be reached)' : ''}` });
+}
+
+/** What OCR read from a screenshot, shown above the grade so the person can check it. */
+export function rivenReadEmbed(r: ScanResult): EmbedBuilder {
+  const name = (slug: string) => r.names[slug] ?? slug;
+  const rd = r.reading;
+  const val = (v: number | null | undefined) => (v === null || v === undefined ? '' : ` ${v}`);
+  const lines = [
+    `**Weapon:** ${rd.weapon?.name ?? '*not found*'}`,
+    ...rd.positives.map((p) => `+ ${name(p.slug)}${val(p.value)}`),
+    ...(rd.negative ? [`− ${name(rd.negative.slug)}${val(rd.negative.value)} (curse)`] : []),
+  ];
+  const embed = new EmbedBuilder().setColor(r.problem ? 0xe74c3c : COLORS.brand).setTitle('📷 What I read').setDescription(lines.join('\n'));
+  const notes: string[] = [];
+  if (r.problem) notes.push(r.problem);
+  if (rd.unsureSign.length) notes.push(`I couldn't see the + or − in front of ${rd.unsureSign.join(', ')}, so I guessed. If one is really the curse, use \`/riven grade\`.`);
+  if (rd.unknown.length) notes.push(`I couldn't match: ${rd.unknown.map((u) => `"${u}"`).join(', ')}`);
+  if (notes.length) embed.addFields({ name: 'Heads up', value: notes.join('\n').slice(0, 1000) });
+  return embed.setFooter({ text: `Read by OCR in ${(r.ms / 1000).toFixed(1)} s. Something wrong? Type it with /riven grade.` });
 }
 
 export function rivenStatusEmbed(s: RivenStatus): EmbedBuilder {

@@ -2,7 +2,7 @@ import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
 import { ApiBlockedError, api } from '../warframe/fetch.js';
 import { searchItems } from '../warframe/market.js';
-import { type Grade, type MarketComparable, type TopRolls, gradeRiven, topRolls } from './grade.js';
+import { type Grade, type MarketComparable, type StatInput, type TopRolls, gradeRiven, topRolls } from './grade.js';
 import { RIVEN_SCOPE, fetchComparable, fetchListings, getRivenAttributes, getRivenWeapons } from './market.js';
 import { parseStatList, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenListing, RivenWeapon } from './types.js';
@@ -101,14 +101,23 @@ export interface GradeReport {
 export async function gradeFor(ctx: AppContext, opts: { weapon: string; positives: string; negative?: string | undefined }): Promise<GradeReport> {
   const [weapon, attrs] = await Promise.all([resolveWeapon(opts.weapon), listOf('stat', getRivenAttributes)]);
   const positives = parseStatList(opts.positives, attrs);
-  if (positives.length < 2 || positives.length > 3) throw new UserError('A riven has 2 or 3 bonus stats: list them like "cc cd ms" or "Critical Chance 180, Multishot 120".');
-  if (new Set(positives.map((p) => p.slug)).size !== positives.length) throw new UserError('Each bonus stat can only appear once.');
-  let negative: { slug: string } | null = null;
+  let negative: StatInput | null = null;
   if (opts.negative?.trim()) {
     const a = resolveStat(attrs, opts.negative.replace(NUMBER_TAIL, ''));
     if (!a) throw new UserError(`I don't know the riven stat "${opts.negative}".`);
-    if (a.positiveOnly) throw new UserError(`${a.name} can only be a bonus, never a curse.`);
     negative = { slug: a.slug };
+  }
+  return gradeResolved(ctx, weapon, attrs, positives, negative);
+}
+
+/** Grades a riven whose weapon and stats are already known (typed in, or read from a screenshot). */
+export async function gradeResolved(ctx: AppContext, weapon: RivenWeapon, attrs: RivenAttribute[], positives: StatInput[], negative: StatInput | null): Promise<GradeReport> {
+  if (positives.length < 2 || positives.length > 3) throw new UserError('A riven has 2 or 3 bonus stats: list them like "cc cd ms" or "Critical Chance 180, Multishot 120".');
+  if (new Set(positives.map((p) => p.slug)).size !== positives.length) throw new UserError('Each bonus stat can only appear once.');
+  const nameOf = (slug: string) => attrs.find((x) => x.slug === slug)?.name ?? slug;
+  if (negative) {
+    if (attrs.find((x) => x.slug === negative.slug)?.positiveOnly) throw new UserError(`${nameOf(negative.slug)} can only be a bonus, never a curse.`);
+    if (positives.some((p) => p.slug === negative.slug)) throw new UserError('The curse can not be one of the bonus stats.');
   }
   for (const p of positives) {
     const a = attrs.find((x) => x.slug === p.slug);
