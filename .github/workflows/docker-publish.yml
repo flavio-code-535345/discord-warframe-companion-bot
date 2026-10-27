@@ -15,6 +15,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Override with a repository variable DOCKERHUB_IMAGE (Settings → Secrets and variables → Actions → Variables).
+  IMAGE: ${{ vars.DOCKERHUB_IMAGE || format('{0}/rats-den-warframe-bot', secrets.DOCKER_USERNAME) }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -28,12 +32,10 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # Runs at the same time as the tests. Outside pull requests it pushes the image under its sha-<commit> tag only, which nothing
+  # deploys; the tags that do get deployed (latest, versions) are added by the publish job once the tests have passed.
   docker:
-    needs: test
     runs-on: ubuntu-latest
-    env:
-      # Override with a repository variable DOCKERHUB_IMAGE (Settings → Secrets and variables → Actions → Variables).
-      IMAGE: ${{ vars.DOCKERHUB_IMAGE || format('{0}/rats-den-warframe-bot', secrets.DOCKER_USERNAME) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -53,13 +55,9 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
-            type=ref,event=pr
 
-      - name: Build (and push outside pull requests)
+      - name: Build (and push the sha tag outside pull requests)
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -69,3 +67,34 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Gives the tested image its deployable tags (latest on main, versions on tags) without building again.
+  publish:
+    needs: [test, docker]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Add the tags to the tested image
+        run: |
+          SOURCE="${IMAGE}:sha-${GITHUB_SHA::7}"
+          TAGS=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create $TAGS "$SOURCE"
