@@ -95,6 +95,15 @@ describe('riven channel', () => {
     assert.ok(d.split('\n').length === 1);
   });
 
+  it('grades a card with one smudged stat line anyway, and marks the interpreted stat with a ?', async () => {
+    const t = setup([{ name: 'a.png', type: 'image/png' }]);
+    await handleRivenMessage(t.message as never, t.ctx as never, reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Cr#t?cal Dam#ge', '+95.3% Multishot'));
+    const d = t.replies[0]!.embeds![0]!.data.description!;
+    assert.match(d, /^# [SABCD]\n/, 'it is graded, not refused');
+    assert.match(d, /\+Critical Damage 112\.5\?/);
+    assert.doesNotMatch(d, /Critical Chance 168\.7\?/, 'only the interpreted stat carries the mark');
+  });
+
   it('answers each picture of a message, in one reply', async () => {
     const t = setup([{ name: 'a.png', type: 'image/png' }, { name: 'b.png', type: 'image/png' }]);
     await handleRivenMessage(t.message as never, t.ctx as never, reads('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage'));

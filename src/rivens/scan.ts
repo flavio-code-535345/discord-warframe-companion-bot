@@ -3,8 +3,9 @@ import { webpToPng } from '../imaging/webp.js';
 import { UserError } from '../services/clan.js';
 import type { OcrLine } from '../ssroles/parse.js';
 import { ocr } from '../ssroles/ocr.js';
-import { type CardReading, parseRivenCard } from './card.js';
+import { type CardReading, interpretUnknown, parseRivenCard } from './card.js';
 import { getRivenAttributes, getRivenWeapons } from './market.js';
+import { erasePointer } from './pointer.js';
 import { prepareForOcr } from './prepare.js';
 import { type GradeReport, attributeNames, gradeResolved } from './service.js';
 
@@ -34,6 +35,9 @@ export function sniffMime(b: Uint8Array): 'image/png' | 'image/jpeg' | 'image/we
   if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
   return null;
 }
+
+/** A line of OCR text the way the card parser sees it (single spaces, trimmed). */
+const tidy = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
 const enough = (r: CardReading): boolean => r.weapon !== null && r.positives.length >= 2;
 const richness = (r: CardReading): number => (r.weapon ? 2 : 0) + r.positives.length + (r.negative ? 1 : 0);
@@ -65,24 +69,38 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
     throw new UserError(`I can read PNG, JPEG and WebP screenshots, but I couldn't open this one (${what}). Is it damaged or another format?`);
   }
 
-  const read = async (image: Uint8Array) => {
+  const variants: OcrLine[][] = [];
+  const read = async (image: Uint8Array, scale: number) => {
     try {
       const t = Date.now();
       const lines = await recognize(image);
       console.log(`[riven] OCR ${Date.now() - t} ms, ${lines.length} lines (picture ${prepared.width}x${prepared.height}, from ${Math.round(picture.length / 1024)} KB ${pictureMime})`);
-      return { lines: lines.length, reading: parseRivenCard(lines, attrs, weapons) };
+      variants.push(lines);
+      return { lines: lines.length, ocrLines: lines, scale, reading: parseRivenCard(lines, attrs, weapons) };
     } catch (err) {
       console.error('[riven] OCR failed:', err instanceof Error ? err.message : err);
       throw new UserError('I could not read that picture (the text reader failed). Try again, or use /riven grade.');
     }
   };
-  let best = await read(prepared.png);
+  let best = await read(prepared.png, prepared.scale);
   // (not for a huge picture: reading it unshrunk takes minutes)
   if (!enough(best.reading) && !prepared.shrunk) {
-    const original = await read(bytes);
+    const original = await read(bytes, 1);
     if (richness(original.reading) > richness(best.reading)) best = original;
   }
-  const { reading } = best;
+  // Something unreadable on a stat line is usually the mouse pointer: paint it out of the picture and read again.
+  if (best.reading.weapon && best.reading.unknown.length && !prepared.shrunk) {
+    const first = best.reading.unknown[0]!;
+    const line = best.ocrLines.find((l) => tidy(l.text) === first);
+    const erased = line ? erasePointer(bytes, mime, { x0: line.x0 / best.scale, y0: line.y0 / best.scale, x1: line.x1 / best.scale, y1: line.y1 / best.scale }) : null;
+    const again = erased ? prepareForOcr(erased, 'image/png') : null;
+    if (again) {
+      const fixed = await read(again.png, again.scale);
+      if (fixed.reading.unknown.length < best.reading.unknown.length || richness(fixed.reading) > richness(best.reading)) best = fixed;
+    }
+  }
+  // Whatever is still unreadable is interpreted from the value, the sign and what is left of the name, and shown with a "?".
+  const reading = interpretUnknown(best.reading, variants.flatMap((v) => v.map((l) => tidy(l.text))), attrs);
   const names = attributeNames(attrs);
   const done = (report: GradeReport | null, problem: string | null): ScanResult => ({ reading, names, report, problem, ms: Date.now() - t0, lines: best.lines });
 
@@ -93,7 +111,7 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
     const lines = reading.unknown.map((u) => `"${u}"`).join(', ');
     return done(
       null,
-      `I couldn't read ${reading.unknown.length === 1 ? 'one of the stat lines' : 'some of the stat lines'} (${lines}), and a missing stat changes the grade, so I won't guess. If the mouse pointer or something else covers the text, move it away and take the screenshot again. Or type it in with /riven grade: weapon ${reading.weapon.name}, ${read.join(', ')}${read.length ? ' and ' : ''}the stat I couldn't read.`,
+      `I couldn't read ${reading.unknown.length === 1 ? 'one of the stat lines' : 'some of the stat lines'} (${lines}), and a missing stat changes the grade. Move the mouse pointer (or whatever covers the text) away and screenshot again, or type it in with /riven grade: weapon ${reading.weapon.name}, ${read.join(', ')}${read.length ? ' and ' : ''}the stat I couldn't read.`,
     );
   }
   if (reading.positives.length < 2) return done(null, `I only found ${reading.positives.length} bonus stat${reading.positives.length === 1 ? '' : 's'} (a riven has 2 or 3). Crop the picture to the card so every stat line is readable.`);

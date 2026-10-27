@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { Store } from '../src/db.js';
-import { findWeapon, parseRivenCard } from '../src/rivens/card.js';
+import { findWeapon, interpretUnknown, parseRivenCard } from '../src/rivens/card.js';
+import { erasePointer } from '../src/rivens/pointer.js';
 import { resetRivenFilter, resetRivenLists } from '../src/rivens/market.js';
 import { prepareForOcr, scaleFor } from '../src/rivens/prepare.js';
 import { scanCard } from '../src/rivens/scan.js';
@@ -118,7 +119,7 @@ describe('a real screenshot', () => {
     }
   });
 
-  it('refuses to grade around a stat it could not read, and explains how to fix it', async () => {
+  it('works out a stat line it could not read from its value and what is left of its name, and marks it as a guess', async () => {
     const store = new Store(':memory:');
     const ctx = { store, config: { RIVEN_HIGH_PRICE: 1000 } } as never;
     const realFetch = globalThis.fetch;
@@ -134,9 +135,13 @@ describe('a real screenshot', () => {
       const pic = new PNG({ width: 30, height: 30 });
       pic.data.fill(255);
       const result = await scanCard(ctx, PNG.sync.write(pic), 'image/png', async () => cleaned);
-      assert.equal(result.report, null);
-      assert.match(result.problem!, /couldn't read one of the stat lines.*\+183\.5%.*won't guess.*mouse pointer/);
-      assert.match(result.problem!, /weapon Zarr, Ammo Efficiency 54\.4, Damage 172\.2, curse Zoom and the stat I couldn't read/);
+      assert.deepEqual(result.reading.unknown, [], 'the line is interpreted, not dropped');
+      assert.equal(result.reading.guessed.length, 1);
+      const guessed = result.reading.positives.find((p) => p.value === 183.5)!;
+      assert.ok(guessed, 'the value of the unreadable line is kept');
+      assert.equal(result.names[guessed.slug], result.reading.guessed[0]);
+      assert.deepEqual(result.reading.positives.map((p) => p.slug).filter((s) => s !== guessed.slug), ['ammo_efficiency', 'damage']);
+      assert.deepEqual(result.reading.negative, { slug: 'zoom', value: 50.9 });
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -178,6 +183,59 @@ describe('noise around the stat lines', () => {
   it('still reads every line when the name could not be found', () => {
     const r = parseRivenCard(lines(['+98.3% Cold', '+102.6% Corrosive']), real, weapons);
     assert.equal(r.positives.length, 2);
+  });
+});
+
+describe('the mouse pointer', () => {
+  /** A dark card with a lavender text bar and a white arrow-shaped pointer lying on it. */
+  const card = (withPointer: boolean) => {
+    const W = 200;
+    const H = 120;
+    const p = new PNG({ width: W, height: H });
+    for (let i = 0; i < W * H; i++) p.data.set([30, 24, 44, 255], i * 4);
+    for (let y = 50; y < 62; y++) for (let x = 20; x < 180; x++) p.data.set([190, 160, 225, 255], (y * W + x) * 4);
+    if (withPointer) for (let y = 44; y < 72; y++) for (let x = 100; x < 100 + Math.min(11, 3 + Math.floor((y - 44) / 2)); x++) p.data.set([252, 252, 252, 255], (y * W + x) * 4);
+    return PNG.sync.write(p);
+  };
+
+  it('paints a white pointer out of the band it is asked to look in, and leaves the lavender text alone', () => {
+    const fixed = erasePointer(card(true), 'image/png', { x0: 20, y0: 48, x1: 180, y1: 64 })!;
+    assert.ok(fixed);
+    const png = PNG.sync.read(Buffer.from(fixed));
+    const at = (x: number, y: number) => [...png.data.subarray((y * 200 + x) * 4, (y * 200 + x) * 4 + 3)];
+    assert.deepEqual(at(105, 60), [30, 24, 44], 'where the pointer was, the background colour');
+    assert.deepEqual(at(40, 55), [190, 160, 225], 'the text away from it is untouched');
+  });
+
+  it('does nothing when there is no pointer there, or when it is outside the band', () => {
+    assert.equal(erasePointer(card(false), 'image/png', { x0: 20, y0: 48, x1: 180, y1: 64 }), null);
+    assert.equal(erasePointer(card(true), 'image/png', { x0: 20, y0: 0, x1: 60, y1: 10 }), null);
+  });
+});
+
+describe('interpreting an unreadable stat line', () => {
+  const attrs: RivenAttribute[] = ['Critical Chance', 'Critical Damage', 'Multishot', 'Zoom', 'Weapon Recoil', 'Punch Through'].map((name) => ({ slug: name.toLowerCase().replace(/ /g, '_'), name, positiveOnly: name === 'Punch Through', negativeOnly: false }));
+  const base = { weapon: { slug: 'zarr', name: 'Zarr' }, positives: [{ slug: 'multishot', value: 90 }], negative: null, unsureSign: [], statLines: [], guessed: [] };
+
+  it('picks the stat that fits what is left of the name, from every reading of the picture', () => {
+    const r = interpretUnknown({ ...base, unknown: ['+183.5% clk] al'] }, ['+183.5% clk] al', '+183.5% Crltical Chanc', '+90% Multishot'], attrs);
+    assert.deepEqual(r.positives, [{ slug: 'multishot', value: 90 }, { slug: 'critical_chance', value: 183.5 }]);
+    assert.deepEqual(r.guessed, ['Critical Chance']);
+    assert.deepEqual(r.unknown, []);
+  });
+
+  it('uses the sign: a minus line becomes the curse, and never a stat the card already has', () => {
+    const r = interpretUnknown({ ...base, unknown: ['-42.1% Zo?m'] }, ['-42.1% Zo?m'], attrs);
+    assert.deepEqual(r.negative, { slug: 'zoom', value: 42.1 });
+    const again = interpretUnknown({ ...base, positives: [{ slug: 'critical_chance', value: 100 }], unknown: ['+50% Critical Chance'] }, ['+50% Critical Chance'], attrs);
+    assert.notEqual(again.positives.at(-1)?.slug, 'critical_chance', 'the same stat is not added twice');
+    assert.equal(again.positives.length, 2);
+  });
+
+  it('still picks something when nothing of the name survived (the value and sign are known)', () => {
+    const r = interpretUnknown({ ...base, unknown: ['+120.5% #'] }, ['+120.5% #'], attrs);
+    assert.equal(r.positives.length, 2);
+    assert.equal(r.guessed.length, 1);
   });
 });
 

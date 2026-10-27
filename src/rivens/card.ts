@@ -22,6 +22,8 @@ export interface CardReading {
   unknown: string[];
   /** The stat lines as OCR gave them, for the "I read" message. */
   statLines: string[];
+  /** Stats whose name was unreadable and were worked out from what was left (see `interpretUnknown`). */
+  guessed: string[];
 }
 
 const MINUS = /[-−–—‒]/;
@@ -120,7 +122,11 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
   const unknown: string[] = [];
   for (const text of body) {
     const m = STAT_LINE.exec(text);
-    if (!m) continue;
+    if (!m) {
+      // A signed or decimal value with a percent sign but no readable name ("+112.5% Cr#t?cal"): still a stat line, to be interpreted.
+      if (/[+\-−–—‒]\s*\d{1,4}(?:[.,]\d{1,2})?\s*%|\d[.,]\d{1,2}\s*%/.test(text)) unknown.push(text);
+      continue;
+    }
     const [, sign, number, unit, name] = m;
     // A stat line has a % or an explicit sign; "Rank 0/8" or "MR 15" don't, and the name must not be a bare unit letter.
     if (!unit && !sign) continue;
@@ -152,5 +158,66 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
     else positives.push({ slug: s.attr.slug, value: s.value });
   });
 
-  return { weapon, positives: positives.slice(0, 3), negative, unsureSign, unknown, statLines: stats.map((s) => s.line) };
+  return { weapon, positives: positives.slice(0, 3), negative, unsureSign, unknown, statLines: stats.map((s) => s.line), guessed: [] };
+}
+
+/** Stats that are on most rivens people ask about: a tie-breaker when the garbled text fits several names about equally. */
+const COMMON = /critical (chance|damage)|^damage$|multishot|status (chance|duration)|fire rate|attack speed|cold|heat|toxin|electricity|slash|puncture|impact|reload|magazine|ammo|projectile|range|zoom/i;
+
+const letters = (s: string): string => s.toLowerCase().replace(/[^a-z]/g, '');
+const similarity = (a: string, b: string): number => {
+  const x = letters(a);
+  const y = letters(b);
+  const longest = Math.max(x.length, y.length);
+  return longest ? 1 - distance(x, y) / longest : 0;
+};
+
+const LOOSE = /([+\-−–—‒]?)\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*%?(.*)/;
+
+/**
+ * A stat line whose name could not be read (a mouse pointer over it, a smudge) is not dropped: the value and sign are still known, so
+ * the likeliest stat is worked out from what is left of its name in every reading of the picture and from the stats the card does not
+ * already have. It is a guess, so the stat is listed in `guessed` and the card shows it with a "?".
+ */
+export function interpretUnknown(reading: CardReading, texts: string[], attrs: RivenAttribute[]): CardReading {
+  if (!reading.unknown.length) return reading;
+  const used = new Set([...reading.positives.map((p) => p.slug), ...(reading.negative ? [reading.negative.slug] : [])]);
+  const positives = [...reading.positives];
+  let negative = reading.negative;
+  const guessed = [...reading.guessed];
+  const unknown: string[] = [];
+  for (const line of reading.unknown) {
+    const m = LOOSE.exec(line);
+    if (!m) {
+      unknown.push(line);
+      continue;
+    }
+    const [, sign, number] = m;
+    const value = Number(number!.replace(',', '.'));
+    const minus = Boolean(sign && MINUS.test(sign));
+    const evidence = texts.filter((t) => t.includes(number!)).map((t) => LOOSE.exec(t.slice(t.indexOf(number!) - (/[+\-−–—‒]/.test(t[t.indexOf(number!) - 1] ?? '') ? 1 : 0)))?.[3] ?? '');
+    let best: { a: RivenAttribute; score: number } | null = null;
+    for (const a of attrs) {
+      if (used.has(a.slug)) continue;
+      const asCurse = minus !== lowerIsBetter(a);
+      if (asCurse ? a.positiveOnly : a.negativeOnly) continue;
+      const fit = Math.max(0, ...evidence.map((e) => similarity(e, a.name)));
+      const score = fit + (COMMON.test(a.name) ? 0.08 : 0);
+      if (!best || score > best.score) best = { a, score };
+    }
+    if (!best) {
+      unknown.push(line);
+      continue;
+    }
+    const curse = minus !== lowerIsBetter(best.a);
+    if (curse && !negative) negative = { slug: best.a.slug, value };
+    else if (!curse && positives.length < 3) positives.push({ slug: best.a.slug, value });
+    else {
+      unknown.push(line);
+      continue;
+    }
+    used.add(best.a.slug);
+    guessed.push(best.a.name);
+  }
+  return { ...reading, positives, negative, guessed, unknown };
 }

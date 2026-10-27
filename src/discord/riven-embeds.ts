@@ -158,7 +158,9 @@ export function scanSummary(r: ScanResult): ScanSummary {
   const name = (slug: string) => r.names[slug] ?? slug;
   const rd = r.reading;
   const val = (v: number | null | undefined) => (v === null || v === undefined ? '' : ` ${v}`);
-  const stats = [...rd.positives.map((p) => `+${name(p.slug)}${val(p.value)}`), ...(rd.negative ? [`−${name(rd.negative.slug)}${val(rd.negative.value)}`] : [])].join(' · ');
+  // A stat that was worked out from a smudged line (not read) carries a "?".
+  const mark = (slug: string) => (rd.guessed.includes(name(slug)) ? '?' : '');
+  const stats = [...rd.positives.map((p) => `+${name(p.slug)}${val(p.value)}${mark(p.slug)}`), ...(rd.negative ? [`−${name(rd.negative.slug)}${val(rd.negative.value)}${mark(rd.negative.slug)}`] : [])].join(' · ');
   const out = (error: string | null, letter: Letter | null = null, price: string | null = null): ScanSummary => ({ weapon: rd.weapon?.name ?? null, stats, letter, price, error });
   if (!rd.weapon) return out("Couldn't find the weapon name. Crop the picture to the riven card.");
   if (rd.unknown.length) return out("Couldn't read every stat line (is the mouse over the card?). Try another screenshot.");
