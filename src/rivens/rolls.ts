@@ -1,5 +1,5 @@
 import type { StatInput } from './grade.js';
-import { CATEGORIES, DEFAULT_MULTIPLIER, baseOf, categoryOf } from './ranges.js';
+import { CATEGORIES, DEFAULT_MULTIPLIER, baseOf, categoryOf, statKey } from './ranges.js';
 import type { RivenListing, RivenWeapon } from './types.js';
 
 /**
@@ -99,7 +99,9 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
         const base = baseOf(kind, s.slug);
         if (base === null || !w) { fits = false; break; }
         if (value === null) { out.push(none); continue; }
-        const raw = (Math.abs(value) / (base * k * w) - 1) * 100;
+        // A faction multiplier (x1.51, x0.74) is measured by how far it is from x1.
+        const measured = statKey(s.slug) === 'faction' ? Math.abs(value - 1) : Math.abs(value);
+        const raw = (measured / (base * k * w) - 1) * 100;
         const deviation = curse ? -raw : raw;
         if (Math.abs(deviation) > FIT) { fits = false; break; }
         const d = clampDeviation(deviation);

@@ -2,7 +2,8 @@ import { distance } from '../ssroles/parse.js';
 import type { OcrLine } from '../ssroles/parse.js';
 import type { StatInput } from './grade.js';
 import type { Box } from './pointer.js';
-import { norm, resolveStat } from './stats.js';
+import { statKey } from './ranges.js';
+import { canon, norm, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenWeapon } from './types.js';
 
 /**
@@ -33,6 +34,16 @@ const MINUS = /[-−–—‒]/;
 // Stray symbols between the value and the name are skipped: the game draws an element's icon there ("+98.3% * Cold" is what OCR makes of it).
 const STAT_LINE = /([+\-−–—‒]?)\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(%|s\b|m\b)?\s*(?:[^A-Za-z0-9\s+\-−–—‒]+\s*)*([A-Za-z][A-Za-z '/\-]{2,})/;
 
+/** "x0.75 Damage to Infested": a faction multiplier, with a stray letter or two around it. */
+const MULTIPLIER_LINE = /(?:^|[^A-Za-z0-9])[xX]\s*(\d(?:[.,]\d{1,2})?)\s+([A-Za-z][A-Za-z '/\-]{2,})/;
+
+/** No riven stat reaches 1000%: a longer number has a symbol read as a digit in front of it (the "+" turned into a "1" in "1252.6%"). */
+const plausible = (number: string): number => {
+  const digits = number.replace(',', '.');
+  const v = Number(digits);
+  return v >= 1000 && /^[0-9]{4}/.test(digits) ? Number(digits.slice(1)) : v;
+};
+
 /**
  * Stats the game shows with a minus when they are a *bonus* (less recoil is better), and with a plus when they are the curse. The
  * market names the attribute "Weapon Recoil" or "Recoil"; matching the name keeps this independent of its slug.
@@ -43,7 +54,7 @@ const lowerIsBetter = (a: RivenAttribute): boolean => /recoil/i.test(a.name) || 
 export function closestAttribute(attrs: RivenAttribute[], text: string): RivenAttribute | null {
   const exact = resolveStat(attrs, text);
   if (exact) return exact;
-  const q = norm(text);
+  const q = canon(text);
   if (q.length < 5) return null;
   const limit = Math.max(1, Math.floor(q.length / 6));
   let best: { a: RivenAttribute; d: number } | null = null;
@@ -128,13 +139,26 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
   const weapon = findWeapon(weapons, texts);
   // The stat lines sit under the riven's name and above the footer ("MR 16", rank, re-rolls). OCR also finds noise in the artwork above the
   // name, and a signed number in it must not count as a stat (it would push a real one out, or block grading as unreadable).
-  const title = weaponFromTitle(weapons, texts);
+  // A riven with only two stat names has no hyphenated title ("Ripkas Sciata"): then the line that holds the weapon's name is where the stats start.
+  const hyphenated = weaponFromTitle(weapons, texts);
+  const named = hyphenated ? hyphenated.index : weapon ? texts.findIndex((t) => norm(t).includes(norm(weapon.name))) : -1;
+  const title = named >= 0 ? { index: named } : null;
   const footer = texts.findIndex((t, i) => i > (title?.index ?? -1) && /(^|[^A-Za-z])MR *[0-9]/.test(t));
   const body = texts.slice(title ? title.index + 1 : 0, footer >= 0 ? footer : undefined);
 
   const found: { attr: RivenAttribute; value: number; sign: '+' | '-' | null; line: string }[] = [];
   const unknown: string[] = [];
   for (const text of body) {
+    // Faction damage is a multiplier: "x1.55 Damage to Grineer" is a bonus, "x0.75 Damage to Infested" the curse.
+    const mult = MULTIPLIER_LINE.exec(text);
+    if (mult) {
+      const attr = matchName(attrs, mult[2]!.trim());
+      if (attr && statKey(attr.name) === 'faction') {
+        const value = Number(mult[1]!.replace(',', '.'));
+        found.push({ attr, value, sign: value < 1 ? '-' : '+', line: text });
+        continue;
+      }
+    }
     const m = STAT_LINE.exec(text);
     if (!m) {
       // A signed or decimal value with a percent sign but no readable name ("+112.5% Cr#t?cal"): still a stat line, to be interpreted.
@@ -150,7 +174,7 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
       if (sign || number!.includes('.') || number!.includes(',')) unknown.push(text);
       continue;
     }
-    found.push({ attr, value: Number(number!.replace(',', '.')), sign: sign ? (MINUS.test(sign) ? '-' : '+') : null, line: text });
+    found.push({ attr, value: plausible(number!), sign: sign ? (MINUS.test(sign) ? '-' : '+') : null, line: text });
   }
 
   // The first four stat lines are the card's; a stat seen twice (a line OCR split or repeated) counts once.

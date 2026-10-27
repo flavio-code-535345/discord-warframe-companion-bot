@@ -3,6 +3,7 @@ import * as PImage from 'pureimage';
 import { FONT, FONT_BOLD, loadFonts } from '../imaging/font.js';
 import { decodeImage } from '../ssroles/emblem.js';
 import type { Box } from './pointer.js';
+import { statKey } from './ranges.js';
 import type { RollGrade } from './rolls.js';
 import type { ScanResult } from './scan.js';
 
@@ -95,7 +96,9 @@ function rows(r: ScanResult): { label: string; grade: RollGrade | null }[] {
   const val = (v: number | null | undefined) => (v === null || v === undefined ? '' : `${Math.abs(v)}%`);
   const mark = (slug: string) => (r.reading.guessed.includes(name(slug)) ? '?' : '');
   const stats = [...r.reading.positives.map((p) => ({ ...p, curse: false })), ...(r.reading.negative ? [{ ...r.reading.negative, curse: true }] : [])];
-  return stats.map((s, i) => ({ label: `${s.curse ? '−' : '+'}${val(s.value)} ${name(s.slug)}${mark(s.slug)}:`, grade: rolls[i] ?? null }));
+  // A faction multiplier is shown the way the card shows it (x0.75), not as a percentage.
+  const shown = (s: { slug: string; value?: number | null | undefined; curse: boolean }) => (statKey(s.slug) === 'faction' && s.value ? `x${s.value}` : `${s.curse ? '−' : '+'}${val(s.value)}`);
+  return stats.map((s, i) => ({ label: `${shown(s)} ${name(s.slug)}${mark(s.slug)}:`, grade: rolls[i] ?? null }));
 }
 
 /** Draws the picture, or returns null when there is nothing to show next to (no picture, no weapon, no stats). */
@@ -136,7 +139,10 @@ export async function rivenPicture(r: ScanResult): Promise<Buffer | null> {
   let y = PAD + HEAD_H;
   for (const { label, grade } of lines) {
     ctx.fillStyle = LAVENDER;
-    ctx.font = `25px ${FONT}`;
+    // A long stat name ("Melee Damage on Heavy Attack") is made smaller until it fits the panel.
+    let size = 25;
+    ctx.font = `${size}px ${FONT}`;
+    while (size > 14 && ctx.measureText(label).width > PANEL_W - PAD * 2) ctx.font = `${--size}px ${FONT}`;
     ctx.fillText(label, leftW + PAD, y + 12);
     if (grade?.letter && grade.deviation !== null) {
       ctx.fillStyle = COLORS[grade.letter] ?? MUTED;

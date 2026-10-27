@@ -134,6 +134,22 @@ describe('a real screenshot', () => {
     assert.ok(weak.positives.some((p) => p.slug === 'weak_point_damage'), 'a real Weak Point Damage line still matches');
   });
 
+  /** What the real OCR engine returned for a melee riven (Ripkas Sciata): the cleaned picture read the "+" as a "1", and the curse is a faction multiplier. */
+  it('reads a melee card with a faction multiplier as the curse, and a "+" that became a "1"', () => {
+    const melee: RivenAttribute[] = ['Slash', 'Puncture', 'Base Damage / Melee Damage', 'Melee Damage on Heavy Attack', 'Damage vs Infested', 'Damage vs Grineer', 'Critical Chance', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/[^a-z]+/g, '_'), name, positiveOnly: false, negativeOnly: false }));
+    const ripkas: RivenWeapon[] = [{ slug: 'ripkas', name: 'Ripkas' }];
+    for (const lines of [
+      at([[11, 'V 0-9-9'], [990, 'Ripkas Sciata'], [1110, '+194.1% Slash'], [1202, '4d 1252.6% Melee Damage'], [1290, 'X0.75 Damage to Infestedg'], [1410, 'es'], [1362, '» MR 10 REO 5. N']]),
+      at([[330, 'Ripkas Sciata'], [370, '+194.1% Slash'], [401, 'd +252.6% Melee Damage'], [430, '| x0.75 Damage to Infested,'], [451, 'ly MR 10 O15 IN']]),
+    ]) {
+      const r = parseRivenCard(lines, melee, ripkas);
+      assert.equal(r.weapon!.slug, 'ripkas');
+      assert.deepEqual(r.positives, [{ slug: 'slash', value: 194.1 }, { slug: 'base_damage_melee_damage', value: 252.6 }]);
+      assert.deepEqual(r.negative, { slug: 'damage_vs_infested', value: 0.75 });
+      assert.deepEqual(r.unknown, []);
+    }
+  });
+
   it('works out a stat line it could not read from its value and what is left of its name, and marks it as a guess', async () => {
     const store = new Store(':memory:');
     const ctx = { store, config: { RIVEN_HIGH_PRICE: 1000 } } as never;

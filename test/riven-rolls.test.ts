@@ -103,6 +103,15 @@ describe('grading from the game ranges', () => {
     assert.deepEqual(r.map((x) => x.letter), ['C-', 'A+', 'A-', 'A']);
   });
 
+  it('grades a melee card with a faction multiplier as the curse (Ripkas)', () => {
+    const r = gradeRolls([], [{ slug: 'slash', value: 194.1 }, { slug: 'base_damage_melee_damage', value: 252.6 }], { slug: 'damage_vs_infested', value: 0.75 }, { type: 'melee' });
+    const d = devs(r);
+    near(d.slash, 8.92, 'slash');
+    near(d.base_damage_melee_damage, 3.28, 'melee damage');
+    near(d.damage_vs_infested, 6.48, 'faction curse: x0.75 is milder than the average x0.733');
+    assert.deepEqual(r.map((x) => x.letter), ['A+', 'B+', 'A']);
+  });
+
   it('falls back to the listings when no kind of weapon fits (here: a stat the table does not have)', () => {
     const odd = gradeRolls(scisco(), [{ slug: 'reload_speed', value: 46.9 }, { slug: 'heat', value: 101.3 }, { slug: 'puncture', value: 128.7 }], { slug: 'damage', value: 167.8 });
     assert.ok(Math.abs(odd.find((x) => x.slug === 'heat')!.deviation! - 9.159) < 0.15, 'the older, listing-based estimate');
@@ -112,7 +121,10 @@ describe('grading from the game ranges', () => {
     for (const { category, name } of rawNames()) assert.notEqual(statKey(name), null, `${category}: ${name}`);
     const same: [string, string][] = [['Heat', 'elemental'], ['Viral', 'combined'], ['Fire Rate / Attack Speed', 'rate'], ['fire_rate_attack_speed', 'rate'], ['Weapon Recoil', 'recoil'], ['Base Damage / Melee Damage', 'damage'], ['Weak Point Damage', 'weakpoint'], ['Puncture', 'physical'], ['Critical Chance on Slide Attack', 'crit_slide']];
     for (const [market, key] of same) assert.equal(statKey(market), key, market);
-    assert.equal(statKey('Damage vs Grineer'), null);
+    assert.equal(statKey('Damage vs Grineer'), 'faction');
+    assert.equal(statKey('Damage to Infested'), 'faction');
+    assert.equal(statKey('Melee Damage'), 'damage');
+    assert.equal(statKey('Melee Damage on Heavy Attack'), 'heavy_damage');
     assert.equal(categoryOf('Primary'), 'rifle');
     assert.equal(categoryOf('SECONDARY'), 'pistol');
     assert.equal(categoryOf('kitgun'), 'pistol');

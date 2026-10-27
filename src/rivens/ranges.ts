@@ -1,5 +1,3 @@
-import { norm } from './stats.js';
-
 /**
  * The riven attribute ranges, from the wiki's "Riven Mods" page (Attribute Value Formula + Base Values). A rolled value is random between
  * 90% and 110% of  base x disposition x layout weight, where the weight depends on the number of bonuses and curses (see rolls.ts) and
@@ -10,6 +8,8 @@ import { norm } from './stats.js';
 export type Category = 'rifle' | 'shotgun' | 'pistol' | 'archgun' | 'melee';
 /** Order tried when the weapon's kind is not known: the common kinds first. */
 export const CATEGORIES: Category[] = ['rifle', 'pistol', 'shotgun', 'archgun', 'melee'];
+
+const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 /** The wiki's disposition constant: the multiplier a riven rolled today uses. */
 export const DEFAULT_MULTIPLIER = 1.2;
@@ -138,12 +138,13 @@ const RAW: Record<Category, Record<string, number>> = {
 
 /**
  * A stat reduced to a key both vocabularies share: the wiki's names ("Rate of Fire", "Elemental Damage"), the market's ("Fire Rate /
- * Attack Speed", "Heat", "Weapon Recoil") and its slugs ("fire_rate_attack_speed"). Null for stats that have no fixed range here
- * (faction damage is a multiplier) or that are not known.
+ * Attack Speed", "Heat", "Weapon Recoil") and its slugs ("fire_rate_attack_speed"). Null for stats that are not known.
  */
 export function statKey(name: string): string | null {
   const n = norm(name.replace(/[_/]/g, ' '));
-  if (!n || /faction|damage vs|vs (grineer|corpus|infested|corrupted)/.test(n)) return null;
+  if (!n) return null;
+  // Faction damage ("Damage vs Grineer", "Damage to Grineer", "x1.55 Damage to Grineer") is a multiplier, not a percentage.
+  if (/faction|^damage (vs|to) |(vs|to) (grineer|corpus|infested|corrupted)/.test(n)) return 'faction';
   if (/^critical chance (on|for) slide/.test(n)) return 'crit_slide';
   if (/^critical chance/.test(n)) return 'crit_chance';
   if (n === 'critical damage') return 'crit_damage';
@@ -166,9 +167,13 @@ const BASE: Record<Category, Map<string, number>> = Object.fromEntries(
   (Object.keys(RAW) as Category[]).map((cat) => [cat, new Map(Object.entries(RAW[cat]).flatMap(([name, v]) => { const k = statKey(name); return k ? [[k, v] as [string, number]] : []; }))]),
 ) as Record<Category, Map<string, number>>;
 
+/** How much a faction multiplier moves away from x1 (x1.51 or x0.74): the same for every kind of weapon. */
+export const FACTION_BASE = 0.45;
+
 /** The base value of a stat for a kind of weapon, or null when that kind of weapon does not have the stat. */
 export const baseOf = (category: Category, slugOrName: string): number | null => {
   const key = statKey(slugOrName);
+  if (key === 'faction') return FACTION_BASE;
   return key ? (BASE[category].get(key) ?? null) : null;
 };
 
