@@ -124,3 +124,17 @@ test('reads a whole-screen card whose points and clan lines have stray character
   // And the "NEXT RANK" line is still not taken for the points.
   assert.equal(parseCard([line('NEXT RANK: LEGENDARY 3 IN 55,362', 10)]).reading.mastery_points, null);
 });
+
+test('the clan line box ignores a stray word far to its left, so the emblem is looked for above the name', () => {
+  const w = (text: string, x0: number, x1: number, y0 = 1015, y1 = 1041) => ({ text, x0, x1, y0, y1 });
+  const clan: OcrLine = {
+    text: 'ph The Rats Den 69#043',
+    x0: 71, x1: 1134, y0: 1015, y1: 1050, confidence: 78,
+    words: [w('ph', 71, 100, 1020, 1050), w('The', 840, 900), w('Rats', 915, 990), w('Den', 1005, 1060), w('69#043', 1075, 1134)],
+  };
+  const p = parseCard([line('LEGENDARY 2', 677), line('2,637,138', 708), line('NEXT RANK: LEGENDARY 3 IN 55,362', 751), line('CLAN', 835), clan, line('GHOST CLAN RANK 10', 1050)]);
+  assert.deepEqual([p.clanLine!.x0, p.clanLine!.x1, p.clanLine!.y0, p.clanLine!.y1], [840, 1134, 1015, 1041]);
+  // Without word boxes (or with nothing stray) the line is left as it is.
+  const plain = parseCard([line('2,637,138', 708), line('The Rats Den 69#043', 1015, 90, 840, 1134), line('GHOST CLAN RANK 10', 1050)]);
+  assert.deepEqual([plain.clanLine!.x0, plain.clanLine!.x1], [840, 1134]);
+});

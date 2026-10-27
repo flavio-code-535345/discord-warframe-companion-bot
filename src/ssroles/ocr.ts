@@ -37,7 +37,7 @@ export class OcrEngine {
         const worker = await this.getWorker();
         const result = await worker.recognize(Buffer.from(image), {}, { blocks: true });
         const lines = (result.data.blocks ?? []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines));
-        return lines.map((l) => ({ text: l.text, x0: l.bbox.x0, y0: l.bbox.y0, x1: l.bbox.x1, y1: l.bbox.y1, confidence: l.confidence }));
+        return lines.map((l) => ({ text: l.text, x0: l.bbox.x0, y0: l.bbox.y0, x1: l.bbox.x1, y1: l.bbox.y1, confidence: l.confidence, words: (l.words ?? []).map((w) => ({ text: w.text, x0: w.bbox.x0, x1: w.bbox.x1, y0: w.bbox.y0, y1: w.bbox.y1 })) }));
       } finally {
         this.idle = setTimeout(() => void this.release(), IDLE_MS);
         this.idle.unref();

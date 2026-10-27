@@ -9,6 +9,8 @@ export interface OcrLine {
   x1: number;
   y1: number;
   confidence: number;
+  /** The words of the line with their horizontal extent, when the OCR engine gives them (tests do not). */
+  words?: { text: string; x0: number; x1: number; y0?: number; y1?: number }[];
 }
 
 export interface ParsedCard {
@@ -41,6 +43,28 @@ const group = (n: number) => n.toLocaleString('en-US');
 
 const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
 const alpha = (s: string) => s.replace(/[^a-z]/gi, '').length;
+
+/**
+ * A line's box without the stray words OCR found far away from the rest ("ph" at the emblem's edge, 700 px left of the clan name): the
+ * emblem is looked for above the middle of the line, so a box stretched by junk would look in the wrong place.
+ */
+function tight(line: OcrLine): OcrLine {
+  const words = [...(line.words ?? [])].sort((a, b) => a.x0 - b.x0);
+  if (words.length < 2) return line;
+  const height = Math.max(8, line.y1 - line.y0);
+  const groups: (typeof words)[] = [[words[0]!]];
+  for (const w of words.slice(1)) {
+    const g = groups[groups.length - 1]!;
+    if (w.x0 - g[g.length - 1]!.x1 > height * 2.5) groups.push([w]);
+    else g.push(w);
+  }
+  if (groups.length < 2) return line;
+  const span = (g: typeof words) => g[g.length - 1]!.x1 - g[0]!.x0;
+  const main = groups.reduce((a, b) => (span(b) > span(a) ? b : a));
+  const ys0 = main.flatMap((w) => (w.y0 === undefined ? [] : [w.y0]));
+  const ys1 = main.flatMap((w) => (w.y1 === undefined ? [] : [w.y1]));
+  return { ...line, x0: main[0]!.x0, x1: main[main.length - 1]!.x1, ...(ys0.length && ys1.length ? { y0: Math.min(...ys0), y1: Math.max(...ys1) } : {}) };
+}
 
 /** Leading junk OCR makes of the emblem's edge ("ph The Rats Den 69"): one or two lowercase letters or symbols in front of the name. */
 const withoutJunk = (name: string): string => {
@@ -81,7 +105,7 @@ export function parseCard(lines: OcrLine[]): ParsedCard {
   for (let i = 0; i < rows.length - 1; i++) {
     const m = CLAN_LINE.exec(rows[i]!.text);
     if (m && /clan\s*rank|\bclan\b/i.test(rows[i + 1]!.text)) {
-      clanLine = rows[i]!;
+      clanLine = tight(rows[i]!);
       clanName = withoutJunk(clean(m[1]!));
       clanTag = m[2]!;
       tier = rows[i + 1]!.text;
