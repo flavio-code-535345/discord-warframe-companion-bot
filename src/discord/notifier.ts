@@ -6,6 +6,7 @@ import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../
 import { NOTABLE_REWARD, type WorldState, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
+import { summaryEmbed, summaryHash } from './summary.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
 /** How often the notifier wakes up (event reminders). The worldstate itself is fetched at most every WORLDSTATE_POLL_SECONDS. */
@@ -63,6 +64,71 @@ export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert
   return alerts;
 }
 
+/** The most that is said in the short "something new" message; the rest is in the summary. */
+const MAX_TITLES = 8;
+/** The summary is edited at most this often, unless something new just appeared. */
+const SUMMARY_MIN_EDIT_MS = 2 * 60_000;
+
+/** The little of a channel that the summary needs (a real text channel has all of it), so it can be tested without Discord. */
+export interface SummaryChannel {
+  id: string;
+  guildId: string;
+  send(payload: { embeds: EmbedBuilder[]; allowedMentions: { parse: [] } }): Promise<{ id: string }>;
+  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[] }): Promise<unknown> };
+}
+
+interface SummaryRecord {
+  messageId: string;
+  hash: string;
+  at: number;
+}
+
+const readRecord = (raw: string | null): SummaryRecord | null => {
+  try {
+    const r = JSON.parse(raw ?? 'null') as Partial<SummaryRecord> | null;
+    return r && typeof r.messageId === 'string' && typeof r.hash === 'string' ? { messageId: r.messageId, hash: r.hash, at: Number(r.at) || 0 } : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The short message that goes with a ping: what is new, and where the whole picture is. */
+export function newItemsText(titles: string[], summaryUrl: string, roleId: string | null | undefined): string {
+  const shown = titles.slice(0, MAX_TITLES).join(' · ');
+  const more = titles.length > MAX_TITLES ? ` · +${titles.length - MAX_TITLES} more` : '';
+  return `${roleId ? `<@&${roleId}> ` : ''}🔔 **New:** ${shown}${more}\n[Everything right now](<${summaryUrl}>)`;
+}
+
+/**
+ * Keeps the alerts channel's single summary message up to date: it is edited in place when something in it changed (not more often than
+ * every two minutes, unless something new just appeared), posted again if someone deleted it, and left alone when nothing changed. The
+ * message id and a fingerprint of its content are kept in bot_meta, so a restart continues with the same message. Returns its link.
+ */
+export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChannel, ws: WorldState, opts: { force: boolean; now?: number }): Promise<string> {
+  const { store, config } = ctx;
+  const now = opts.now ?? Date.now();
+  const key = `alerts_summary:${channel.id}`;
+  const link = (id: string) => `https://discord.com/channels/${channel.guildId}/${channel.id}/${id}`;
+  const embed = summaryEmbed(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
+  const hash = summaryHash(embed);
+  const saved = readRecord(store.getMeta(key));
+  if (saved && (saved.hash === hash || (!opts.force && now - saved.at < SUMMARY_MIN_EDIT_MS))) return link(saved.messageId);
+  embed.setTimestamp(now);
+  if (saved) {
+    try {
+      await channel.messages.edit(saved.messageId, { embeds: [embed] });
+      store.setMeta(key, JSON.stringify({ messageId: saved.messageId, hash, at: now }));
+      return link(saved.messageId);
+    } catch (err) {
+      // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
+      if ((err as { code?: number }).code !== 10008) throw err;
+    }
+  }
+  const sent = await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  store.setMeta(key, JSON.stringify({ messageId: sent.id, hash, at: now }));
+  return link(sent.id);
+}
+
 export class Notifier {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
@@ -98,21 +164,20 @@ export class Notifier {
 
   private async postWorldStateAlerts(ws: WorldState): Promise<void> {
     const { store } = this.ctx;
-    // On a brand-new database, record what's already live instead of flooding the channel with it.
+    // On a brand-new database, record what's already live instead of announcing all of it as new.
     const bootstrap = store.seenCount() === 0;
     const fresh = collectAlerts(ws).filter((a) => store.markSeen(a.key));
-    if (bootstrap || fresh.length === 0) return;
-    const footer = { text: `${this.ctx.config.BOT_NAME} · ${this.ctx.config.CLAN_NAME}`, iconURL: brandIcon(this.ctx) };
-    for (const a of fresh) a.embed.setFooter(footer);
+    const notify = !bootstrap && fresh.length > 0;
 
     for (const settings of store.allSettings()) {
       if (!settings.alertsChannelId) continue;
       try {
         const channel = await getSendableChannel(this.ctx, settings.alertsChannelId);
-        for (let i = 0; i < fresh.length; i += 10) {
+        // One message says everything that is going on and is edited in place; it is brought up to date before anyone is pinged.
+        const url = await updateSummaryMessage(this.ctx, channel as unknown as SummaryChannel, ws, { force: notify });
+        if (notify) {
           await channel.send({
-            content: i === 0 && settings.alertsRoleId ? `<@&${settings.alertsRoleId}>` : undefined,
-            embeds: fresh.slice(i, i + 10).map((a) => a.embed),
+            content: newItemsText(fresh.map((a) => a.embed.data.title ?? 'Something new'), url, settings.alertsRoleId),
             allowedMentions: { roles: settings.alertsRoleId ? [settings.alertsRoleId] : [] },
           });
         }
