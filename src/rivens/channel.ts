@@ -1,7 +1,8 @@
 import type { AttachmentBuilder, EmbedBuilder, Message } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { QueueFullError, screenshotQueue } from '../queue.js';
-import { UserError, getSendableChannel } from '../services/clan.js';
+import { UserError, assertChannelFree, getSendableChannel } from '../services/clan.js';
+import { withTimeout } from '../timeout.js';
 import { rivenReply } from './reply.js';
 import { type ScanResult, scanCard } from './scan.js';
 
@@ -120,7 +121,7 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
     }
     const embeds: EmbedBuilder[] = [];
     const files: AttachmentBuilder[] = [];
-    await Promise.race([
+    await withTimeout(
       (async () => {
         for (const { bytes, mime } of await downloads) {
           const result = await scan(ctx, bytes, mime);
@@ -130,8 +131,9 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
           files.push(...part.files);
         }
       })(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("That took too long, so I gave up.")), SCAN_LIMIT_MS).unref()),
-    ]);
+      SCAN_LIMIT_MS,
+      () => new UserError('That took too long, so I gave up.'),
+    );
     await message.reply({ embeds, files, allowedMentions: { repliedUser: false } });
   } catch (err) {
     if (!(err instanceof UserError)) console.error('[riven] channel scan failed:', err instanceof Error ? err.message : err);
@@ -147,10 +149,7 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
 /** Points riven scanning at a channel and posts a one-line pinned-style note there. */
 export async function setupRivenChannel(ctx: AppContext, channelId: string): Promise<void> {
   const channel = await getSendableChannel(ctx, channelId);
-  const s = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
-  if ([s.chatChannelId, s.honeypotChannelId, s.verifyChannelId, s.ssRolesChannelId].includes(channelId)) {
-    throw new UserError('That channel is used for something else. Pick a channel just for rivens.');
-  }
+  assertChannelFree(ctx, { rivenChannelId: channelId });
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { rivenChannelId: channelId });
   await channel.send('🎲 Post a screenshot of your unveiled riven here and I will grade it.').catch(() => {});
 }

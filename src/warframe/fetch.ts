@@ -137,6 +137,12 @@ const realDeps: ApiDeps = {
   warn: (l) => console.warn(l),
 };
 
+/** An answer we are not going to read: frees its connection instead of leaving the body to the garbage collector. */
+const discard = (res: Response): void => void res.body?.cancel().catch(() => {});
+
+/** What JSON from these APIs starts with (an object, a list, or a bare value); a page of HTML or plain text does not. */
+const JSON_START = /^\s*(?:[{["]|-?\d|true\b|false\b|null\b)/;
+
 /** Retry-After as milliseconds (it is either seconds or an HTTP date), or null. */
 export function parseRetryAfter(value: string | null, now: number): number | null {
   if (!value) return null;
@@ -241,6 +247,7 @@ export class ApiClient {
       }
       this.deps.log(`[api] GET ${shortUrl(u)} -> HTTP ${res.status} (${this.deps.now() - t0} ms)`);
       if (res.status === 429) {
+        discard(res);
         this.stats.rateLimited++;
         const ms = Math.min(MAX_RETRY_AFTER_MS, parseRetryAfter(res.headers.get('retry-after'), this.deps.now()) ?? DEFAULT_RETRY_AFTER_MS);
         const err = this.block(host, ms, 'rate limited (429)');
@@ -248,11 +255,13 @@ export class ApiClient {
         throw err;
       }
       if (res.status === 403) {
+        discard(res);
         const err = this.block(host, this.limits.cooldownMs, 'access forbidden (403)');
         this.deps.warn(`[api] ${host} answered 403 (blocked?): no more requests to it for ${Math.round(this.limits.cooldownMs / 60_000)} min`);
         throw err;
       }
       if (res.status >= 500 || res.status === 408) {
+        discard(res);
         if (attempt < this.limits.maxRetries) {
           this.stats.retries++;
           await this.deps.sleep(this.backoff(attempt));
@@ -304,7 +313,7 @@ export class ApiClient {
    * re-checked with If-None-Match / If-Modified-Since when the server gave one; and when the API cannot be used (blocked,
    * limited, down) an expired entry is returned with `stale: true` instead of an error, within the kind's maximum age.
    */
-  get(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string>; background?: boolean; scope?: string }): Promise<ApiResult> {
+  get(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string>; background?: boolean; scope?: string; json?: boolean }): Promise<ApiResult> {
     const headers = opts.headers ?? {};
     const key = `${url}|${Object.entries(headers).sort().map(([k, v]) => `${k}=${v}`).join('&')}`;
     const now = this.deps.now();
@@ -320,12 +329,12 @@ export class ApiClient {
       this.stats.deduped++;
       return running;
     }
-    const p = this.refresh(url, key, headers, entry, opts.kind, { background: opts.background, scope: opts.scope }).finally(() => this.inflight.delete(key));
+    const p = this.refresh(url, key, headers, entry, opts.kind, { background: opts.background, scope: opts.scope }, Boolean(opts.json)).finally(() => this.inflight.delete(key));
     this.inflight.set(key, p);
     return p;
   }
 
-  private async refresh(url: string, key: string, headers: Record<string, string>, entry: CacheEntry | null, kind: CacheKind, sendOpts: { background?: boolean | undefined; scope?: string | undefined }): Promise<ApiResult> {
+  private async refresh(url: string, key: string, headers: Record<string, string>, entry: CacheEntry | null, kind: CacheKind, sendOpts: { background?: boolean | undefined; scope?: string | undefined }, jsonOnly: boolean): Promise<ApiResult> {
     const conditional: Record<string, string> = {};
     if (entry?.etag) conditional['If-None-Match'] = entry.etag;
     else if (entry?.lastModified) conditional['If-Modified-Since'] = entry.lastModified;
@@ -339,6 +348,9 @@ export class ApiClient {
         return { body: fresh.body, status: fresh.status, fetchedAt: now, stale: false, source: 'revalidated' };
       }
       const body = await res.text();
+      // A maintenance or proxy page answered with 200 is not data: saved, it would be served (and fail to parse) for the whole lifetime of the kind.
+      // It counts as a failure instead, so the previous answer is used while it is still young enough, and the next call asks again.
+      if (res.ok && jsonOnly && !JSON_START.test(body)) throw new Error(`${new URL(url).host} answered HTTP ${res.status} with something that is not JSON`);
       // Only successful answers are saved: a 404 or any other error page is never reused as if it were data.
       if (res.ok) this.writeEntry(key, { body, status: res.status, etag: res.headers.get('etag'), lastModified: res.headers.get('last-modified'), fetchedAt: now });
       return { body, status: res.status, fetchedAt: now, stale: false, source: 'network' };
@@ -384,12 +396,11 @@ export interface JsonResult<T> {
   status: number;
 }
 
-/** A cached GET parsed as JSON. A 404 returns `status: 404` with `data` null; any other non-OK answer throws. */
+/** A cached GET parsed as JSON. A 404 returns `status: 404` with `data` null; any other non-OK answer throws, and so does a 200 that is not JSON (it is never cached). */
 export async function apiJson<T>(url: string, opts: { kind: CacheKind; ttlMs?: number; headers?: Record<string, string>; background?: boolean; scope?: string }): Promise<JsonResult<T | null>> {
-  const r = await api.get(url, opts);
+  const r = await api.get(url, { ...opts, json: true });
   if (r.status === 404) return { data: null, stale: r.stale, ageMs: Date.now() - r.fetchedAt, status: 404 };
   if (r.status < 200 || r.status >= 300) throw new ApiHttpError(r.status, new URL(url).host);
   return { data: JSON.parse(r.body) as T, stale: r.stale, ageMs: Math.max(0, Date.now() - r.fetchedAt), status: r.status };
 }
 
-export const isApiBlocked = (err: unknown): err is ApiBlockedError => err instanceof ApiBlockedError;

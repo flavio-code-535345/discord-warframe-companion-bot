@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import wasmWebp from '@saschazar/wasm-webp';
 import { PNG } from 'pngjs';
+import { fitsPixelBudget } from './size.js';
 
 /**
  * WebP decoding with libwebp compiled to WebAssembly (no native module, so the amd64-to-arm64 Docker image keeps working). A WebP
@@ -26,15 +27,23 @@ export interface WebpPixels {
   data: Uint8Array;
 }
 
-/** Decodes a WebP picture to RGBA pixels, or returns null when it is damaged. */
+/** Decodes a WebP picture to RGBA pixels, or returns null when it is damaged or declares more pixels than a screenshot can have. */
 export function decodeWebp(bytes: Uint8Array): Promise<WebpPixels | null> {
   return new Promise((resolve) => {
+    if (!fitsPixelBudget(bytes)) {
+      resolve(null);
+      return;
+    }
     try {
       // The wasm file is handed over as bytes: the loader would otherwise try to fetch() it, which fails for a file path on Node 24.
       wasmBinary ??= readFileSync(createRequire(import.meta.url).resolve('@saschazar/wasm-webp/wasm_webp.wasm'));
       // The returned object is only a thenable; the real methods are on `this` inside onRuntimeInitialized.
       (wasmWebp as unknown as (o: object) => unknown)({
         wasmBinary,
+        // A module that aborts while starting never reaches onRuntimeInitialized: settle instead of leaving the caller waiting.
+        onAbort() {
+          resolve(null);
+        },
         onRuntimeInitialized(this: Module) {
           try {
             const out = this.decode(bytes, bytes.length, true);

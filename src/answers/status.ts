@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { own } from '../own.js';
 
 /**
  * Lets slow answer steps say what they are doing ("Searching the wiki", "Reading a wiki page"...) without every function
@@ -43,4 +44,4 @@ const TOOL_STATUS: Record<string, string> = {
   get_clan_info: '🐀 Checking clan info',
 };
 
-export const toolStatus = (tool: string): string => TOOL_STATUS[tool] ?? `🔧 Using ${tool}`;
+export const toolStatus = (tool: string): string => own(TOOL_STATUS, tool) ?? `🔧 Using ${tool}`;

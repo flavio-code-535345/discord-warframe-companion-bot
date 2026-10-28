@@ -121,22 +121,35 @@ export const resetPull = (): void => {
 
 export const pullProgress = (p: PullState): string | null => (p.total ? `${Math.round(((p.completed ?? 0) / p.total) * 100)}% (${gb(p.completed ?? 0)} of ${gb(p.total)})` : null);
 
+/** A download that has said nothing for this long is given up: the host went away, and nothing else could be downloaded while it hangs. */
+const PULL_IDLE_MS = 5 * 60_000;
+
 /**
  * Starts the download in the background (pulls take minutes) and keeps its progress. Resolves when it has finished, which
- * callers may ignore. `onDone` runs with the final state either way.
+ * callers may ignore. `onDone` runs with the final state either way. Ollama reports progress every few seconds, so a stream
+ * that stays silent for `idleMs` is cut off and the download counts as failed.
  */
-export function startPull(base: string, model: string, fetcher: Fetcher = fetch, onDone?: (state: PullState) => void): Promise<PullState> {
+export function startPull(base: string, model: string, fetcher: Fetcher = fetch, onDone?: (state: PullState) => void, idleMs = PULL_IDLE_MS): Promise<PullState> {
   const state: PullState = { model, status: 'starting', startedAt: Date.now() };
   pull = state;
+  const abort = new AbortController();
+  let watchdog: NodeJS.Timeout | undefined;
+  const kick = () => {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => abort.abort(), idleMs);
+    watchdog.unref();
+  };
   return (async () => {
     try {
-      const res = await fetcher(`${base}/api/pull`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }) });
+      kick();
+      const res = await fetcher(`${base}/api/pull`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal: abort.signal });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       for (;;) {
         const { done, value } = await reader.read();
+        kick();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -154,8 +167,10 @@ export function startPull(base: string, model: string, fetcher: Fetcher = fetch,
       }
       state.status = 'success';
     } catch (err) {
-      state.error = err instanceof Error ? err.message : String(err);
+      state.error = abort.signal.aborted ? `Ollama sent nothing for ${Math.max(1, Math.round(idleMs / 60_000))} min, so the download was given up` : err instanceof Error ? err.message : String(err);
       state.status = 'failed';
+    } finally {
+      clearTimeout(watchdog);
     }
     state.finishedAt = Date.now();
     try {

@@ -1,3 +1,4 @@
+import { own } from '../own.js';
 import { UserError } from '../services/clan.js';
 import type { StatInput } from './grade.js';
 import { statKey } from './ranges.js';
@@ -53,11 +54,11 @@ export function resolveStat(attrs: RivenAttribute[], text: string, mode: 'loose'
   const typed = canon(text);
   if (!typed) return null;
   const byName = new Map(attrs.map((a) => [norm(a.name), a]));
-  for (const candidate of ALIASES[typed] ?? []) {
+  for (const candidate of own(ALIASES, typed) ?? []) {
     const hit = byName.get(norm(candidate));
     if (hit) return hit;
   }
-  const q = typed.split(' ').map((w) => WORDS[w] ?? w).join(' ');
+  const q = typed.split(' ').map((w) => own(WORDS, w) ?? w).join(' ');
   const exact = byName.get(q) ?? attrs.find((a) => a.slug === q.replace(/ /g, '_'));
   if (exact) return exact;
   // The same stat under another spelling ("Melee Damage" for "Base Damage / Melee Damage"), when the market has exactly one such stat.

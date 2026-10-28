@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { composeAnswer, resetLocalAi } from '../src/answers/compose.js';
-import { currentPull, listInstalled, localModelOf, pullProgress, resetPull, setChosenModel, startPull, validModelTag } from '../src/ai/ollama.js';
+import { currentPull, listInstalled, localModelOf, pullProgress, pullRunning, resetPull, setChosenModel, startPull, validModelTag } from '../src/ai/ollama.js';
 
 const ndjson = (...lines: object[]) =>
   new Response(
@@ -78,6 +78,25 @@ describe('download and listing', () => {
     const state = await startPull('http://h:11434', 'nope', async () => ndjson({ error: 'pull model manifest: file does not exist' }));
     assert.equal(state.status, 'failed');
     assert.match(state.error!, /file does not exist/);
+  });
+
+  it('gives up a download whose host goes silent, so the next one can start', async () => {
+    resetPull();
+    // The stream sends one progress line and then nothing; it ends (with an error) only when the request is aborted.
+    const hung = async (_url: string | URL | Request, init?: RequestInit) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ status: 'pulling abc', total: 1000, completed: 10 })}\n`));
+            init?.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
+          },
+        }),
+      );
+    const state = await startPull('http://h:11434', 'big:1', hung as typeof fetch, undefined, 40);
+    assert.equal(state.status, 'failed');
+    assert.match(state.error!, /sent nothing/);
+    assert.equal(pullRunning(), false);
+    assert.equal(currentPull()!.completed, 10, 'what had arrived is kept');
   });
 
   it('lists installed models with their details', async () => {

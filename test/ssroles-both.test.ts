@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { after, afterEach, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { Collection } from 'discord.js';
 import { Store } from '../src/db.js';
 import { screenshotQueue } from '../src/queue.js';
@@ -56,7 +56,7 @@ function setup(attachmentNames: string[], uid = 'u1') {
     author: { id: uid, username: 'rat', bot: false },
     member: { ...member, permissions: { has: () => false } },
     channel,
-    attachments: new Collection(attachmentNames.map((n, i) => [String(i), { url: `https://cdn.test/${i}.png`, contentType: 'image/png', size: 1000 }])),
+    attachments: new Collection(attachmentNames.map((_name, i) => [String(i), { url: `https://cdn.test/${i}.png`, contentType: 'image/png', size: 1000 }])),
     guild: { id: 'g', members: { fetchMe: async () => ({ roles: { highest: { position: 50 } } }) }, roles: { cache: roles } },
     delete: async () => void gone.push('screenshot'),
   };
@@ -189,5 +189,21 @@ describe('screenshot queue', () => {
     await handleSsMessage(t.message as never, t.ctx as never);
     assert.match(t.sent.at(-1)!.content!, /already waiting/);
     held.forEach((h) => h.release());
+  });
+
+  it('takes its own notices away again after a moment, so the channel keeps only screenshots', async () => {
+    const t = setup(['ss-roles-example.png'], 'u7b');
+    const held = [screenshotQueue.join('u7b'), screenshotQueue.join('u7b')];
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      await handleSsMessage(t.message as never, t.ctx as never);
+      assert.match(t.sent.at(-1)!.content!, /already waiting/);
+      assert.deepEqual(t.gone, ['screenshot'], 'the screenshot goes at once, the notice stays for now');
+      mock.timers.tick(8000);
+      assert.deepEqual(t.gone, ['screenshot', 'reply']);
+    } finally {
+      mock.timers.reset();
+      held.forEach((h) => h.release());
+    }
   });
 });

@@ -20,7 +20,8 @@ import { disableRivenChannel, setupRivenChannel } from '../rivens/channel.js';
 import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
-import { UserError } from '../services/clan.js';
+import { own } from '../own.js';
+import { UserError, assertChannelFree } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
 /**
@@ -32,6 +33,23 @@ import { READ_ONLY, snowflake, tool } from './util.js';
 const PERMISSIONS = Object.keys(PermissionFlagsBits) as [keyof typeof PermissionFlagsBits, ...(keyof typeof PermissionFlagsBits)[]];
 const permission = z.enum(PERMISSIONS);
 const ARCHIVE_NAME = '🗄️ ARCHIVE';
+
+/** What update_bot_settings accepts for each channel setting: Ordis posts in the text ones, makes rooms next to the lobby and squad channels inside the category. */
+const TEXT_CHANNEL = { types: [ChannelType.GuildText, ChannelType.GuildAnnouncement], label: 'a text channel' };
+const SETTING_CHANNEL_KINDS: Record<string, { types: ChannelType[]; label: string }> = {
+  alerts_channel_id: TEXT_CHANNEL,
+  announcements_channel_id: TEXT_CHANNEL,
+  welcome_channel_id: TEXT_CHANNEL,
+  chat_channel_id: TEXT_CHANNEL,
+  mod_log_channel_id: TEXT_CHANNEL,
+  audit_log_channel_id: TEXT_CHANNEL,
+  status_channel_id: TEXT_CHANNEL,
+  level_channel_id: TEXT_CHANNEL,
+  honeypot_channel_id: TEXT_CHANNEL,
+  riven_channel_id: TEXT_CHANNEL,
+  lfg_voice_category_id: { types: [ChannelType.GuildCategory], label: 'a category' },
+  auto_vc_hub_channel_id: { types: [ChannelType.GuildVoice], label: 'a voice channel' },
+};
 
 const CHANNEL_TYPES = {
   text: ChannelType.GuildText,
@@ -406,10 +424,11 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       if (role.position >= me.roles.highest.position) {
         throw new UserError(`${role.name} is at or above the bot's highest role. Drag the bot's role above it in Server Settings → Roles.`);
       }
+      // Checked before anything is changed, so a refused move doesn't leave the rename or the new permissions half applied.
+      if (position !== undefined && position >= me.roles.highest.position) throw new UserError("A role can't be moved to or above the bot's own highest role.");
       const before = { name: role.name, color: role.hexColor, position: role.position };
       const edited = await role.edit({ name, color: hexColor(color), hoist, mentionable, permissions, reason: reasonFor(reason) });
       if (position !== undefined) {
-        if (position >= me.roles.highest.position) throw new UserError("A role can't be moved to or above the bot's own highest role.");
         // Renumber the roles below the bot from fresh data and send only the ones that change: Role#setPosition also sends
         // roles above the bot (Discord refuses that), and a lone role collides with the cached numbers.
         const fresh = [...(await guild.roles.fetch()).values()].filter((r) => r.id !== guild.id && r.position < me.roles.highest.position);
@@ -675,8 +694,17 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       const { guild } = await guildFor(ctx);
       for (const [key, id] of Object.entries(args)) {
         if (typeof id !== 'string' || !id || key === 'honeypot_action') continue;
-        if (key === 'alerts_role_id' ? !guild.roles.cache.has(id) : !guild.channels.cache.has(id)) throw new UserError(`${key}: ${id} not found in the server.`);
+        if (key === 'alerts_role_id') {
+          if (!guild.roles.cache.has(id)) throw new UserError(`${key}: ${id} not found in the server.`);
+          continue;
+        }
+        const channel = guild.channels.cache.get(id);
+        if (!channel) throw new UserError(`${key}: ${id} not found in the server.`);
+        const kind = own(SETTING_CHANNEL_KINDS, key);
+        if (kind && !kind.types.includes(channel.type)) throw new UserError(`${key}: ${channel.name} is the wrong kind of channel, this setting needs ${kind.label}.`);
       }
+      // Everything is checked before anything is saved, so a refused change leaves the settings as they were.
+      assertChannelFree(ctx, { chatChannelId: args.chat_channel_id, honeypotChannelId: args.honeypot_channel_id, rivenChannelId: args.riven_channel_id });
       const patch = {
         ...(args.alerts_channel_id !== undefined ? { alertsChannelId: args.alerts_channel_id } : {}),
         ...(args.alerts_role_id !== undefined ? { alertsRoleId: args.alerts_role_id } : {}),
@@ -692,9 +720,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
-      const saved = ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
+      // The two channels that get a notice posted in them go first: if the bot can't post there nothing else has been saved yet.
       if (args.honeypot_channel_id) {
-        await setupHoneypot(ctx, args.honeypot_channel_id, honeypotAction(args.honeypot_action ?? saved.honeypotAction));
+        await setupHoneypot(ctx, args.honeypot_channel_id, honeypotAction(args.honeypot_action ?? ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).honeypotAction));
       } else if (args.honeypot_channel_id === null) {
         disableHoneypot(ctx);
       } else if (args.honeypot_action) {
@@ -705,7 +733,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       } else if (args.riven_channel_id === null) {
         disableRivenChannel(ctx);
       }
-      return ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
+      return ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
     }),
   );
 }

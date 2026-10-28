@@ -17,11 +17,11 @@ export const EnvSchema = z.object({
   WORLDSTATE_ENABLED: bool.default(false),
   /** A warframestat.us-compatible world state endpoint to read instead of api.warframestat.us/<platform>, e.g. a self-hosted one. */
   WORLDSTATE_URL: z.string().url().optional(),
-  /** Minimum seconds between calls to the worldstate feed (everything shares one cached copy). */
   /** Refresh when something in the world state is due to change instead of on a fixed timer (see nextRefreshDelay in warframe/worldstate.ts). */
   WORLDSTATE_SMART_POLL: bool.default(false),
   /** The longest the world state is left without a refresh when smart polling is on. */
   WORLDSTATE_MAX_POLL_MINUTES: z.coerce.number().int().min(5).max(720).default(30),
+  /** Minimum seconds between calls to the worldstate feed (everything shares one cached copy). */
   WORLDSTATE_POLL_SECONDS: z.coerce.number().int().min(60).default(600),
   ENABLE_WELCOME: bool.default(false),
   HTTP_HOST: z.string().default('0.0.0.0'),
@@ -34,13 +34,12 @@ export const EnvSchema = z.object({
   AI_WEB_SEARCH: bool.default(true),
   AI_USER_HOURLY_LIMIT: z.coerce.number().int().min(1).default(20),
   AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(300),
-  /** Lets Ordis read every message in the /setup chat channel; needs the privileged Message Content intent. */
   /** Switch on the Server Members intent just for the audit log (joins and leaves). Also enable it in the Developer Portal. */
   ENABLE_MEMBER_LOGGING: bool.default(false),
+  /** Lets Ordis read every message in the /setup chat channel; needs the privileged Message Content intent. */
   ENABLE_MESSAGE_CONTENT: bool.default(false),
   /** Keep a local searchable copy of the Warframe wiki so Ordis can answer most questions from it. */
   WIKI_INDEX: bool.default(true),
-  /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
   /** Optional free-tier LLM (any OpenAI-compatible API) that words wiki answers. Off without a key. */
   FREE_AI_KEY: z.string().min(8).optional(),
   FREE_AI_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
@@ -54,6 +53,7 @@ export const EnvSchema = z.object({
   LOCAL_AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
   /** Lets the MCP patch the bot's compiled code live (overlay in the data volume). Remote code execution for whoever holds MCP_AUTH_TOKEN: off by default. */
   ALLOW_CODE_EDIT: bool.default(false),
+  /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
   WATCHTOWER_URL: z.string().url().optional(),
   WATCHTOWER_TOKEN: z.string().min(8).optional(),
   // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.

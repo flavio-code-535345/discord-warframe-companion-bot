@@ -36,12 +36,29 @@ const when = (date: TimeInput, now: number) => {
   return Number.isNaN(ms) ? null : { at: new Date(ms).toISOString(), in: relative(ms, now) };
 };
 
-/** Plain-JSON view of the worldstate for AI clients: no Discord markup, explicit ISO times plus "in 2h 5m". */
+/**
+ * Plain-JSON view of the worldstate for AI clients: no Discord markup, explicit ISO times plus "in 2h 5m". A section the feed
+ * delivered malformed is left out and named in `unavailable`; the other sections are still answered.
+ */
 export function summarizeWorldState(ws: WorldState, sections: readonly Section[] = SECTIONS, now = Date.now()) {
   const out: Record<string, unknown> = { fetchedAt: new Date(now).toISOString() };
   const stale = worldStateStaleNote(now);
   if (stale) out.warning = stale;
-  const want = new Set(sections);
+  const unavailable: string[] = [];
+  for (const section of new Set(sections)) {
+    try {
+      Object.assign(out, summarizeSection(ws, section, now));
+    } catch {
+      unavailable.push(section);
+    }
+  }
+  if (unavailable.length) out.unavailable = unavailable;
+  return out;
+}
+
+function summarizeSection(ws: WorldState, section: Section, now: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const want = new Set<Section>([section]);
 
   if (want.has('cycles')) {
     const d = ws.duviriCycle;

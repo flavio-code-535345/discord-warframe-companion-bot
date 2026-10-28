@@ -79,7 +79,7 @@ describe('overlay lifecycle', () => {
 });
 
 describe('overlay loader (real node process)', () => {
-  it('runs the patched file with its imports still resolving from the image', () => {
+  function loader() {
     const f = fixture();
     // The loader is run from a copy next to the fixture's "dist", the way it sits in the image.
     for (const name of ['overlay.ts', 'overlay-register.ts']) copyFileSync(join(import.meta.dirname, '..', 'src', name), join(f.dist, name));
@@ -91,10 +91,24 @@ describe('overlay loader (real node process)', () => {
         env: { ...process.env, DATA_DIR: f.data, ALLOW_CODE_EDIT: allow },
         encoding: 'utf8',
       });
+    return { f, run };
+  }
 
+  it('runs the patched file with its imports still resolving from the image', () => {
+    const { f, run } = loader();
     const on = run('true');
     assert.match(on.stdout, /patched\+1 1/, on.stderr);
     markOverlayHealthy(f.data);
     assert.match(run('false').stdout, /^image 1$/m);
+  });
+
+  it('switches on for every spelling of "on" the config accepts, so a saved patch is never silently ignored', () => {
+    // config.ts reads ALLOW_CODE_EDIT=yes as on (and registers the write tools); the loader used to accept only true and 1.
+    const { f, run } = loader();
+    for (const spelling of ['yes', '1']) {
+      assert.match(run(spelling).stdout, /patched\+1 1/, spelling);
+      markOverlayHealthy(f.data);
+    }
+    assert.match(run('no').stdout, /^image 1$/m);
   });
 });

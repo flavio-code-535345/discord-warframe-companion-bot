@@ -824,6 +824,23 @@ export class Store {
     this.db.prepare('UPDATE lfg_posts SET expires_at = ? WHERE id = ?').run(expiresAt, id);
   }
 
+  closeLfg(id: number): void {
+    this.db.prepare('UPDATE lfg_posts SET closed = 1 WHERE id = ?').run(id);
+  }
+
+  joinLfg(id: number, userId: string): void {
+    this.db.prepare('INSERT OR IGNORE INTO lfg_members (post_id, user_id) VALUES (?, ?)').run(id, userId);
+  }
+
+  leaveLfg(id: number, userId: string): void {
+    this.db.prepare('DELETE FROM lfg_members WHERE post_id = ? AND user_id = ?').run(id, userId);
+  }
+
+  lfgMembers(id: number): string[] {
+    const rows = this.db.prepare('SELECT user_id FROM lfg_members WHERE post_id = ? ORDER BY rowid').all(id) as Row[];
+    return rows.map((r) => String(r.user_id));
+  }
+
   // --- leveling ---
 
   private toXp(r: Row): MemberXp {
@@ -1058,8 +1075,6 @@ export class Store {
     return (this.db.prepare('SELECT channel_id FROM xp_ignored_channels WHERE guild_id = ?').all(guildId) as Row[]).map((r) => String(r.channel_id));
   }
 
-  // --- join-to-create voice rooms ---
-
   // --- sticky messages ---
 
   setSticky(s: Omit<Sticky, 'messageId' | 'updatedAt'>): void {
@@ -1123,6 +1138,8 @@ export class Store {
     return Number(this.db.prepare('DELETE FROM ss_claims WHERE guild_id = ?').run(guildId).changes);
   }
 
+  // --- join-to-create voice rooms ---
+
   addTempVoice(v: TempVoice): void {
     this.db
       .prepare('INSERT OR REPLACE INTO temp_voice (channel_id, guild_id, owner_id, created_at) VALUES (?, ?, ?, ?)')
@@ -1170,23 +1187,6 @@ export class Store {
 
   removeActivity(name: string): boolean {
     return Number(this.db.prepare('DELETE FROM activities WHERE name = ?').run(name).changes) > 0;
-  }
-
-  closeLfg(id: number): void {
-    this.db.prepare('UPDATE lfg_posts SET closed = 1 WHERE id = ?').run(id);
-  }
-
-  joinLfg(id: number, userId: string): void {
-    this.db.prepare('INSERT OR IGNORE INTO lfg_members (post_id, user_id) VALUES (?, ?)').run(id, userId);
-  }
-
-  leaveLfg(id: number, userId: string): void {
-    this.db.prepare('DELETE FROM lfg_members WHERE post_id = ? AND user_id = ?').run(id, userId);
-  }
-
-  lfgMembers(id: number): string[] {
-    const rows = this.db.prepare('SELECT user_id FROM lfg_members WHERE post_id = ? ORDER BY rowid').all(id) as Row[];
-    return rows.map((r) => String(r.user_id));
   }
 
   // --- personal trackers ---

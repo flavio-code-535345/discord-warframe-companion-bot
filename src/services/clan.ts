@@ -7,7 +7,7 @@ import {
   type SendableChannels,
 } from 'discord.js';
 import type { AppContext } from '../context.js';
-import type { ClanEvent, LfgPost } from '../db.js';
+import type { ClanEvent, GuildSettings, LfgPost } from '../db.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { discordTime } from '../time.js';
@@ -26,6 +26,35 @@ export async function getSendableChannel(ctx: AppContext, channelId: string): Pr
     throw new UserError(`Channel ${channelId} is not a text channel in the clan server that I can post in.`);
   }
   return channel as SendableChannels & { guildId: string };
+}
+
+/**
+ * The settings that make Ordis read every message in a channel. Two such jobs on one channel fight over its messages (the screenshot
+ * handler deletes whatever is not a screenshot, the honeypot removes whoever posts, the chat answers...), so a channel gets only one.
+ */
+const MESSAGE_JOBS = [
+  ['chatChannelId', 'the Ordis chat'],
+  ['honeypotChannelId', 'the honeypot'],
+  ['verifyChannelId', 'verification'],
+  ['ssRolesChannelId', 'screenshot roles'],
+  ['rivenChannelId', 'riven scanning'],
+] as const;
+
+type MessageJob = (typeof MESSAGE_JOBS)[number][0];
+
+/**
+ * Refuses a change that would give a channel a second message-reading job. `patch` holds the channel settings about to be saved (null turns
+ * a job off, undefined leaves it alone); only the ones that really change are checked, so an old clash never blocks an unrelated edit.
+ */
+export function assertChannelFree(ctx: Pick<AppContext, 'config' | 'store'>, patch: Partial<Record<MessageJob, string | null>>): void {
+  const before: Pick<GuildSettings, MessageJob> = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
+  const after = (key: MessageJob): string | null => (patch[key] === undefined ? before[key] : (patch[key] ?? null));
+  for (const [key, label] of MESSAGE_JOBS) {
+    const id = after(key);
+    if (!id || id === before[key]) continue;
+    const clash = MESSAGE_JOBS.find(([other]) => other !== key && after(other) === id);
+    if (clash) throw new UserError(`That channel is already used for ${clash[1]}, so it cannot also be used for ${label}. Pick a channel just for this.`);
+  }
 }
 
 /** Uses the explicit channel if given, else the configured announcements channel. */
@@ -70,8 +99,12 @@ export interface CreateEventInput {
   channelId?: string | null;
 }
 
+/** A clan event further away than this is a typo (an offset of 99999999 days would otherwise break every page that prints its date). */
+const MAX_EVENT_AHEAD_MS = 2 * 365 * 86_400_000;
+
 export async function createClanEvent(ctx: AppContext, input: CreateEventInput): Promise<ClanEvent> {
-  if (input.startsAt <= Date.now()) throw new UserError('The event start time must be in the future.');
+  if (!Number.isFinite(input.startsAt) || input.startsAt <= Date.now()) throw new UserError('The event start time must be in the future.');
+  if (input.startsAt > Date.now() + MAX_EVENT_AHEAD_MS) throw new UserError('The event start time is more than two years away. Check the date.');
   const channel = await resolveAnnouncementChannel(ctx, input.channelId);
   const event = ctx.store.createEvent({
     guildId: ctx.config.DISCORD_GUILD_ID,

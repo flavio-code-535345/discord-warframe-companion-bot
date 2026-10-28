@@ -1,3 +1,4 @@
+import { own } from './own.js';
 import { type TimeInput, toMs } from './time.js';
 import { type WorldState, isBaroHere, resurgenceItemName, rewardText } from './warframe/worldstate.js';
 import { projectCycles } from './warframe/cycles.js';
@@ -38,7 +39,7 @@ export const MISSION_TYPES = [
 const MISSION_ALIASES: Record<string, string> = { exterminate: 'extermination', 'mobile defence': 'mobile defense', defence: 'defense' };
 const normMission = (m: string) => {
   const s = m.trim().toLowerCase();
-  return MISSION_ALIASES[s] ?? s;
+  return own(MISSION_ALIASES, s) ?? s;
 };
 
 /** Something in the current worldstate a tracker can match. */

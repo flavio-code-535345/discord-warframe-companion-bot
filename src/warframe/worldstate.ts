@@ -111,9 +111,6 @@ export function worldStateStaleNote(now = Date.now()): string | null {
   return null;
 }
 
-/** The API client's view of the feed's host, for the status displays. */
-export const feedHostBlockedMs = (): number => api.blockedFor(new URL(feedUrl).host);
-
 /** What the status page shows about the Warframe API: whether it is on, when it was last called and what came back. */
 export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; lastCallAt: number | null; lastOk: boolean | null; lastDetail: string | null; smart: boolean; maxMinutes: number; nextCallAt: number | null; sourceLagMs: number | null } {
   return {
@@ -132,9 +129,8 @@ export function worldStateInfo(): { enabled: boolean; intervalSeconds: number; l
 let cached: { at: number; ws: WorldState; /** When the next call is due. */ due: number; /** How old the source's own data was when it was fetched (ms). */ lag: number } | null = null;
 let inflight: Promise<WorldState> | null = null;
 
-/** The warframestat.us answer is the parsed world state as JSON; dates are ISO strings (every reader goes through `toMs`). */
 /** A short, secret-free description of an unexpected answer, for the error message and the status page. */
-function describeAnswer(text: string): string {
+export function describeAnswer(text: string): string {
   let at = feedUrl;
   try {
     const u = new URL(feedUrl);
@@ -147,10 +143,11 @@ function describeAnswer(text: string): string {
     if (data && typeof data === 'object') return `${at} answered JSON with ${Array.isArray(data) ? `a list of ${data.length}` : `the keys ${Object.keys(data).slice(0, 8).join(', ') || '(none)'}`}`;
     return `${at} answered JSON that is not an object`;
   } catch {
-    return `${at} answered something that is not JSON: "${text.replace(/s+/g, ' ').trim().slice(0, 80)}"`;
+    return `${at} answered something that is not JSON: "${text.replace(/\s+/g, ' ').trim().slice(0, 80)}"`;
   }
 }
 
+/** The warframestat.us answer is the parsed world state as JSON; dates are ISO strings (every reader goes through `toMs`). */
 function parse(text: string): WorldState {
   let data: Record<string, unknown> | null;
   try {

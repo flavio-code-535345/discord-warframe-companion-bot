@@ -81,7 +81,7 @@ export function writeOverride(dataDir: string, distDir: string, path: string, co
 export function removeOverride(dataDir: string, path?: string): string[] {
   const dir = overlayDir(dataDir);
   const manifest = readManifest(dir);
-  const removed = path ? [path].filter((p) => p in manifest.files) : Object.keys(manifest.files);
+  const removed = path ? [path].filter((p) => Object.hasOwn(manifest.files, p)) : Object.keys(manifest.files);
   for (const p of removed) {
     rmSync(join(dir, 'files', p), { force: true });
     delete manifest.files[p];

@@ -1,5 +1,6 @@
 import jpeg from 'jpeg-js';
 import { PNG } from 'pngjs';
+import { fitsPixelBudget } from '../imaging/size.js';
 
 /** Pixel work for the clan emblem: decode, find the emblem above the clan name, and compare by a tiny fingerprint. */
 
@@ -35,8 +36,9 @@ export function bestSimilarity(emblem: Uint8Array, blob: Uint8Array): number {
 /** Pearson correlation above which two emblems count as the same picture. */
 export const MATCH_THRESHOLD = 0.8;
 
-/** PNG and JPEG only (pure JS, no native code). Anything else returns null and goes to the fallback reader. */
+/** PNG and JPEG only (pure JS, no native code). Anything else, or a picture that declares more pixels than a screenshot can have, returns null and goes to the fallback reader. */
 export function decodeImage(bytes: Uint8Array, mime: string): Pixels | null {
+  if (!fitsPixelBudget(bytes)) return null;
   try {
     if (mime === 'image/png') {
       const png = PNG.sync.read(Buffer.from(bytes));

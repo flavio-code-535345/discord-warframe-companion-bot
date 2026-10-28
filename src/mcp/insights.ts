@@ -217,7 +217,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     'set_ai_switch',
     {
       title: 'AI switches',
-      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model), thinking (let a thinking-capable local model reason first), websearch (SearXNG results), operators (free-form instructions for the two owners), log (the question log).',
+      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model), thinking (let a thinking-capable local model reason first), websearch (SearXNG results), operators (free-form instructions for the two owners), log (the question log), cache (saved, verified answers and their daily refresh).',
       inputSchema: { feature: z.enum(TOGGLE_KEYS as [string, ...string[]]), on: z.boolean() },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },

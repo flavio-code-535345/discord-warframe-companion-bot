@@ -33,6 +33,7 @@ export const vc: Command = {
     let done: string;
     if (sub === 'rename') {
       const name = interaction.options.getString('name', true).trim();
+      if (!name) throw new UserError('Give the room a name.');
       await channel.setName(name, `Renamed by ${interaction.user.username}`);
       done = `Renamed your room to **${name}**.`;
     } else if (sub === 'limit') {

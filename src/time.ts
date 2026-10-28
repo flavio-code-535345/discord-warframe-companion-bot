@@ -1,5 +1,8 @@
 const UNIT_MS: Record<string, number> = { w: 604_800_000, d: 86_400_000, h: 3_600_000, m: 60_000 };
 
+/** The latest moment a Date can represent; anything beyond it makes toISOString() throw. */
+const MAX_DATE_MS = 8.64e15;
+
 /**
  * Parses an event start time. Accepts relative offsets ("2h", "1d 4h30m", "in 45m"),
  * Unix timestamps in seconds, and ISO-8601 dates. A date/time without a zone ("2026-11-02 20:00")
@@ -12,7 +15,7 @@ export function parseWhen(input: string, now = Date.now()): number | null {
   if (/^(\d+\s*[wdhm]\s*)+$/.test(s)) {
     let total = 0;
     for (const [, n, unit] of s.matchAll(/(\d+)\s*([wdhm])/g)) total += Number(n) * UNIT_MS[unit!]!;
-    return total > 0 ? now + total : null;
+    return total > 0 && now + total <= MAX_DATE_MS ? now + total : null;
   }
 
   if (/^\d{9,11}$/.test(s)) return Number(s) * 1000;

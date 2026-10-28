@@ -2,7 +2,7 @@ import { EmbedBuilder, type GuildMember, type Message, PermissionFlagsBits } fro
 import type { AppContext } from '../context.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
-import { UserError, getSendableChannel } from '../services/clan.js';
+import { assertChannelFree, getSendableChannel } from '../services/clan.js';
 import { modLog, notifyUser } from './service.js';
 
 export const HONEYPOT_ACTIONS = ['softban', 'ban', 'kick'] as const;
@@ -98,10 +98,7 @@ export async function handleHoneypotMessage(message: Message, ctx: AppContext): 
 /** Points the honeypot at a channel and posts the "do not post here" notice in it. */
 export async function setupHoneypot(ctx: AppContext, channelId: string, action: HoneypotAction): Promise<void> {
   const channel = await getSendableChannel(ctx, channelId);
-  const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
-  if (channelId === settings.chatChannelId || channelId === settings.verifyChannelId) {
-    throw new UserError("That channel is used for chat or verification. Pick a channel nobody should ever write in.");
-  }
+  assertChannelFree(ctx, { honeypotChannelId: channelId });
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { honeypotChannelId: channelId, honeypotAction: action });
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)

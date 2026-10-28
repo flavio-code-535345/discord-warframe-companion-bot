@@ -179,7 +179,7 @@ describe('agent loop', () => {
 
   it('falls back to the cloud model when the local one fails, and skips local for a while', async () => {
     const urls: string[] = [];
-    const fetcher = async (url: string, init: RequestInit) => {
+    const fetcher = async (url: string) => {
       urls.push(url);
       if (url.startsWith('http://h')) {
         if (url.endsWith('/api/show')) return show('tools');

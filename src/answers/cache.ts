@@ -172,8 +172,6 @@ const META_LAST = 'answer_refresh_last';
 const META_DAY = 'answer_refresh_day';
 let running = false;
 
-export const refreshRunning = (): boolean => running;
-
 export function lastRefresh(ctx: Pick<AppContext, 'store'>): RefreshSummary | null {
   try {
     const raw = ctx.store.getMeta(META_LAST);
@@ -232,17 +230,22 @@ export async function refreshAnswers(ctx: AppContext, opts: { max?: number } = {
 /** Runs the refresh once a day, at ANSWER_REFRESH_HOUR_UTC. The day is recorded before the run, so a crash loop can't repeat it. */
 export class AnswerRefresher {
   private timer: NodeJS.Timeout | null = null;
+  private first: NodeJS.Timeout | null = null;
 
   constructor(private readonly ctx: AppContext) {}
 
   start(): void {
-    setTimeout(() => void this.check(), 2 * 60_000).unref();
+    this.stop();
+    this.first = setTimeout(() => void this.check(), 2 * 60_000);
+    this.first.unref();
     this.timer = setInterval(() => void this.check(), 10 * 60_000);
     this.timer.unref();
   }
 
   stop(): void {
+    if (this.first) clearTimeout(this.first);
     if (this.timer) clearInterval(this.timer);
+    this.first = this.timer = null;
   }
 
   async check(now = new Date()): Promise<boolean> {

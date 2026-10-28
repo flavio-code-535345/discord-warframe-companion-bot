@@ -126,8 +126,10 @@ export function describeChange(c: AuditChange): string {
 
 export function auditEntryEmbed(e: AuditShape): EmbedBuilder {
   const emoji = EMOJI.find(([re]) => re.test(e.actionName))?.[1] ?? '📝';
-  const created = /Create|Add$/.test(e.actionName);
-  const removed = /Delete|Remove|Kick|Ban$|Prune/.test(e.actionName) && !/Unban|BanRemove/.test(e.actionName);
+  // A ban is the most severe of these: it must not read as an addition just because the action is called MemberBanAdd (an unban is only a change).
+  const banned = e.actionName === 'MemberBanAdd';
+  const created = !banned && /Create|Add$/.test(e.actionName);
+  const removed = banned || (/Delete|Remove|Kick|Prune/.test(e.actionName) && !/BanRemove/.test(e.actionName));
   const embed = new EmbedBuilder().setColor(created ? COLOR.create : removed ? COLOR.delete : COLOR.change).setTitle(`${emoji} ${humanAction(e.actionName)}`);
   const target = targetLabel(e.actionName, e.targetId);
   embed.addFields({ name: 'By', value: e.executorId ? `<@${e.executorId}>` : 'unknown', inline: true });

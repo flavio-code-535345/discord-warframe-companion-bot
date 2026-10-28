@@ -41,6 +41,7 @@ const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
  */
 export class WikiCrawler {
   private timer: NodeJS.Timeout | null = null;
+  private first: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor(
@@ -51,12 +52,15 @@ export class WikiCrawler {
   ) {}
 
   start(): void {
-    setTimeout(() => void this.maybeRefresh(), STARTUP_DELAY_MS);
+    this.stop();
+    this.first = setTimeout(() => void this.maybeRefresh(), STARTUP_DELAY_MS);
     this.timer = setInterval(() => void this.maybeRefresh(), CHECK_INTERVAL_MS);
   }
 
   stop(): void {
+    if (this.first) clearTimeout(this.first);
     if (this.timer) clearInterval(this.timer);
+    this.first = this.timer = null;
   }
 
   get busy(): boolean {

@@ -61,6 +61,14 @@ describe('audit embeds', () => {
     assert.equal(describeChange({ key: 'topic', old: null, new: 'hi' }), '**topic**: — → hi');
   });
 
+  it('colors a ban like a removal (not green) and an unban like a plain change', () => {
+    const color = (actionName: string) => auditEntryEmbed({ actionName, executorId: '9', targetId: '1', reason: null, changes: [], extra: null }).data.color;
+    assert.equal(color('MemberBanAdd'), color('MemberKick'), 'a ban is as severe as a kick');
+    assert.equal(color('MemberBanAdd'), color('ChannelDelete'));
+    assert.notEqual(color('MemberBanAdd'), color('RoleCreate'), 'the action is called "Add", which used to make it green');
+    assert.equal(color('MemberBanRemove'), color('MemberUpdate'), 'an unban is only a change');
+  });
+
   it('describes voice moves and leaves, and ignores no-ops', () => {
     assert.match(voiceEmbed('1', null, '2')!.data.description!, /joined <#2>/);
     assert.match(voiceEmbed('1', '2', '3')!.data.description!, /moved from <#2> to <#3>/);

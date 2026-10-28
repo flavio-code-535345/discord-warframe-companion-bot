@@ -131,7 +131,7 @@ export const drops: Command = {
   data: new SlashCommandBuilder()
     .setName('drops')
     .setDescription('Find where an item, mod or relic drops')
-    .addStringOption((o) => o.setName('item').setDescription('Item name, e.g. "Neo N16" or "Condition Overload"').setRequired(true))
+    .addStringOption((o) => o.setName('item').setDescription('Item name, e.g. "Neo N16" or "Condition Overload"').setRequired(true).setMaxLength(100))
     .toJSON(),
 
   async execute(interaction) {

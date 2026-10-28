@@ -69,8 +69,6 @@ export function allow(limit: number, now = Date.now()): boolean {
   return true;
 }
 
-export const composeEnabled = (c: Pick<ComposeConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>) => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && localModelOf(c)));
-
 interface Endpoint {
   url: string;
   key: string;

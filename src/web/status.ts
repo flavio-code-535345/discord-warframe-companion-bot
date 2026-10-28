@@ -63,7 +63,11 @@ const ICONS: Record<string, string> = {
   joy: '😊', anger: '😠', envy: '💚', sorrow: '😢', fear: '😨',
 };
 
-const iso = (d: Date | string | number | undefined | null) => (Number.isNaN(toMs(d)) ? null : new Date(toMs(d)).toISOString());
+/** ISO text of a time, or null when it is missing or beyond what a Date can represent (toISOString() throws for those). */
+const iso = (d: Date | string | number | undefined | null): string | null => {
+  const t = new Date(toMs(d));
+  return Number.isNaN(t.getTime()) ? null : t.toISOString();
+};
 
 function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
   const p = projectCycles(ws, now);
@@ -229,8 +233,17 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
   let world: WorldTiles | null = null;
   try {
     const ws = await loadWorldState();
-    cycles = cyclesOf(ws);
-    world = worldOf(ws);
+    // Each part on its own: a feed that lacks one cycle must not take the sortie, the fissures and the rest of the page down with it.
+    try {
+      cycles = cyclesOf(ws);
+    } catch {
+      // The cycles tile shows as unavailable.
+    }
+    try {
+      world = worldOf(ws);
+    } catch {
+      // The other tiles show as unavailable.
+    }
   } catch {
     // The notifier already logs worldstate failures; the page just shows those tiles as unavailable.
   }
@@ -249,9 +262,11 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
     upcomingEvents: store
       .upcomingEvents(config.DISCORD_GUILD_ID)
       .slice(0, 8)
-      .map((e) => {
+      .flatMap((e) => {
+        const startsAt = iso(e.startsAt);
+        if (!startsAt) return [];
         const r = store.getRsvps(e.id);
-        return { id: e.id, title: e.title, startsAt: new Date(e.startsAt).toISOString(), going: r.going.length, maybe: r.maybe.length };
+        return [{ id: e.id, title: e.title, startsAt, going: r.going.length, maybe: r.maybe.length }];
       }),
     cycles,
     world,

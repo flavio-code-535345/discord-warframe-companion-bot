@@ -5,7 +5,7 @@ import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { modLog } from '../moderation/service.js';
 import { normalizeImage } from '../imaging/sniff.js';
-import { UserError, getSendableChannel } from '../services/clan.js';
+import { UserError, assertChannelFree, getSendableChannel } from '../services/clan.js';
 import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEmblem, fingerprint } from './emblem.js';
 import { ocr } from './ocr.js';
 import { type RankRow, parseCard, parseRankRow, parseRankRows, rankFromTitle } from './parse.js';
@@ -13,6 +13,7 @@ import { type CardReading, type RoleInfo, SELF_SERVE_RANKS, checkClan, clanRankR
 import { readProfileCardVia } from './vision.js';
 import { saveSticky } from '../sticky/service.js';
 import { QueueFullError, screenshotQueue } from '../queue.js';
+import { withTimeout } from '../timeout.js';
 
 /**
  * Screenshots are processed in memory only: nothing is written to disk or the database (just a hash and the
@@ -361,8 +362,12 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   if (!settings.ssRolesChannelId || message.channelId !== settings.ssRolesChannelId) return false;
 
   const channel = message.channel;
-  const say = (payload: Parameters<typeof channel.send>[0]) => channel.send(payload).catch(() => {});
   const mention = { users: [message.author.id] };
+  // A short remark to the member (not a result): it removes itself after a moment, so the channel keeps only screenshots and their results.
+  const notice = async (text: string) => {
+    const sent = await channel.send({ content: `<@${message.author.id}> ${text}`, allowedMentions: mention }).catch(() => null);
+    if (sent) setTimeout(() => void sent.delete().catch(() => {}), 8000).unref();
+  };
 
   // Without the Message Content intent the gateway delivers messages with no attachments at all, which would make every screenshot look like
   // chatter that has to be removed. Read the message again over REST (it has them, and fills this message in); if that fails, leave it alone.
@@ -376,14 +381,13 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   if (!images.length) {
     if (message.member?.permissions.has(PermissionFlagsBits.ManageMessages)) return true;
     await message.delete().catch(() => {});
-    const notice = await channel.send({ content: `<@${message.author.id}> this channel is only for profile screenshots (PNG, JPG or WebP under 8 MB).`, allowedMentions: mention }).catch(() => null);
-    if (notice) setTimeout(() => void notice.delete().catch(() => {}), 8000).unref();
+    await notice('this channel is only for profile screenshots (PNG, JPG or WebP under 8 MB).');
     return true;
   }
   const wait = (lastTry.get(message.author.id) ?? 0) + COOLDOWN_MS - Date.now();
   if (wait > 0) {
     await message.delete().catch(() => {});
-    await say({ content: `<@${message.author.id}> one screenshot at a time, Operator. Try again in ${Math.ceil(wait / 1000)}s.`, allowedMentions: mention });
+    await notice(`one screenshot at a time, Operator. Try again in ${Math.ceil(wait / 1000)}s.`);
     return true;
   }
   lastTry.set(message.author.id, Date.now());
@@ -404,7 +408,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
   } catch (err) {
     if (!(err instanceof QueueFullError)) throw err;
     await message.delete().catch(() => {});
-    await say({ content: `<@${message.author.id}> ${err.reason === 'user' ? 'two of your screenshots are already waiting, Operator. Wait for those first.' : 'too many screenshots are waiting right now. Try again in a few minutes.'}`, allowedMentions: mention });
+    await notice(err.reason === 'user' ? 'two of your screenshots are already waiting, Operator. Wait for those first.' : 'too many screenshots are waiting right now. Try again in a few minutes.');
     return true;
   }
   const waited = ticket.position() > 0;
@@ -453,7 +457,7 @@ export async function handleSsMessage(message: Message, ctx: AppContext): Promis
     // Waiting in line does not count against the time limit; the reading does.
     const [downloads] = await Promise.all([prepare, ticket.ready]);
     if (waited && progress) await progress.edit({ content: readingText, allowedMentions: mention }).catch(() => {});
-    await Promise.race([work(downloads), new Promise<never>((_, reject) => setTimeout(() => reject(new UserError("that took too long, so I gave up. Try again in a minute.")), 90_000).unref())]);
+    await withTimeout(work(downloads), 90_000, () => new UserError('that took too long, so I gave up. Try again in a minute.'));
   } catch (err) {
     console.error('[ssroles] failed:', err instanceof Error ? err.message : err);
     await finish({ content: `<@${message.author.id}> ${err instanceof UserError ? err.message : 'something went wrong reading that screenshot. Try again later.'}` });
@@ -514,10 +518,7 @@ export async function learnReferences(ctx: AppContext, images: { mime: string; d
 /** Points screenshot roles at a channel, optionally learns the reference card, and posts the instructions there. */
 export async function setupSsRoles(ctx: AppContext, channelId: string, references: { mime: string; data: Uint8Array }[] = []): Promise<ReferenceResult | null> {
   await getSendableChannel(ctx, channelId);
-  const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
-  if ([settings.chatChannelId, settings.honeypotChannelId, settings.verifyChannelId].includes(channelId)) {
-    throw new UserError('That channel is used for something else. Pick a channel just for screenshots.');
-  }
+  assertChannelFree(ctx, { ssRolesChannelId: channelId });
   if (references.some((r) => r.data.length > MAX_IMAGE_BYTES)) throw new UserError('A reference image is over 8 MB.');
   const learned = references.length ? await learnReferences(ctx, references) : null;
   ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { ssRolesChannelId: channelId });

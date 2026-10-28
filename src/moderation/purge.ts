@@ -68,6 +68,7 @@ export async function runPurge(
   const max = limit === 'all' ? Number.POSITIVE_INFINITY : limit;
   let deleted = 0;
   let oldDeleted = 0;
+  let oldTried = 0;
   let before: string | undefined;
 
   while (deleted < max) {
@@ -82,10 +83,13 @@ export async function runPurge(
       deleted++;
     }
     for (const id of old) {
-      if (oldDeleted >= OLD_DELETE_CAP) return { deleted, oldDeleted, capped: true };
-      await channel.messages.delete(id).catch(() => {});
-      oldDeleted++;
-      deleted++;
+      if (oldTried >= OLD_DELETE_CAP) return { deleted, oldDeleted, capped: true };
+      oldTried++;
+      // Count only what really went (someone else may have removed it already): the moderator is told this number.
+      if (await channel.messages.delete(id).then(() => true, () => false)) {
+        oldDeleted++;
+        deleted++;
+      }
     }
     if (batch.size < 100) break;
     await onProgress?.(deleted);

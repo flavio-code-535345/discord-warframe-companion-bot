@@ -6,9 +6,10 @@ import { prepareOverlay } from './overlay.js';
 /**
  * Preloaded with `node --import ./dist/overlay-register.js dist/index.js`. Swaps in overlay sources (see overlay.ts)
  * while keeping each file's original URL, so its relative and package imports keep resolving from the image.
- * Does nothing unless ALLOW_CODE_EDIT=true and the data volume holds an overlay.
+ * Does nothing unless ALLOW_CODE_EDIT is on and the data volume holds an overlay. It accepts the same spellings of "on" as config.ts
+ * (true, 1, yes): the MCP tools are registered by that parser, so this must not be stricter, or patches would be saved and never loaded.
  */
-if (process.env.ALLOW_CODE_EDIT === 'true' || process.env.ALLOW_CODE_EDIT === '1') {
+if (['true', '1', 'yes'].includes(process.env.ALLOW_CODE_EDIT ?? '')) {
   const distDir = dirname(fileURLToPath(import.meta.url));
   const dataDir = process.env.DATA_DIR ?? join(distDir, '..', 'data');
   try {

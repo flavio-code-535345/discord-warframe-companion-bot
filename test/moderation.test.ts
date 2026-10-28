@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { OverwriteType, PermissionFlagsBits, type GuildTextBasedChannel } from 'discord.js';
+import { Collection, OverwriteType, PermissionFlagsBits, type GuildTextBasedChannel } from 'discord.js';
 import type { Client } from 'discord.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
-import { BULK_MAX_AGE_MS, MAX_PURGE, parseAmount, selectForPurge } from '../src/moderation/purge.js';
+import { BULK_MAX_AGE_MS, MAX_PURGE, OLD_DELETE_CAP, parseAmount, runPurge, selectForPurge } from '../src/moderation/purge.js';
 import { lockChannel, unlockChannel } from '../src/moderation/service.js';
 import { parseDuration } from '../src/time.js';
 
@@ -126,4 +126,37 @@ test('a failed lock is undone, and an unlock carries on past an overwrite it can
   edits.length = 0;
   assert.equal(await unlockChannel(ctx, channel, 'test'), 1);
   assert.deepEqual(edits, [[GUILD, { SendMessages: null }]]);
+});
+
+/** A channel whose messages are all older than the bulk-delete limit, so each goes through messages.delete one by one. */
+function oldChannel(count: number, fails: (id: string) => boolean) {
+  const now = Date.now();
+  const all = Array.from({ length: count }, (_, i) => ({ id: String(1000 - i), author: { id: 'a', bot: false }, pinned: false, createdTimestamp: now - BULK_MAX_AGE_MS - 1000 }));
+  const calls: string[] = [];
+  const channel = {
+    messages: {
+      fetch: async ({ before }: { before?: string }) => {
+        const start = before ? all.findIndex((m) => m.id === before) + 1 : 0;
+        return new Collection(all.slice(start, start + 100).map((m) => [m.id, m] as const));
+      },
+      delete: async (id: string) => {
+        calls.push(id);
+        if (fails(id)) throw new Error('Unknown Message');
+      },
+    },
+    bulkDelete: async () => new Collection(),
+  } as unknown as GuildTextBasedChannel;
+  return { channel, calls };
+}
+
+test('runPurge reports only the old messages that were really deleted', async () => {
+  const { channel, calls } = oldChannel(3, (id) => id === '999');
+  assert.deepEqual(await runPurge(channel, 'all', {}), { deleted: 2, oldDeleted: 2, capped: false });
+  assert.deepEqual(calls, ['1000', '999', '998']);
+});
+
+test('runPurge stops after OLD_DELETE_CAP attempts even when every delete fails', async () => {
+  const { channel, calls } = oldChannel(OLD_DELETE_CAP + 5, () => true);
+  assert.deepEqual(await runPurge(channel, 'all', {}), { deleted: 0, oldDeleted: 0, capped: true });
+  assert.equal(calls.length, OLD_DELETE_CAP);
 });

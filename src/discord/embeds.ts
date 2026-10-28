@@ -187,7 +187,8 @@ export function priceEmbed(p: PriceCheck): EmbedBuilder {
 }
 
 export function dropsEmbed(query: string, groups: DropGroup[]): EmbedBuilder {
-  const embed = base(COLORS.success, 'drops', `Drop locations: ${query}`);
+  // An embed title holds 256 characters; the query is whatever a member typed (or the model asked for).
+  const embed = base(COLORS.success, 'drops', `Drop locations: ${query.slice(0, 200)}`);
   if (!groups.length) return embed.setDescription('Nothing in the drop tables matches that name.');
   for (const g of groups) {
     embed.addFields({

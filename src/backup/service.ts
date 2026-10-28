@@ -37,17 +37,21 @@ export const summaryOf = (b: StoredBackup) => JSON.parse(b.summary) as BackupSum
 /** Takes an automatic backup whenever the newest one is older than a day; checks hourly. */
 export class BackupScheduler {
   private timer: NodeJS.Timeout | null = null;
+  private first: NodeJS.Timeout | null = null;
 
   constructor(private readonly ctx: AppContext) {}
 
   start(): void {
+    this.stop();
     // Give the gateway a minute to settle before the first check.
-    setTimeout(() => void this.check(), 60_000);
+    this.first = setTimeout(() => void this.check(), 60_000);
     this.timer = setInterval(() => void this.check(), CHECK_INTERVAL_MS);
   }
 
   stop(): void {
+    if (this.first) clearTimeout(this.first);
     if (this.timer) clearInterval(this.timer);
+    this.first = this.timer = null;
   }
 
   private async check(): Promise<void> {

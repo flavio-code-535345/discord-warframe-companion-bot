@@ -8,6 +8,7 @@ import { disableRivenChannel, recordResult, scanLog, scanTotals, setupRivenChann
 import { scanCard } from '../../rivens/scan.js';
 import { rivenStatus } from '../../rivens/service.js';
 import { UserError } from '../../services/clan.js';
+import { withTimeout } from '../../timeout.js';
 import { escapeHtml as e } from '../status.js';
 import { type Option, type PageContext, actionButton, csrfField, head, layout, select, statCard } from './pages.js';
 
@@ -157,10 +158,7 @@ ${status.failing.length ? `<h2>Market read problems</h2><div class="card"><table
     }
     try {
       await ticket.ready;
-      const result = await Promise.race([
-        scanCard(ctx, new Uint8Array(req.body), mime),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new UserError('That took too long, so I gave up.')), SCAN_LIMIT_MS).unref()),
-      ]);
+      const result = await withTimeout(scanCard(ctx, new Uint8Array(req.body), mime), SCAN_LIMIT_MS, () => new UserError('That took too long, so I gave up.'));
       recordResult('panel', session.username, result);
       res.json({ ...scanSummary(result), ms: result.ms, lineCount: result.lines, lines: result.reading.statLines });
     } catch (err) {

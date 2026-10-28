@@ -8,7 +8,7 @@ import { disableVerification, setupVerification } from '../../discord/verificati
 import { validImageUrl } from '../../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { modLog } from '../../moderation/service.js';
-import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
+import { UserError, assertChannelFree, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
 import { parseWhen } from '../../time.js';
 import { buildStatus, escapeHtml as e } from '../status.js';
 import {
@@ -288,13 +288,15 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
       };
       const role = id(req.body.alertsRoleId);
       if (role && !g.roles.cache.has(role)) throw new UserError('That role no longer exists.');
+      const chatChannelId = ch('chatChannelId');
+      assertChannelFree(ctx, { chatChannelId });
       store.updateSettings(guildId, {
         alertsChannelId: ch('alertsChannelId'),
         alertsRoleId: role,
         announcementsChannelId: ch('announcementsChannelId'),
         modLogChannelId: ch('modLogChannelId'),
         welcomeChannelId: ch('welcomeChannelId'),
-        chatChannelId: ch('chatChannelId'),
+        chatChannelId,
       });
       await audit(session, 'Changed bot channel settings');
       return 'Settings saved.';
@@ -635,7 +637,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
     }),
   );
 
-  router.post('/logout', (req, res) => {
+  router.post('/logout', (_req, res) => {
     const session = res.locals.session as PanelSession;
     store.deletePanelSession(session.id);
     res.setHeader('Set-Cookie', clearCookie(SESSION_COOKIE));

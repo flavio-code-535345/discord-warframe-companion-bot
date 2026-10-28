@@ -4,6 +4,7 @@ import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } fr
 import { searchDrops } from '../warframe/drops.js';
 import { lookupItem, summarizeLookup } from '../warframe/items.js';
 import { priceCheck } from '../warframe/market.js';
+import { withTimeout } from '../timeout.js';
 import { webSearch } from '../warframe/websearch.js';
 import { readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
@@ -138,10 +139,7 @@ export const enabledTools = (ctx: AppContext, tools: AgentTool[] = AGENT_TOOLS):
 /** Runs one tool for the model: the result as text, clipped; an error becomes `{"error": ...}`. Never throws. */
 export async function runTool(tool: AgentTool, args: Record<string, unknown>, ctx: AppContext, clip: number): Promise<{ text: string; error: boolean }> {
   try {
-    const out = await Promise.race([
-      tool.run(args, ctx),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('the tool took too long')), 25_000).unref()),
-    ]);
+    const out = await withTimeout(tool.run(args, ctx), 25_000, () => new Error('the tool took too long'));
     const s = typeof out === 'string' ? out : JSON.stringify(out);
     return { text: s.length > clip ? `${s.slice(0, clip)}… (cut)` : s, error: false };
   } catch (err) {

@@ -27,7 +27,22 @@ export async function requestUpdate(config: UpdateConfig, fetcher: Fetcher = fet
   return 'Watchtower is checking for a newer image. If there is one, the bot restarts on it within a minute or so.';
 }
 
-/** Exits shortly, so a reply can still go out; Docker's restart policy brings the bot back (on the same image). */
-export function scheduleRestart(delayMs = 1500, exit: (code: number) => void = process.exit): void {
-  setTimeout(() => exit(0), delayMs).unref?.();
+let graceful: (() => Promise<void>) | null = null;
+
+/** index.ts hands over its shutdown here, so a deliberate restart reports the stop and closes the database like a SIGTERM does. */
+export function onRestart(shutdown: (() => Promise<void>) | null): void {
+  graceful = shutdown;
+}
+
+/**
+ * Restarts shortly, so a reply can still go out; Docker's restart policy brings the bot back (on the same image). The registered shutdown
+ * runs first (without it the next start reports an unclean stop), but never for longer than `graceMs`: it must not be able to stop the restart.
+ */
+export function scheduleRestart(delayMs = 1500, exit: (code: number) => void = process.exit, graceMs = 8000): void {
+  setTimeout(() => {
+    const done = graceful
+      ? Promise.race([graceful().catch((err: unknown) => console.warn('[app] shutdown before the restart failed:', err)), new Promise((resolve) => setTimeout(resolve, graceMs).unref())])
+      : Promise.resolve();
+    void done.finally(() => exit(0));
+  }, delayMs).unref?.();
 }

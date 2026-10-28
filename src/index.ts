@@ -14,6 +14,7 @@ import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
 import { OrdisBrain } from './ai/ordis.js';
+import { onRestart } from './selfupdate.js';
 import { loadConfig } from './config.js';
 import { initRuntimeConfig, onSettingChange } from './runtime-config.js';
 import { configureApi } from './warframe/fetch.js';
@@ -53,7 +54,7 @@ const client = createClient(config);
 const ai = config.ANTHROPIC_API_KEY
   ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
   : null;
-if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: chat answers and /ask are disabled.');
+if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: the Claude chat is off; Ordis answers from live data, the wiki and the free models.');
 const applyWorldState = () =>
   configureWorldState({
     url: config.WORLDSTATE_URL,
@@ -133,6 +134,8 @@ async function shutdown(signal: string): Promise<void> {
   wikiIndex?.close();
   process.exit(0);
 }
+// A restart from the panel or the MCP goes through the same shutdown, so it is reported as a stop and the next start is not taken for a crash.
+onRestart(() => shutdown('restart request'));
 // A stray failure in a background task (an OCR worker, a Discord call) must not take the whole bot down.
 process.on('unhandledRejection', (reason) => console.error('[process] unhandled rejection:', reason));
 process.on('uncaughtException', (err) => console.error('[process] uncaught exception:', err));

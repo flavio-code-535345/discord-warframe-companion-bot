@@ -263,3 +263,56 @@ describe('cycle projection', () => {
     assert.equal(p.vallis.projected, false);
   });
 });
+
+describe('JSON answers', () => {
+  const html = () => new Response('<html>Maintenance</html>', { status: 200 });
+
+  it('does not cache a 200 answer that is not JSON, so the next call asks again', async () => {
+    let n = 0;
+    const { client, calls } = setup(() => (++n === 1 ? html() : json({ ok: 1 })));
+    await assert.rejects(client.get('https://x.test/items', { kind: 'stable', json: true }), /not JSON/);
+    const again = await client.get('https://x.test/items', { kind: 'stable', json: true });
+    assert.equal(again.body, '{"ok":1}');
+    assert.equal(again.source, 'network');
+    assert.equal(calls.length, 2, 'the page must not have been kept as the answer');
+  });
+
+  it('uses the older JSON while the host answers with a page instead of data', async () => {
+    let n = 0;
+    const { client, clock } = setup(() => (++n === 1 ? json({ ok: 1 }) : html()));
+    await client.get('https://x.test/items', { kind: 'stable', json: true });
+    clock.t += 2 * 3_600_000;
+    const second = await client.get('https://x.test/items', { kind: 'stable', json: true });
+    assert.equal(second.body, '{"ok":1}');
+    assert.equal(second.stale, true);
+  });
+
+  it('still caches plain bodies for callers that do not parse JSON', async () => {
+    const { client, calls } = setup(() => html());
+    await client.get('https://x.test/page', { kind: 'stable' });
+    const again = await client.get('https://x.test/page', { kind: 'stable' });
+    assert.equal(again.source, 'cache');
+    assert.equal(calls.length, 1);
+  });
+});
+
+describe('answers that are given up on', () => {
+  it('cancels the body of a 5xx answer before retrying', async () => {
+    let cancelled = 0;
+    const bodies = [0, 1, 2].map(
+      () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled++;
+            },
+          }),
+          { status: 503 },
+        ),
+    );
+    let n = 0;
+    const { client } = setup(() => bodies[n++] ?? json({}));
+    await assert.rejects(client.get('https://x.test/down', { kind: 'live' }), ApiHttpError);
+    assert.equal(cancelled, 3, 'every refused answer frees its connection');
+  });
+});

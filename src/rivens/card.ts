@@ -31,8 +31,9 @@ export interface CardReading {
 }
 
 const MINUS = /[-−–—‒]/;
-// Stray symbols between the value and the name are skipped: the game draws an element's icon there ("+98.3% * Cold" is what OCR makes of it).
-const STAT_LINE = /([+\-−–—‒]?)\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(%|s\b|m\b)?\s*(?:[^A-Za-z0-9\s+\-−–—‒]+\s*)*([A-Za-z][A-Za-z '/\-]{2,})/;
+// Stray symbols and spaces between the value and the name are skipped: the game draws an element's icon there ("+98.3% * Cold" is what OCR makes
+// of it). One flat class, not a group of symbols followed by optional spaces: that nesting backtracks exponentially on a long run of symbols.
+const STAT_LINE = /([+\-−–—‒]?)\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(%|s\b|m\b)?[^A-Za-z0-9+\-−–—‒]*([A-Za-z][A-Za-z '/\-]{2,})/;
 
 /** "x0.75 Damage to Infested": a faction multiplier, with a stray letter or two around it. */
 const MULTIPLIER_LINE = /(?:^|[^A-Za-z0-9])[xX]\s*(\d(?:[.,]\d{1,2})?)\s+([A-Za-z][A-Za-z '/\-]{2,})/;

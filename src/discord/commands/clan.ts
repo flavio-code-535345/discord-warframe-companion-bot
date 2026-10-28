@@ -59,10 +59,12 @@ export const clan: Command = {
     }
 
     if (sub === 'register') {
+      const ign = interaction.options.getString('ign', true).trim();
+      if (!ign) throw new UserError('Type your in-game name.');
       const member = ctx.store.upsertMember({
         guildId,
         userId: interaction.user.id,
-        ign: interaction.options.getString('ign', true).trim(),
+        ign,
         masteryRank: interaction.options.getInteger('mastery_rank'),
         platform: interaction.options.getString('platform'),
       });

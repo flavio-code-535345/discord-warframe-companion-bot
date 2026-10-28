@@ -1,8 +1,10 @@
+import { assertPictureSize } from './size.js';
 import { webpToPng } from './webp.js';
 
 /**
  * Discord's content type for an attachment can be wrong (a pasted PNG arrives labelled image/webp), so the file header decides what a
- * picture really is. Every reader of member screenshots (rivens, profile cards, reference pictures) goes through this first.
+ * picture really is. Every reader of member screenshots (rivens, profile cards, reference pictures) goes through this first, which is
+ * also where a picture that declares an absurd size is refused (see size.ts).
  */
 
 /** What the bytes really are (from the file header); null when unknown. */
@@ -18,6 +20,7 @@ export function sniffMime(b: Uint8Array): 'image/png' | 'image/jpeg' | 'image/we
  * can't be converted it is returned as it is, and the vision models, which accept WebP, get it).
  */
 export async function normalizeImage(bytes: Uint8Array, labelled: string): Promise<{ bytes: Uint8Array; mime: string }> {
+  assertPictureSize(bytes);
   const mime = sniffMime(bytes) ?? labelled;
   if (mime === 'image/webp') {
     const png = await webpToPng(bytes).catch(() => null);

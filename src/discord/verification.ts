@@ -17,7 +17,7 @@ import {
 } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { modLog } from '../moderation/service.js';
-import { UserError, getSendableChannel } from '../services/clan.js';
+import { UserError, assertChannelFree, getSendableChannel } from '../services/clan.js';
 import { formatDuration } from '../time.js';
 import { VerificationAttempts } from '../verification/attempts.js';
 import { renderCaptcha } from '../verification/captcha.js';
@@ -79,6 +79,7 @@ export async function setupVerification(ctx: AppContext, channelId: string, role
   if (!role) throw new UserError('That role does not exist.');
   assertSafeVerifyRole(role, me);
   const channel = await getSendableChannel(ctx, channelId);
+  assertChannelFree(ctx, { verifyChannelId: channelId });
   const previous = ctx.store.getSettings(guild.id);
   if (previous.verifyChannelId && previous.verifyPanelMessageId) {
     const old = await getSendableChannel(ctx, previous.verifyChannelId).catch(() => null);

@@ -1,9 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { tuneModel } from '../ai/control.js';
-import { currentPull, gb, listInstalled, localModelOf, ollamaApi, ollamaBase, pullProgress, pullRunning, startPull, validModelTag } from '../ai/ollama.js';
+import { installModel, testModel, tuneModel } from '../ai/control.js';
+import { currentPull, gb, listInstalled, localModelOf, ollamaApi, ollamaBase, pullProgress, validModelTag } from '../ai/ollama.js';
 import type { AppContext } from '../context.js';
-import { UserError } from '../services/clan.js';
 import { READ_ONLY, tool } from './util.js';
 
 /**
@@ -67,10 +66,7 @@ export function registerOllamaTools(server: McpServer, ctx: AppContext, fetcher:
       annotations: WRITE,
     },
     tool(async ({ model }) => {
-      const running = currentPull();
-      if (pullRunning() && running) throw new UserError(`Already downloading ${running.model}; check ollama_status.`);
-      await ollamaApi(base, '/api/version', fetcher);
-      void startPull(base, model, fetcher);
+      await installModel(ctx, model, undefined, fetcher);
       return { started: model, next: 'Call ollama_status to follow the progress, then choose it with /ai model in Discord.' };
     }),
   );
@@ -100,20 +96,6 @@ export function registerOllamaTools(server: McpServer, ctx: AppContext, fetcher:
       inputSchema: { prompt: z.string().min(1).max(500).default('Say hello in one short sentence.') },
       annotations: READ_ONLY,
     },
-    tool(async ({ prompt }) => {
-      const model = localModelOf(ctx.config);
-      if (!model) throw new UserError('LOCAL_AI_MODEL is not set on the bot and no model was chosen with /ai model.');
-      const t0 = Date.now();
-      const data = await ollamaApi<{ choices?: { message?: { content?: string } }[]; usage?: { completion_tokens?: number } }>(
-        url.replace(/\/+$/, ''),
-        '/chat/completions',
-        fetcher,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.config.LOCAL_AI_KEY || 'ollama'}` }, body: JSON.stringify({ model, max_tokens: 200, reasoning_effort: 'none', messages: [{ role: 'user', content: prompt }] }) },
-        ctx.config.LOCAL_AI_TIMEOUT_SECONDS * 1000,
-      );
-      const ms = Date.now() - t0;
-      const tokens = data.usage?.completion_tokens ?? null;
-      return { model, seconds: Number((ms / 1000).toFixed(1)), tokensPerSecond: tokens ? Number((tokens / (ms / 1000)).toFixed(1)) : null, answer: data.choices?.[0]?.message?.content?.trim() ?? null };
-    }),
+    tool(async ({ prompt }) => testModel(ctx, prompt, fetcher)),
   );
 }

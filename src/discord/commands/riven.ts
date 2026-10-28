@@ -7,6 +7,7 @@ import { rivenReply } from '../../rivens/reply.js';
 import { scanCard } from '../../rivens/scan.js';
 import { gradeFor, rivenStatus, topFor } from '../../rivens/service.js';
 import { UserError } from '../../services/clan.js';
+import { withTimeout } from '../../timeout.js';
 import { searchItems } from '../../warframe/market.js';
 import type { Command } from '../command.js';
 import { rivenGradeEmbed, rivenStatusEmbed, rivenTopEmbed } from '../riven-embeds.js';
@@ -49,10 +50,11 @@ async function scan(interaction: ChatInputCommandInteraction, ctx: AppContext): 
     await ticket.ready;
     ready = true;
     edit('🔎 Reading your riven…');
-    const result = await Promise.race([
+    const result = await withTimeout(
       download.then((bytes) => scanCard(ctx, bytes, mime)),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new UserError('That took too long, so I gave up. Try again in a minute.')), SCAN_LIMIT_MS).unref()),
-    ]);
+      SCAN_LIMIT_MS,
+      () => new UserError('That took too long, so I gave up. Try again in a minute.'),
+    );
     recordResult('command', interaction.user.username, result);
     const reply = await rivenReply(result);
     await interaction.editReply({ content: '', embeds: reply.embeds, files: reply.files });

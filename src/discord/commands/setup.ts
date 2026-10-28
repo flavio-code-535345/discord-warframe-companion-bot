@@ -3,6 +3,7 @@ import type { Config } from '../../config.js';
 import type { GuildSettings } from '../../db.js';
 import { disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { disableRivenChannel, setupRivenChannel } from '../../rivens/channel.js';
+import { UserError, assertChannelFree } from '../../services/clan.js';
 import { disableSsRoles, resetSsClaims, setupSsRoles } from '../../ssroles/service.js';
 import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
@@ -15,7 +16,7 @@ type Flags = Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ANTHROP
 export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
   const ch = (id: string | null) => (id ? `<#${id}>` : '*off*');
   const chatWarnings = [
-    flags.ANTHROPIC_API_KEY ? null : 'AI chat is off (no ANTHROPIC_API_KEY)',
+    flags.ANTHROPIC_API_KEY ? null : 'Claude is off (no ANTHROPIC_API_KEY): Ordis answers from live data, the wiki and the free models',
     s.chatChannelId && !flags.ENABLE_MESSAGE_CONTENT ? 'needs ENABLE_MESSAGE_CONTENT=true and the Message Content intent' : null,
   ].filter(Boolean);
   return new EmbedBuilder()
@@ -213,9 +214,12 @@ export const setup: Command = {
       case 'welcome':
         settings = ctx.store.updateSettings(guildId, { welcomeChannelId: channelId() });
         break;
-      case 'chat':
-        settings = ctx.store.updateSettings(guildId, { chatChannelId: channelId() });
+      case 'chat': {
+        const chat = channelId();
+        assertChannelFree(ctx, { chatChannelId: chat });
+        settings = ctx.store.updateSettings(guildId, { chatChannelId: chat });
         break;
+      }
       case 'modlog':
         settings = ctx.store.updateSettings(guildId, { modLogChannelId: channelId() });
         break;
@@ -258,7 +262,11 @@ export const setup: Command = {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const files = [interaction.options.getAttachment('reference'), interaction.options.getAttachment('reference2')].filter((f) => f !== null);
         const references = await Promise.all(
-          files.map(async (file) => ({ mime: (file.contentType ?? 'image/png').split(';')[0]!, data: new Uint8Array(await (await fetch(file.url)).arrayBuffer()) })),
+          files.map(async (file) => {
+            const res = await fetch(file.url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+            if (!res?.ok) throw new UserError("I couldn't download that reference picture. Attach it again.");
+            return { mime: (file.contentType ?? 'image/png').split(';')[0]!, data: new Uint8Array(await res.arrayBuffer()) };
+          }),
         );
         const learned = await setupSsRoles(ctx, channelId(), references);
         const notes = [

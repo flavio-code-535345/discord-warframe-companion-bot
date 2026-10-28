@@ -460,3 +460,21 @@ describe('WebP screenshots', () => {
     assert.ok(await decodeWebp(webp), 'and the decoder still works afterwards');
   });
 });
+
+describe('stat line pattern', () => {
+  it('reads a long run of symbols in linear time instead of backtracking exponentially', () => {
+    const lines = card('Kuva Bramma Crita-lexitis', `12 ${'~'.repeat(80)}`, `+9 ${'*'.repeat(60)} 7`, '+168.7% Critical Chance', '+112.5% Critical Damage');
+    const t0 = performance.now();
+    const r = parseRivenCard(lines, attrs, weapons);
+    assert.ok(performance.now() - t0 < 500, 'a line made of symbols must not stall the bot');
+    assert.deepEqual(r.positives.map((p) => p.slug), ['critical_chance', 'critical_damage']);
+  });
+
+  it('still skips the element icon OCR puts between the value and the name', () => {
+    const r = parseRivenCard(card('Kuva Bramma Crita-lexitis', '+98.3% * Multishot', '+95.2% © Critical Chance'), attrs, weapons);
+    assert.deepEqual(r.positives, [
+      { slug: 'multishot', value: 98.3 },
+      { slug: 'critical_chance', value: 95.2 },
+    ]);
+  });
+});

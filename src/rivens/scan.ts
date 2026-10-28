@@ -1,5 +1,6 @@
 import type { AppContext } from '../context.js';
 import { sniffMime } from '../imaging/sniff.js';
+import { assertPictureSize } from '../imaging/size.js';
 import { webpToPng } from '../imaging/webp.js';
 import { UserError } from '../services/clan.js';
 import type { OcrLine } from '../ssroles/parse.js';
@@ -44,6 +45,7 @@ const richness = (r: CardReading): number => (r.weapon ? 2 : 0) + r.positives.le
 
 export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime: string, recognize: Recognize = (b) => ocr.recognize(b)): Promise<ScanResult> {
   const t0 = Date.now();
+  assertPictureSize(picture);
   // A WebP is turned into a PNG first; everything after that only knows PNG and JPEG.
   let bytes = picture;
   const sniffed = sniffMime(picture);
