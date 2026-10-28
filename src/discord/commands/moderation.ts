@@ -107,6 +107,7 @@ export const purge: Command = {
       return;
     }
     const token = randomBytes(6).toString('hex');
+    for (const [key, p] of pendingPurges) if (p.expires < Date.now()) pendingPurges.delete(key);
     pendingPurges.set(token, { userId: interaction.user.id, channelId: channel.id, amount, filter, expires: Date.now() + 120_000 });
     const what = amount === 'all' ? '**every message**' : `the last **${amount}** messages`;
     const filterText = describeFilter(filter);

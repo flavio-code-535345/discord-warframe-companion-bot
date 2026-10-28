@@ -28,6 +28,9 @@ export class VerificationAttempts {
   constructor(private readonly rng: () => number = Math.random) {}
 
   start(userId: string, now = Date.now()): StartResult {
+    // Expired challenges with no wrong answers on them are forgotten, so the map doesn't grow with every account that ever pressed Verify
+    // (wrong answers still count across new pictures, so those are kept).
+    for (const [id, s] of this.state) if (id !== userId && s.cooldownUntil <= now && s.expires < now && s.attempts === 0) this.state.delete(id);
     const prev = this.state.get(userId);
     if (prev && prev.cooldownUntil > now) return { ok: false, cooldownMs: prev.cooldownUntil - now };
     const attempts = prev && prev.cooldownUntil === 0 ? prev.attempts : 0;

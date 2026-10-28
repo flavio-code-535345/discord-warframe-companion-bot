@@ -63,7 +63,13 @@ export async function handleHoneypotMessage(message: Message, ctx: AppContext): 
       await guild.members.kick(member.id, reason);
     } else {
       await guild.members.ban(member.id, { reason, deleteMessageSeconds: DELETE_SECONDS });
-      if (action === 'softban') await guild.members.unban(member.id, 'Honeypot softban: ban only clears recent messages').catch(() => {});
+      if (action === 'softban') {
+        await guild.members.unban(member.id, 'Honeypot softban: ban only clears recent messages').catch(async (err) => {
+          // The DM promised the member could rejoin: tell the moderators that the ban is still in place.
+          console.warn('[honeypot] could not unban', member.id, (err as Error).message);
+          await modLog(ctx, { action: 'Honeypot', moderator: client.user!, target: message.author, reason: `Banned but the unban failed (${(err as Error).message}): unban them by hand.` });
+        });
+      }
     }
   } catch (err) {
     console.warn('[honeypot] could not remove', member.id, (err as Error).message);

@@ -90,3 +90,40 @@ test('lock denies sending for members, skips moderator roles, and unlock restore
   ]));
   await assert.rejects(unlockChannel(ctx, channel, 'test'), /isn't locked/);
 });
+
+test('a failed lock is undone, and an unlock carries on past an overwrite it cannot restore', async () => {
+  const GUILD = '111111111111111111';
+  const perms = (...bits: bigint[]) => ({ has: (b: bigint) => bits.includes(b) });
+  const overwrites = new Map([
+    [GUILD, { id: GUILD, type: OverwriteType.Role, allow: perms(), deny: perms() }],
+    ['verified', { id: 'verified', type: OverwriteType.Role, allow: perms(PermissionFlagsBits.SendMessages), deny: perms() }],
+  ]);
+  const edits: [string, unknown][] = [];
+  let broken: string | null = 'verified';
+  const channel = {
+    id: 'chan',
+    name: 'general',
+    guild: { id: GUILD, roles: { cache: new Map([['verified', { permissions: { any: () => false } }]]) } },
+    permissionOverwrites: {
+      cache: overwrites,
+      edit: async (id: string, opts: unknown) => {
+        if (id === broken) throw new Error('Unknown Role');
+        edits.push([id, opts]);
+      },
+    },
+  } as unknown as GuildTextBasedChannel;
+  const ctx: AppContext = { config: loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD }), store: new Store(':memory:'), client: {} as Client, ai: null };
+
+  // The second edit fails: the first is put back and no lock is left behind.
+  await assert.rejects(lockChannel(ctx, channel, 'test'), /Unknown Role/);
+  assert.deepEqual(edits, [[GUILD, { SendMessages: false }], [GUILD, { SendMessages: null }]]);
+  assert.equal(ctx.store.isLocked('chan'), false);
+
+  // Locked properly, then one role vanishes: the others are still restored.
+  broken = null;
+  assert.equal(await lockChannel(ctx, channel, 'test'), 2);
+  broken = 'verified';
+  edits.length = 0;
+  assert.equal(await unlockChannel(ctx, channel, 'test'), 1);
+  assert.deepEqual(edits, [[GUILD, { SendMessages: null }]]);
+});

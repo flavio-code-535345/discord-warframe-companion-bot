@@ -35,7 +35,14 @@ export function parseCookies(header: string | undefined): Record<string, string>
   const out: Record<string, string> = {};
   for (const part of (header ?? '').split(';')) {
     const eq = part.indexOf('=');
-    if (eq > 0) out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+    if (eq <= 0) continue;
+    const raw = part.slice(eq + 1).trim();
+    // A malformed escape would otherwise turn the request into a 500; the cookie is just taken as is.
+    try {
+      out[part.slice(0, eq).trim()] = decodeURIComponent(raw);
+    } catch {
+      out[part.slice(0, eq).trim()] = raw;
+    }
   }
   return out;
 }

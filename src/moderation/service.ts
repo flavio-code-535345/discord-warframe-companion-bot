@@ -119,10 +119,23 @@ export async function lockChannel(ctx: AppContext, channel: GuildTextBasedChanne
     if (role?.permissions.any([PermissionFlagsBits.Administrator, PermissionFlagsBits.ManageMessages])) continue;
     previous[o.id] = 'allow';
   }
-  for (const targetId of Object.keys(previous)) {
-    await channel.permissionOverwrites.edit(targetId, { SendMessages: false }, { reason, type: OverwriteType.Role });
-  }
+  // The record is saved first, so a failure half-way can always be undone with /unlock.
   ctx.store.saveLock(channel.id, previous);
+  const value = { allow: true, deny: false, neutral: null } as const;
+  const done: string[] = [];
+  try {
+    for (const targetId of Object.keys(previous)) {
+      await channel.permissionOverwrites.edit(targetId, { SendMessages: false }, { reason, type: OverwriteType.Role });
+      done.push(targetId);
+    }
+  } catch (err) {
+    // Put back what was already changed and forget the lock, so the channel is never left half-locked.
+    ctx.store.takeLock(channel.id);
+    for (const targetId of done) {
+      await channel.permissionOverwrites.edit(targetId, { SendMessages: value[previous[targetId]!] }, { reason, type: OverwriteType.Role }).catch(() => {});
+    }
+    throw err;
+  }
   return Object.keys(previous).length;
 }
 
@@ -132,8 +145,17 @@ export async function unlockChannel(ctx: AppContext, channel: GuildTextBasedChan
   const targets = Object.entries(previous);
   if (!targets.length) throw new UserError(`#${channel.name} isn't locked by Ordis.`);
   const value = { allow: true, deny: false, neutral: null } as const;
+  // One overwrite that can't be restored (a deleted role, say) must not leave the rest locked: carry on and report it.
+  let restored = 0;
+  let firstError: unknown = null;
   for (const [targetId, state] of targets) {
-    await channel.permissionOverwrites.edit(targetId, { SendMessages: value[state] }, { reason, type: OverwriteType.Role });
+    try {
+      await channel.permissionOverwrites.edit(targetId, { SendMessages: value[state] }, { reason, type: OverwriteType.Role });
+      restored++;
+    } catch (err) {
+      firstError ??= err;
+    }
   }
-  return targets.length;
+  if (!restored && firstError) throw firstError;
+  return restored;
 }

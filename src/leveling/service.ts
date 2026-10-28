@@ -87,7 +87,8 @@ export class LevelVoiceTicker {
       if (humans.length < 2) continue;
       for (const m of humans) {
         if (m.voice.deaf || m.voice.mute) continue;
-        await award(ctx, m, VOICE_XP_PER_MINUTE, now, null);
+        // One member's failure must not take the minute's XP away from everyone after them.
+        await award(ctx, m, VOICE_XP_PER_MINUTE, now, null).catch((err) => console.warn('[levels] voice XP failed:', (err as Error).message));
       }
     }
   }
