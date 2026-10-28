@@ -31,7 +31,7 @@ import { READ_ONLY, snowflake, tool } from './util.js';
 
 const PERMISSIONS = Object.keys(PermissionFlagsBits) as [keyof typeof PermissionFlagsBits, ...(keyof typeof PermissionFlagsBits)[]];
 const permission = z.enum(PERMISSIONS);
-const ARCHIVE_NAME = '🗄️ Archive';
+const ARCHIVE_NAME = '🗄️ ARCHIVE';
 
 const CHANNEL_TYPES = {
   text: ChannelType.GuildText,
@@ -338,7 +338,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         category: channel.parent ? { id: channel.parent.id, name: channel.parent.name } : null,
         overwrites: [...channel.permissionOverwrites.cache.values()].map((o) => ({ target_id: o.id, allow: o.allow.toArray(), deny: o.deny.toArray() })),
       };
-      let archive = guild.channels.cache.find((c): c is CategoryChannel => c.type === ChannelType.GuildCategory && c.name === ARCHIVE_NAME);
+      // Case doesn't matter: the category was first created as "🗄️ Archive" and later renamed to match the other categories.
+      let archive = guild.channels.cache.find((c): c is CategoryChannel => c.type === ChannelType.GuildCategory && c.name.toLowerCase() === ARCHIVE_NAME.toLowerCase());
       archive ??= await guild.channels.create({
         name: ARCHIVE_NAME,
         type: ChannelType.GuildCategory,
