@@ -50,6 +50,25 @@ const plausible = (number: string): number => {
  */
 const lowerIsBetter = (a: RivenAttribute): boolean => /recoil/i.test(a.name) || /recoil/.test(a.slug);
 
+/**
+ * The words a stat name continues with on the next line of the card ("Critical Chance" / "for Slide Attack"; the "(x2 for Heavy Attacks)" note
+ * is only a description of the stat, not part of its name), or null when the next line starts another stat or has no words.
+ */
+const continuation = (next: string | undefined): string | null => {
+  if (!next || /\d[.,]?\d*\s*%/.test(next) || MULTIPLIER_LINE.test(next)) return null;
+  const words = next.replace(/\([^)]*\)/g, ' ').replace(/^[^A-Za-z]+/, '').replace(/[^A-Za-z '/-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return words.length >= 3 ? words : null;
+};
+
+/** A stat name that may wrap onto a second line: the joined text wins when it is a longer name that starts with the first line, else the first line alone. */
+function nameWithContinuation(attrs: RivenAttribute[], first: string, next: string | undefined): RivenAttribute | null {
+  const alone = matchName(attrs, first);
+  const more = continuation(next);
+  if (!more) return alone;
+  const joined = matchName(attrs, `${first} ${more}`);
+  return joined && joined !== alone && norm(joined.name).includes(norm(first)) ? joined : alone;
+}
+
 /** The attribute a possibly mis-read name means: the usual matching first, then one or two wrong letters forgiven. */
 export function closestAttribute(attrs: RivenAttribute[], text: string): RivenAttribute | null {
   const exact = resolveStat(attrs, text);
@@ -148,7 +167,7 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
 
   const found: { attr: RivenAttribute; value: number; sign: '+' | '-' | null; line: string }[] = [];
   const unknown: string[] = [];
-  for (const original of body) {
+  for (const [bodyIndex, original] of body.entries()) {
     // The icon of an element is read as a small number ("+101.5% 4% Electricity"): one or two digits, with or without a %, between the
     // real value and the name are not a second value.
     const text = original.replace(/(\d[.,]?\d*\s*%)\s+\d{1,2}\s*%?\s+(?=[A-Za-z])/, '$1 ');
@@ -171,7 +190,7 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
     const [, sign, number, unit, name] = m;
     // A stat line has a % or an explicit sign; "Rank 0/8" or "MR 15" don't, and the name must not be a bare unit letter.
     if (!unit && !sign) continue;
-    const attr = matchName(attrs, name!.trim());
+    const attr = nameWithContinuation(attrs, name!.trim(), body[bodyIndex + 1]);
     if (!attr) {
       // Only a signed value or one with a decimal point is surely a stat ("1% MR 9" from the card's footer is not).
       if (sign || number!.includes('.') || number!.includes(',')) unknown.push(text);

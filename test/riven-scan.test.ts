@@ -162,6 +162,35 @@ describe('a real screenshot', () => {
     }
   });
 
+  /** What the real OCR engine returned for a Xoris card: two stat names wrap onto a second line ("(x2 for Heavy Attacks)" and "for Slide Attack"). */
+  it('joins a stat name that wraps onto a second line, so the curse "Critical Chance for Slide Attack" is not a second Critical Chance', () => {
+    const melee: RivenAttribute[] = ['Status Chance', 'Critical Chance', 'Critical Chance for Slide Attack', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/[^a-z]+/g, '_'), name, positiveOnly: false, negativeOnly: false }));
+    const xoris: RivenWeapon[] = [{ slug: 'xoris', name: 'Xoris' }];
+    for (const lines of [
+      at([[771, '| Xoris Hexacron'], [886, 'od +144.4% Status Chance'], [969, '+264% Critical Chance'], [1050, '(x2 for Heavy Attacks)'], [1137, '-77.3% Critical Chance'], [1219, '- for Slide Attack'], [1280, 'CITT)']]),
+      at([[257, 'Xoris Hexacron'], [295, '+144.4% Status Chance'], [323, '+264% Critical Chance'], [350, '(x2 for Heavy Attacks)'], [379, '-77.3% Critical Chance'], [406, '5 for Slide Attack'], [427, 'CEE 3 BEEPIN'], [482, 'Pwo NST']]),
+    ]) {
+      const r = parseRivenCard(lines, melee, xoris);
+      assert.deepEqual(r.positives, [{ slug: 'status_chance', value: 144.4 }, { slug: 'critical_chance', value: 264 }]);
+      assert.deepEqual(r.negative, { slug: 'critical_chance_for_slide_attack', value: 77.3 });
+      assert.deepEqual(r.unknown, []);
+    }
+    // A line under a plain stat that is only noise does not change what the stat is.
+    const noisy = parseRivenCard(at([[771, 'Xoris Hexacron'], [886, '+144.4% Status Chance'], [969, '+264% Critical Chance'], [1137, '-77.3% Zoom'], [1219, 'ee qq']]), melee, xoris);
+    assert.equal(noisy.negative!.slug, 'zoom');
+  });
+
+  /** What the real OCR engine returned for a Nukor card: the cleaned picture lost the "+" ("d 195.2%"), the picture as it came read "+95.2%". */
+  it('reads the two OCR passes of a card whose "+" was lost differently, so the second can correct the first', () => {
+    const pistol: RivenAttribute[] = ['Base Damage / Melee Damage', 'Multishot', 'Status Damage', 'Zoom'].map((name) => ({ slug: name.toLowerCase().replace(/[^a-z]+/g, '_'), name, positiveOnly: false, negativeOnly: false }));
+    const nukor: RivenWeapon[] = [{ slug: 'nukor', name: 'Nukor' }];
+    const cleanedPass = parseRivenCard(at([[854, 'J Nukor Sati-plagaata'], [974, '. +228.3% Damage'], [1034, ': +138.6% Multishot |'], [1135, 'd 195.2% Status Damage'], [1227, 'D -71.6% Zoom 7']]), pistol, nukor);
+    const originalPass = parseRivenCard(at([[285, '| Nukor Sati-plagaata'], [325, '+228.3% Damage'], [351, '+138.6% Multishot i'], [381, '+95.2% Status Damage'], [409, '-71.6% Zoom'], [435, '{ MR 8 © 40 48']]), pistol, nukor);
+    assert.equal(cleanedPass.positives[2]!.value, 195.2);
+    assert.equal(originalPass.positives[2]!.value, 95.2);
+    assert.deepEqual(originalPass.negative, { slug: 'zoom', value: 71.6 });
+  });
+
   it('works out a stat line it could not read from its value and what is left of its name, and marks it as a guess', async () => {
     const store = new Store(':memory:');
     const ctx = { store, config: { RIVEN_HIGH_PRICE: 1000 } } as never;
@@ -365,9 +394,10 @@ describe('scanning a riven', () => {
     const calls: number[] = [];
     const r = await scanCard(ctx(), picture, 'image/png', async (image) => {
       calls.push(image.length);
-      return card('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+112.5% Critical Damage', '+95.3% Multishot', '-42.1% Zoom');
+      // Values inside the ranges of a rifle with three bonuses and a curse, so the picture is read once.
+      return card('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+135% Critical Damage', '+101.3% Multishot', '-54% Zoom');
     });
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 1, 'a card that fits the ranges is read once');
     assert.equal(r.problem, null);
     assert.equal(r.report!.grade!.letter, 'S');
     assert.equal(r.report!.weapon.slug, 'kuva_bramma');

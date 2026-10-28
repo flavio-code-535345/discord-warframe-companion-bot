@@ -6,7 +6,7 @@ import { PNG } from 'pngjs';
 import { woffToSfnt } from '../src/imaging/font.js';
 import { cardCrop, rivenPicture } from '../src/rivens/picture.js';
 import { categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
-import { MIN_SAMPLES, gradeRolls, letterFor, weightOf } from '../src/rivens/rolls.js';
+import { MIN_SAMPLES, fitsTable, gradeRolls, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
 import type { RivenListing } from '../src/rivens/types.js';
 
 const listing = (id: string, stats: [string, number, boolean][]): RivenListing => ({ id, weapon: 'arca_scisco', price: 500, polarity: 'madurai', rerolls: 3, stats: stats.map(([slug, value, positive]) => ({ slug, value, positive })) });
@@ -118,6 +118,24 @@ describe('grading from the game ranges', () => {
     near(d.multishot, -8.14, 'multishot');
     near(d.electricity, 0.25, 'electricity');
     near(d.zoom, -3.49, 'zoom (a curse, worse than the average)');
+  });
+
+  it('puts right a misread value when that makes every stat fit (Nukor: "d 195.2%" for +95.2%), and only then', () => {
+    const nukor = { type: 'pistol', disposition: 1.45 };
+    const bonuses = (status: number) => [{ slug: 'damage', value: 228.3 }, { slug: 'multishot', value: 138.6 }, { slug: 'status_damage', value: status }];
+    const curse = { slug: 'zoom', value: 71.6 };
+    assert.equal(fitsTable(bonuses(95.2), curse, nukor), true);
+    assert.equal(fitsTable(bonuses(195.2), curse, nukor), false);
+    assert.equal(repairValues(bonuses(95.2), curse, nukor), null, 'nothing to repair on a card that fits');
+    const byDigit = repairValues(bonuses(195.2), curse, nukor)!;
+    assert.equal(byDigit.positives[2]!.value, 95.2, 'one stray digit removed');
+    assert.deepEqual(byDigit.positives.slice(0, 2).map((p) => p.value), [228.3, 138.6], 'the stats that were right are left alone');
+    const byReading = repairValues(bonuses(195.2), curse, nukor, new Map([['status_damage', [95.2]]]))!;
+    assert.equal(byReading.positives[2]!.value, 95.2, 'or the value another reading of the picture gave');
+    assert.equal(repairValues(bonuses(150), curse, nukor), null, 'no correction makes it fit: it stays as read');
+    // The corrected card is graded from the table like any other.
+    const r = gradeRolls([], byDigit.positives, byDigit.negative, nukor);
+    assert.ok(r.every((x) => x.deviation !== null && Math.abs(x.deviation) < 10.7));
   });
 
   it('falls back to the listings when no kind of weapon fits (here: a stat the table does not have)', () => {

@@ -8,6 +8,7 @@ import { type CardReading, interpretUnknown, parseRivenCard } from './card.js';
 import { getRivenAttributes, getRivenWeapons } from './market.js';
 import { type Box, erasePointer } from './pointer.js';
 import { prepareForOcr } from './prepare.js';
+import { fitsTable, repairValues } from './rolls.js';
 import { type GradeReport, attributeNames, gradeResolved } from './service.js';
 
 /**
@@ -69,24 +70,32 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   }
 
   const variants: OcrLine[][] = [];
+  const readings: CardReading[] = [];
   const read = async (image: Uint8Array, sourceScale: number) => {
     try {
       const t = Date.now();
       const lines = await recognize(image);
       console.log(`[riven] OCR ${Date.now() - t} ms, ${lines.length} lines (picture ${prepared.width}x${prepared.height}, from ${Math.round(picture.length / 1024)} KB ${pictureMime})`);
       variants.push(lines);
-      return { lines: lines.length, ocrLines: lines, sourceScale, reading: parseRivenCard(lines, attrs, weapons) };
+      const reading = parseRivenCard(lines, attrs, weapons);
+      readings.push(reading);
+      return { lines: lines.length, ocrLines: lines, sourceScale, reading };
     } catch (err) {
       console.error('[riven] OCR failed:', err instanceof Error ? err.message : err);
       throw new UserError('I could not read that picture (the text reader failed). Try again, or use /riven grade.');
     }
   };
   let best = await read(prepared.png, prepared.sourceScale);
+  let readOriginal = false;
   // (not for a huge picture: reading it unshrunk takes minutes)
   if (!enough(best.reading) && !prepared.shrunk) {
     const original = await read(bytes, 1);
+    readOriginal = true;
     if (richness(original.reading) > richness(best.reading)) best = original;
   }
+  // A value that fits no range was probably misread ("d 195.2%" for "+95.2%"): the picture as it came is a second opinion on every value.
+  const r = best.reading;
+  if (!readOriginal && !prepared.shrunk && r.weapon && r.positives.length >= 2 && !fitsTable(r.positives, r.negative, r.weapon)) await read(bytes, 1);
   // Something unreadable on a stat line is usually the mouse pointer: paint it out of the picture and read again.
   if (best.reading.weapon && best.reading.unknown.length && !prepared.shrunk) {
     const first = best.reading.unknown[0]!;
@@ -99,7 +108,14 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
     }
   }
   // Whatever is still unreadable is interpreted from the value, the sign and what is left of the name, and shown with a "?".
-  const reading = interpretUnknown(best.reading, variants.flatMap((v) => v.map((l) => tidy(l.text))), attrs);
+  const interpreted = interpretUnknown(best.reading, variants.flatMap((v) => v.map((l) => tidy(l.text))), attrs);
+  // What the other readings of the picture gave for each stat, to put right a value that does not fit (rolls.ts, repairValues).
+  const others = new Map<string, number[]>();
+  for (const other of readings.filter((o) => o !== best.reading)) {
+    for (const s of [...other.positives, ...(other.negative ? [other.negative] : [])]) if (s.value != null) others.set(s.slug, [...(others.get(s.slug) ?? []), s.value]);
+  }
+  const repaired = interpreted.weapon && interpreted.positives.length >= 2 ? repairValues(interpreted.positives, interpreted.negative, interpreted.weapon, others) : null;
+  const reading = repaired ? { ...interpreted, ...repaired } : interpreted;
   const names = attributeNames(attrs);
   const found = best.reading.box;
   const box: Box | null = found ? { x0: found.x0 / best.sourceScale, y0: found.y0 / best.sourceScale, x1: found.x1 / best.sourceScale, y1: found.y1 / best.sourceScale } : null;

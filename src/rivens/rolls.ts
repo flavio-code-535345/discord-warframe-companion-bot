@@ -113,6 +113,60 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
   return null;
 }
 
+/** Whether every value on the card falls inside its range for some kind of weapon (the table can grade it). */
+export const fitsTable = (positives: StatInput[], negative: StatInput | null, weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null): boolean => gradeByTable(positives, negative, weapon) !== null;
+
+/** A number with each one of its digits left out in turn: "195.2" gives 95.2, 15.2, 19.2 and 195. */
+function withoutOneDigit(value: number): number[] {
+  const text = String(value);
+  const out = new Set<number>();
+  for (let i = 0; i < text.length; i++) {
+    if (!/\d/.test(text[i]!)) continue;
+    const n = Number(text.slice(0, i) + text.slice(i + 1));
+    if (Number.isFinite(n) && n > 0) out.add(n);
+  }
+  return [...out];
+}
+
+/**
+ * A value OCR got wrong makes the whole card fit no range ("d 195.2%" for "+95.2%": the plus became a stray letter and a 1), which would
+ * throw away the table and grade from other people's listings. A game range is narrow (90%-110%), so a corrected value that makes EVERY
+ * stat fit is almost certainly the real one. The candidates for a stat are what the other readings of the picture gave for it, then the
+ * value with one digit left out; the fewest changes win. Returns null when the card already fits, or when no correction makes it fit.
+ */
+export function repairValues(
+  positives: StatInput[],
+  negative: StatInput | null,
+  weapon: Pick<RivenWeapon, 'type' | 'disposition'> | null | undefined,
+  otherReadings: Map<string, number[]> = new Map(),
+): { positives: StatInput[]; negative: StatInput | null } | null {
+  if (fitsTable(positives, negative, weapon)) return null;
+  const stats = [...positives, ...(negative ? [negative] : [])];
+  const options = stats.map((s): (number | null)[] => {
+    const value = s.value ?? null;
+    if (value === null || statKey(s.slug) === 'faction') return [value];
+    const others = (otherReadings.get(s.slug) ?? []).filter((v) => v !== value);
+    return [value, ...others, ...withoutOneDigit(value).filter((v) => !others.includes(v))].slice(0, 8);
+  });
+  let best: { values: (number | null)[]; changes: number; rank: number } | null = null;
+  const walk = (i: number, values: (number | null)[], changes: number, rank: number): void => {
+    if (i === options.length) {
+      if (changes === 0 || (best && (changes > best.changes || (changes === best.changes && rank >= best.rank)))) return;
+      const at = (n: number) => ({ slug: stats[n]!.slug, value: values[n] });
+      if (fitsTable(positives.map((_, n) => at(n)), negative ? at(stats.length - 1) : null, weapon)) best = { values: [...values], changes, rank };
+      return;
+    }
+    options[i]!.forEach((v, n) => walk(i + 1, [...values, v], changes + (n > 0 ? 1 : 0), rank + n));
+  };
+  walk(0, [], 0, 0);
+  if (!best) return null;
+  const { values } = best as { values: (number | null)[] };
+  return {
+    positives: positives.map((p, n) => ({ ...p, value: values[n] })),
+    negative: negative ? { ...negative, value: values[stats.length - 1] } : null,
+  };
+}
+
 /** Grades every stat of a riven (bonuses first, then the curse). */
 export function gradeRolls(listings: RivenListing[], positives: StatInput[], negative: StatInput | null, weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null): RollGrade[] {
   const fixed = gradeByTable(positives, negative, weapon);
