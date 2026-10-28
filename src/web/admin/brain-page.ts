@@ -9,7 +9,7 @@ import type { PanelSession } from '../../db.js';
 import { UserError } from '../../services/clan.js';
 import { escapeHtml as e } from '../status.js';
 import { BRAIN_CHAT_JS } from './brain-client.js';
-import { type PageContext, csrfField, layout } from './pages.js';
+import { type PageContext, badge, csrfField, head, layout } from './pages.js';
 
 /**
  * The panel's Brain page: the agent's system prompt, the Ordis-ness slider, the sampling and loop settings, which tools it
@@ -88,7 +88,7 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
       return `<label class="check"><input type="checkbox" name="tool_${t.name}" value="1"${s.disabledTools.includes(t.name) ? '' : ' checked'}> <span><code>${e(t.name)}</code>${unavailable ? ' <span class="muted">(unavailable here: ' + (t.name === 'search_web' ? 'SEARXNG_URL or the Web search switch' : 'not set up') + ')</span>' : ''}<br><span class="muted">${e(t.description.slice(0, 150))}</span></span></label>`;
     }).join('');
 
-    const body = `<h1>Brain</h1>
+    const body = `${head('Brain', 'How Ordis reasons: the persona, the instructions, the tools it may call, and a live playground.')}
 <div class="card"><p class="muted flush">Who gets the agent: <strong>${e(s.agentFor)}</strong> · questions: <strong>${s.scope === 'all' ? 'all except help' : 'open-ended (wiki and builds)'}</strong> · ${modelLine} · tools on: ${enabledTools(ctx).length}/${TOOL_NAMES.length}</p></div>
 
 <h2>Live chat</h2>
@@ -154,7 +154,7 @@ ${number('toolResultChars', 'Tool result limit (characters)', s.toolResultChars,
 <h2>Runs</h2>
 ${shown ? runDetail(shown) : '<p class="muted">No runs since the bot started. Ask a question in the playground, or in Discord once the agent is on.</p>'}
 ${runs.length ? `<div class="card"><table><tr><th>When</th><th>Who</th><th>Question</th><th>Result</th></tr>${runs
-      .map((r) => `<tr><td><a href="/admin/brain?run=${e(r.id)}">${e(when(r.at))}</a></td><td>${e(r.who)}</td><td>${e(clip(r.question, 70))}</td><td>${r.status === 'running' ? '⏳' : r.status === 'failed' ? '❌' : '✅'} ${r.steps.length} step${r.steps.length === 1 ? '' : 's'}, ${r.steps.reduce((n, st) => n + st.calls.length, 0)} tool call${r.steps.reduce((n, st) => n + st.calls.length, 0) === 1 ? '' : 's'}${r.ms ? `, ${secs(r.ms)}` : ''}</td></tr>`)
+      .map((r) => `<tr><td><a href="/admin/brain?run=${e(r.id)}">${e(when(r.at))}</a></td><td>${e(r.who)}</td><td>${e(clip(r.question, 70))}</td><td>${r.status === 'running' ? badge('running', 'warn') : r.status === 'failed' ? badge('failed', 'bad') : badge('done', 'ok')} ${r.steps.length} step${r.steps.length === 1 ? '' : 's'}, ${r.steps.reduce((n, st) => n + st.calls.length, 0)} tool call${r.steps.reduce((n, st) => n + st.calls.length, 0) === 1 ? '' : 's'}${r.ms ? `, ${secs(r.ms)}` : ''}</td></tr>`)
       .join('')}</table><p class="muted">Kept in memory (last ${recentRuns().length}); cleared when the bot restarts.</p></div>` : ''}`;
 
     html(res, layout('Brain', body, p));

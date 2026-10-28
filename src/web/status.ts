@@ -2,6 +2,7 @@ import type { AppContext } from '../context.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { projectCycles } from '../warframe/cycles.js';
 import { formatDuration, relative, toMs } from '../time.js';
+import { STATUS_CSS } from './theme.js';
 import {
   FISSURE_TIERS,
   NOTABLE_REWARD,
@@ -268,45 +269,6 @@ const utc = (isoTime: string) => `${new Date(isoTime).toUTCString().slice(0, 22)
 const countdown = (isoTime: string | null) =>
   isoTime ? `<span class="cd" data-until="${isoTime}">${escapeHtml(relative(isoTime))}</span>` : '<span class="cd">—</span>';
 
-const STYLE = `
-:root{--bg:#010c18;--bg2:#0b2846;--card:rgba(255,255,255,.045);--border:rgba(59,154,199,.26);--line:rgba(59,154,199,.12);--accent:#3b9ac7;--glow:rgba(59,154,199,.45);--text:#e6eef6;--muted:#8fa7bd;--ok:#22c55e;--bad:#ef4444;--gold:#e8c66a}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,var(--bg2),var(--bg) 70%) fixed;color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:1320px;margin:0 auto;padding:14px 16px 28px}
-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-.logo{width:44px;height:44px;border-radius:11px;box-shadow:0 0 22px var(--glow)}
-h1{margin:0;font-size:19px;letter-spacing:.01em}
-.sub{color:var(--muted);font-size:12.5px}
-.pills{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
-.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--muted);white-space:nowrap}
-.pill b{color:var(--text);font-variant-numeric:tabular-nums}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok)}
-.off .dot{background:var(--bad);box-shadow:0 0 7px var(--bad)}
-.tiles{columns:290px 4;column-gap:12px}
-.tile{break-inside:avoid;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 12px 8px;margin:0 0 12px}
-.tile h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 4px;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
-.tile h2 .cd,.tile h2 .x{text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
-.r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0;border-top:1px solid var(--line)}
-.r:first-of-type{border-top:0}
-.k{min-width:0;overflow-wrap:anywhere}
-.v{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
-.n{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
-.u{color:var(--muted);font-size:12px}
-.lead{font-weight:600;margin:1px 0 3px}
-.cd{color:var(--accent);font-variant-numeric:tabular-nums}
-.star{color:var(--gold)}
-.tag{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:4px}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{padding:2px 4px;text-align:right}
-th:first-child,td:first-child{text-align:left}
-th{font-size:11px;color:var(--muted);font-weight:600}
-td.z{color:rgba(143,167,189,.35)}
-.empty{color:var(--muted);font-size:13px}
-s{color:var(--muted)}
-footer{margin-top:4px;color:var(--muted);font-size:12px;text-align:center}
-footer a{color:var(--accent)}
-`;
-
 const SCRIPT = `
 const fmt=ms=>{const d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5),m=Math.floor(ms%36e5/6e4),s=Math.floor(ms%6e4/1e3);return d?d+'d '+h+'h':h?h+'h '+m+'m':m?m+'m '+s+'s':s+'s'};
 const local=new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
@@ -448,7 +410,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
 ${s.archive?.syncing ? '<meta http-equiv="refresh" content="15">' : ''}
 <title>${e(s.botName)} · ${e(s.clanName)}</title>
 <link rel="icon" href="/logo.png">
-<style nonce="${nonce}">${STYLE}</style>
+<style nonce="${nonce}">${STATUS_CSS}</style>
 </head>
 <body>
 <main>

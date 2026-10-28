@@ -7,7 +7,7 @@ import { type CardReading, checkClan, earnedNames, masteryRank } from '../../ssr
 import { localSkipReason, readCloud, readLocal } from '../../ssroles/vision.js';
 import { escapeHtml as e } from '../status.js';
 import { SSTEST_JS } from './sstest-client.js';
-import { type PageContext, layout } from './pages.js';
+import { type PageContext, head, layout } from './pages.js';
 
 /**
  * The panel's Screenshots page: a test area for the screenshot-roles readers. Upload a profile card (or a clan member list row)
@@ -109,7 +109,7 @@ export function registerSsTestRoutes({ router, ctx, pc, html }: Deps): void {
     };
     const card = (key: Method, n: number, title: string) =>
       `<div class="card stack" id="m-${key}"><div class="row"><div><strong>${n}. ${e(title)}</strong><div class="muted">${info[key]}</div></div><div><button type="button" class="ghost" data-run="${key}">Run only this</button></div></div><div class="out muted">Not run yet.</div></div>`;
-    const body = `<h1>Screenshot test</h1>
+    const body = `${head('Screenshots', 'See what each reader makes of a profile screenshot before it decides anyone\'s roles.')}
 <div class="card stack"><p class="flush muted">Upload a profile screenshot (or a row of the clan member list) and see what each reader makes of it. The bot tries them in this order: <strong>OCR</strong>, then <strong>Gemma</strong> on Ollama, then <strong>Gemini</strong>; the first to read the card wins. Here you can run all three to compare. Nothing is saved and no roles are changed: the picture only exists in memory while it is read. ${reference ? `Reference clan: <code>${e(reference.clanText)}</code>.` : 'No reference is stored yet (<code>/setup ssroles reference:</code>), so the emblem and clan number are not compared.'}</p>
 <form class="stack" id="ssform"><input type="hidden" id="sscsrf" value="${e(p.session?.csrf ?? '')}">
 <label>Screenshot (PNG, JPG or WebP, up to 8 MB)<input type="file" id="ssfile" accept="image/png,image/jpeg,image/webp"></label>
@@ -119,7 +119,7 @@ ${card('ocr', 1, 'OCR')}
 ${card('local', 2, 'Gemma (Ollama)')}
 ${card('cloud', 3, 'Gemini')}
 <script nonce="${p.nonce}">${SSTEST_JS}</script>`;
-    html(res, layout('Screenshot test', body, p));
+    html(res, layout('Screenshots', body, p));
   });
 
   router.post('/sstest/run', express.raw({ type: IMAGE_TYPES, limit: MAX_BYTES }), async (req, res) => {

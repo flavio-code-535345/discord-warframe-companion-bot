@@ -327,7 +327,7 @@ test('the Rivens page shows the scan channel, needs the CSRF header to scan, and
     assert.match(html, /<h1>Rivens<\/h1>/);
     assert.match(html, /Scan channel/);
     assert.match(html, /Turn scanning off/);
-    assert.match(html, /<a href="\/admin\/rivens" class="on">Rivens<\/a>/);
+    assert.match(html, /<a class="navlink on" href="\/admin\/rivens">Rivens<\/a>/);
 
     const scan = (headers: Record<string, string>, body: Uint8Array | string = new Uint8Array([1, 2, 3]), type = 'image/png') =>
       fetch(`${baseUrl}/admin/rivens/scan`, { method: 'POST', redirect: 'manual', headers: { cookie, 'content-type': type, ...headers }, body });

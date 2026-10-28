@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type { AppContext } from '../context.js';
+import { setBrand } from './style.js';
 
 /** The clan logo; resolves to <repo>/assets from both src/discord (tsx) and dist/discord (built image). */
 export const SS_EXAMPLE_PATH = fileURLToPath(new URL('../../assets/ss-roles-example.png', import.meta.url));
@@ -14,6 +15,15 @@ export const LOGO_PATH = fileURLToPath(new URL('../../assets/clan-logo.png', imp
  * from what was last applied successfully; failures are retried on the next start.
  */
 export async function syncIdentity(ctx: AppContext): Promise<void> {
+  try {
+    await syncDiscordIdentity(ctx);
+  } finally {
+    // Whatever happened above, embeds carry the bot's current name and avatar (see style.ts).
+    setBrand({ name: ctx.config.BOT_NAME, icon: brandIcon(ctx) });
+  }
+}
+
+async function syncDiscordIdentity(ctx: AppContext): Promise<void> {
   const { client, config, store } = ctx;
   const user = client.user;
   if (!user) return;

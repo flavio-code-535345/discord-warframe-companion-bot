@@ -32,7 +32,7 @@ import { registerBrainRoutes } from './brain-page.js';
 import { registerRivenRoutes } from './riven-page.js';
 import { registerSsTestRoutes } from './sstest-page.js';
 import { registerConfigRoutes } from './config-page.js';
-import { type Option, type PageContext, actionButton, csrfField, deniedPage, layout, loginPage, notConfiguredPage, select } from './pages.js';
+import { type Option, type PageContext, actionButton, badge, csrfField, deniedPage, head, layout, loginPage, notConfiguredPage, select, statCard } from './pages.js';
 
 const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 const kb = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
@@ -187,14 +187,14 @@ export function adminRouter(ctx: AppContext): Router {
     const s = await buildStatus(ctx);
     const settings = store.getSettings(guildId);
     const latest = store.listBackups(guildId)[0];
-    const ch = (cid: string | null) => (cid ? `<code>#${e(client.channels.cache.get(cid) && 'name' in client.channels.cache.get(cid)! ? (client.channels.cache.get(cid) as { name: string }).name : cid)}</code>` : '<span class="muted">off</span>');
-    const body = `<h1>Overview</h1>
+    const ch = (cid: string | null) => (cid ? `<code>#${e(client.channels.cache.get(cid) && 'name' in client.channels.cache.get(cid)! ? (client.channels.cache.get(cid) as { name: string }).name : cid)}</code>` : badge('off'));
+    const body = `${head('Overview', 'How Ordis and the clan server are doing right now.')}
 <div class="grid">
-<div class="card"><div class="stat">${s.online ? '🟢 Online' : '🔴 Offline'}</div><div class="muted">${s.pingMs !== null ? `${s.pingMs} ms ping · ` : ''}up ${Math.floor(s.uptimeSeconds / 3600)}h ${Math.floor((s.uptimeSeconds % 3600) / 60)}m</div></div>
-<div class="card"><div class="stat">${e(String(s.server?.memberCount ?? '—'))}</div><div class="muted">Discord members</div></div>
-<div class="card"><div class="stat">${s.registeredMembers}</div><div class="muted">Registered Tenno</div></div>
-<div class="card"><div class="stat">${s.upcomingEvents.length}</div><div class="muted">Upcoming events</div></div>
-<div class="card"><div class="stat">${latest ? `#${latest.id}` : '—'}</div><div class="muted">${latest ? `Latest backup · ${utc(latest.createdAt)}` : 'No backups yet'}</div></div>
+${statCard('Bot', s.online ? 'Online' : 'Offline', `${s.pingMs !== null ? `${s.pingMs} ms ping · ` : ''}up ${Math.floor(s.uptimeSeconds / 3600)}h ${Math.floor((s.uptimeSeconds % 3600) / 60)}m`, { tone: s.online ? 'ok' : 'bad' })}
+${statCard('Discord members', e(String(s.server?.memberCount ?? '—')))}
+${statCard('Registered Tenno', String(s.registeredMembers))}
+${statCard('Upcoming events', String(s.upcomingEvents.length))}
+${statCard('Latest backup', latest ? `#${latest.id}` : '—', latest ? utc(latest.createdAt) : 'No backups yet')}
 </div>
 <h2>Bot channels</h2>
 <div class="card"><table>
@@ -202,9 +202,9 @@ export function adminRouter(ctx: AppContext): Router {
 <tr><td>Announcements &amp; events</td><td>${ch(settings.announcementsChannelId)}</td></tr>
 <tr><td>Moderation log</td><td>${ch(settings.modLogChannelId)}</td></tr>
 <tr><td>Welcome</td><td>${ch(settings.welcomeChannelId)}</td></tr>
-<tr><td>Honeypot</td><td>${settings.honeypotChannelId ? `${ch(settings.honeypotChannelId)} · ${e(honeypotAction(settings.honeypotAction))}` : '<span class="muted">off</span>'}</td></tr>
-<tr><td>Verification</td><td>${settings.verifyRoleId ? `${ch(settings.verifyChannelId)}${settings.verifyMinAccountAgeDays ? ` · accounts ≥ ${settings.verifyMinAccountAgeDays} days` : ''}` : '<span class="muted">off</span>'}</td></tr>
-</table><p><a href="/admin/settings">Change settings →</a></p></div>`;
+<tr><td>Honeypot</td><td>${settings.honeypotChannelId ? `${ch(settings.honeypotChannelId)} ${badge(honeypotAction(settings.honeypotAction), 'warn')}` : badge('off')}</td></tr>
+<tr><td>Verification</td><td>${settings.verifyRoleId ? `${ch(settings.verifyChannelId)}${settings.verifyMinAccountAgeDays ? ` ${badge(`accounts ≥ ${settings.verifyMinAccountAgeDays} days`, 'info')}` : ''}` : badge('off')}</td></tr>
+</table><p class="mt"><a href="/admin/settings">Change settings →</a></p></div>`;
     html(res, layout('Overview', body, pc(res, 'overview', req)));
   });
 
@@ -218,7 +218,8 @@ export function adminRouter(ctx: AppContext): Router {
     const activities = store.listActivities();
     const nameOfId = (cid: string | null, list: Option[]) => (cid ? e(list.find((o) => o.value === cid)?.label ?? cid) : '—');
     const field = (label: string, name: keyof GuildSettings, opts: Option[]) => `<label>${label}${select(name, opts, s[name] as string | null)}</label>`;
-    const body = `<h1>Settings</h1>
+    const body = `${head('Settings', 'Where Ordis posts, and which safety tools are switched on.')}
+<h2>Channels</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings">${csrfField(p.session)}
 <div class="row">
 ${field('Worldstate alerts channel', 'alertsChannelId', channels)}
@@ -417,7 +418,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
     const g = await guild();
     const [channels, roles] = await Promise.all([channelOptions(g), roleOptions(g)]);
     const p = pc(res, 'announce', req);
-    const body = `<h1>Announce</h1>
+    const body = `${head('Announce', 'Post a message as Ordis, optionally pinging a role.')}
 <div class="card"><form class="stack" method="post" action="/admin/announce">${csrfField(p.session)}
 <div class="row">
 <label>Channel${select('channel', channels, store.getSettings(guildId).announcementsChannelId, '— pick a channel —')}</label>
@@ -451,14 +452,14 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
         return `<tr><td>#${ev.id}</td><td>${e(ev.title)}</td><td>${utc(ev.startsAt)}</td><td>${r.going.length} going · ${r.maybe.length} maybe</td><td>${actionButton(p.session, `/admin/events/${ev.id}/cancel`, 'Cancel', { danger: true, confirm: true })}</td></tr>`;
       })
       .join('');
-    const body = `<h1>Events</h1>
+    const body = `${head('Events', 'Clan events get RSVP buttons in the announcements channel and a reminder 15 minutes before they start.')}
 <div class="card"><form class="stack" method="post" action="/admin/events">${csrfField(p.session)}
 <div class="row">
 <label>Title<input name="title" maxlength="200" required></label>
 <label>Starts (UTC)<input type="datetime-local" name="when" required></label>
 </div>
 <label>Description (optional)<textarea name="description" maxlength="2000"></textarea></label>
-<div><button>Create event</button> <span class="muted">Posted with RSVP buttons in the announcements channel.</span></div></form></div>
+<div class="actions"><button>Create event</button> <span class="muted">Posted with RSVP buttons in the announcements channel.</span></div></form></div>
 <h2>Upcoming</h2>
 <div class="card">${events.length ? `<table><tr><th>#</th><th>Title</th><th>Starts</th><th>RSVPs</th><th></th></tr>${rows}</table>` : '<p class="muted">Nothing scheduled.</p>'}</div>`;
     html(res, layout('Events', body, p));
@@ -509,7 +510,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
         }),
       )
     ).join('');
-    const body = `<h1>Members</h1>
+    const body = `${head('Members', 'Who has registered their in-game name, and who has been warned.')}
 <h2>Roster (${members.length})</h2>
 <div class="card">${members.length ? `<table><tr><th>In-game name</th><th>Discord</th><th>MR</th><th>Platform</th><th></th></tr>${memberRows}</table>` : '<p class="muted">Nobody has registered with /clan register yet.</p>'}</div>
 <h2>Warnings</h2>
@@ -545,13 +546,13 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
     const rows = list
       .map((b) => {
         const s = summaryOf(b);
-        return `<tr><td>#${b.id}</td><td>${utc(b.createdAt)}</td><td>${b.auto ? 'auto' : 'manual'}${b.label ? ` · ${e(b.label)}` : ''}</td><td>${s.roles} roles · ${s.channels} channels · ${s.emojis} emojis · ${kb(s.sizeBytes)}</td><td><a href="/admin/backups/${b.id}/download">Download</a> ${actionButton(p.session, `/admin/backups/${b.id}/delete`, 'Delete', { danger: true, confirm: true })}</td></tr>`;
+        return `<tr><td>#${b.id}</td><td>${utc(b.createdAt)}</td><td>${badge(b.auto ? 'auto' : 'manual', b.auto ? '' : 'info')}${b.label ? ` ${e(b.label)}` : ''}</td><td>${s.roles} roles · ${s.channels} channels · ${s.emojis} emojis · ${kb(s.sizeBytes)}</td><td><a href="/admin/backups/${b.id}/download">Download</a> ${actionButton(p.session, `/admin/backups/${b.id}/delete`, 'Delete', { danger: true, confirm: true })}</td></tr>`;
       })
       .join('');
-    const body = `<h1>Backups</h1>
+    const body = `${head('Backups', 'Snapshots of the server (roles, channels, emojis, bans and Ordis settings). A new one is taken every day and the newest 14 are kept.')}
 <div class="card"><form class="stack" method="post" action="/admin/backups">${csrfField(p.session)}
 <div class="row"><label>Label (optional)<input name="label" maxlength="80"></label></div>
-<div><button>Back up now</button> <span class="muted">Restoring is done in Discord with <code>/backup load</code>, which previews every change first.</span></div></form></div>
+<div class="actions"><button>Back up now</button> <span class="muted">Restoring is done in Discord with <code>/backup load</code>, which previews every change first.</span></div></form></div>
 <div class="card">${list.length ? `<table><tr><th>#</th><th>Taken</th><th>Kind</th><th>Contents</th><th></th></tr>${rows}</table>` : '<p class="muted">No backups yet.</p>'}</div>`;
     html(res, layout('Backups', body, p));
   });
@@ -588,7 +589,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
 
   router.get('/admins', async (req, res) => {
     const p = pc(res, 'admins', req);
-    const owners = await Promise.all(config.PANEL_OWNER_IDS.map(async (u) => `<tr><td>${e(await nameOf(u))}</td><td><code>${u}</code></td><td>owner</td><td class="muted">set in PANEL_OWNER_IDS</td></tr>`));
+    const owners = await Promise.all(config.PANEL_OWNER_IDS.map(async (u) => `<tr><td>${e(await nameOf(u))}</td><td><code>${u}</code></td><td>${badge('owner', 'info')}</td><td class="muted">set in PANEL_OWNER_IDS</td></tr>`));
     const admins = await Promise.all(
       store
         .listPanelAdmins()
@@ -598,12 +599,12 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
             `<tr><td>${e(await nameOf(a.userId))}</td><td><code>${a.userId}</code></td><td>${e(a.note ?? '')}<div class="muted">added ${utc(a.addedAt).slice(0, 10)} by ${e(await nameOf(a.addedBy))}</div></td><td>${actionButton(p.session, `/admin/admins/${a.userId}/remove`, 'Remove', { danger: true, confirm: true })}</td></tr>`,
         ),
     );
-    const body = `<h1>Admins</h1>
+    const body = `${head('Admins', 'Who may sign in to this panel. Owners come from PANEL_OWNER_IDS; everyone else is added here.')}
 <div class="card"><form class="stack" method="post" action="/admin/admins">${csrfField(p.session)}
 <div class="row">
 <label>Discord user ID<input name="user_id" pattern="\\d{15,22}" required placeholder="e.g. 603293720061935626"></label>
 <label>Note (optional)<input name="note" maxlength="100" placeholder="e.g. clan officer"></label>
-</div><div><button>Add admin</button> <span class="muted">Right-click a member in Discord → Copy User ID (Developer Mode on).</span></div></form></div>
+</div><div class="actions"><button>Add admin</button> <span class="muted">Right-click a member in Discord → Copy User ID (Developer Mode on).</span></div></form></div>
 <div class="card"><table><tr><th>User</th><th>ID</th><th>Role</th><th></th></tr>${owners.join('')}${admins.join('')}</table></div>`;
     html(res, layout('Admins', body, p));
   });

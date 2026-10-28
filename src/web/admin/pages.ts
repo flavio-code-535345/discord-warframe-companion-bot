@@ -1,8 +1,9 @@
 import type { PanelSession } from '../../db.js';
 import { escapeHtml as e } from '../status.js';
+import { ADMIN_CSS } from '../theme.js';
 import { avatarUrl } from './auth.js';
 
-/** Server-rendered admin pages: plain HTML forms, no client script, styles allowed by a per-request nonce. */
+/** Server-rendered admin pages: plain HTML forms, no client script of their own, styles allowed by a per-request nonce. */
 export interface PageContext {
   nonce: string;
   session: PanelSession | null;
@@ -15,87 +16,13 @@ export interface Option {
   label: string;
 }
 
-const NAV: [string, string][] = [
-  ['overview', 'Overview'],
-  ['settings', 'Settings'],
-  ['ai', 'AI'],
-  ['brain', 'Brain'],
-  ['sstest', 'Screenshots'],
-  ['rivens', 'Rivens'],
-  ['config', 'Config'],
-  ['announce', 'Announce'],
-  ['events', 'Events'],
-  ['members', 'Members'],
-  ['backups', 'Backups'],
-  ['admins', 'Admins'],
+/** The sidebar: page key, label, and the group it sits under (the first group has no heading). */
+const NAV: { group: string | null; items: [string, string][] }[] = [
+  { group: null, items: [['overview', 'Overview']] },
+  { group: 'Server', items: [['settings', 'Settings'], ['announce', 'Announce'], ['events', 'Events'], ['members', 'Members'], ['backups', 'Backups']] },
+  { group: 'Ordis AI', items: [['ai', 'AI'], ['brain', 'Brain'], ['sstest', 'Screenshots'], ['rivens', 'Rivens']] },
+  { group: 'System', items: [['config', 'Config'], ['admins', 'Admins']] },
 ];
-
-const STYLE = `
-:root{--bg:#010c18;--bg2:#0b2846;--card:rgba(255,255,255,.045);--border:rgba(59,154,199,.28);--accent:#3b9ac7;--text:#e6eef6;--muted:#8fa7bd;--ok:#22c55e;--bad:#ef4444;--input:#06182b}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,var(--bg2),var(--bg) 70%) fixed;color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-a{color:var(--accent)}
-.top{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
-.top img.logo{width:36px;height:36px;border-radius:9px}
-.brand{font-weight:700;margin-right:auto}
-.nav{display:flex;gap:4px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border)}
-.nav a{padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none}
-.nav a.on{background:var(--card);color:var(--text);border:1px solid var(--border)}
-.user{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
-.user img{width:28px;height:28px;border-radius:50%}
-main{max-width:980px;margin:0 auto;padding:24px 16px 48px}
-h1{font-size:22px;margin:0 0 16px}
-h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:28px 0 10px;font-weight:600}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
-.stat{font-size:24px;font-weight:700;overflow-wrap:anywhere}
-.stat.small{font-size:14px;line-height:1.35;font-weight:600}
-.grid .card{min-width:0}
-.flush{margin:0}
-.chatlog{max-height:560px;overflow:auto;padding-right:4px}
-.msg{margin:12px 0;padding:10px 12px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere}
-.msg.user{background:rgba(59,154,199,.16);margin-left:12%}
-.msg.bot{background:var(--card);border:1px solid var(--border)}
-.think{font-size:13px;color:var(--muted)}
-.think pre.reason{opacity:.8}
-.answer{white-space:pre-wrap}
-.answer.error{color:#fca5a5}
-.tpsbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.tpsnum{font-size:30px;font-weight:700;min-width:3.2ch;text-align:right}
-meter{flex:1;min-width:160px;height:16px}
-textarea.chatq{min-height:64px}
-[hidden]{display:none!important}
-textarea.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px;min-height:360px}
-.muted{color:var(--muted);font-size:13px}
-.flash{padding:10px 14px;border-radius:10px;margin-bottom:16px;border:1px solid}
-.flash.ok{border-color:var(--ok);background:rgba(34,197,94,.08)}
-.flash.err{border-color:var(--bad);background:rgba(239,68,68,.08)}
-form.stack{display:grid;gap:12px}
-label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
-input,select,textarea{width:100%;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font:inherit}
-textarea{min-height:140px;resize:vertical}
-.row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-button{background:var(--accent);color:#011220;border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
-button.ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
-button.danger{background:var(--bad);color:#fff}
-.inline{display:inline}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
-th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
-.thumb{object-fit:cover;border-radius:6px}
-.check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
-.check input{width:auto}
-input[type=range]{padding:0;accent-color:var(--accent)}
-pre{white-space:pre-wrap;word-break:break-word;background:var(--input);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;margin:6px 0;max-height:360px;overflow:auto}
-details{margin:4px 0}
-summary{cursor:pointer}
-.step{border-left:2px solid var(--border);padding-left:10px;margin:10px 0}
-.answer{white-space:pre-wrap;background:rgba(59,154,199,.08);border:1px solid var(--border);border-radius:10px;padding:12px}
-.center{max-width:420px;margin:12vh auto;text-align:center}
-.center img{width:96px;height:96px;border-radius:22px;box-shadow:0 0 40px rgba(59,154,199,.45)}
-.discord{background:#5865f2;color:#fff;display:inline-block;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;margin-top:16px}
-@media (max-width:600px){table{font-size:13px}th,td{padding:6px 4px}}
-`;
 
 export function csrfField(session: PanelSession | null): string {
   return session ? `<input type="hidden" name="_csrf" value="${e(session.csrf)}">` : '';
@@ -113,29 +40,55 @@ export function actionButton(session: PanelSession | null, action: string, label
   }<button class="${opts.danger ? 'danger' : 'ghost'}">${e(label)}</button></form>`;
 }
 
+/** The title every page starts with, plus one line saying what the page is for. */
+export function head(title: string, lede?: string): string {
+  return `<h1>${e(title)}</h1>${lede ? `<p class="lede">${e(lede)}</p>` : ''}`;
+}
+
+/** A number (or short state) with its label above it. `value` and `note` are HTML: escape what comes from outside. */
+export function statCard(label: string, value: string, note = '', opts: { small?: boolean; tone?: 'ok' | 'bad' } = {}): string {
+  return `<div class="card statcard"><div class="statlabel">${e(label)}</div><div class="stat${opts.small ? ' small' : ''}${opts.tone ? ` ${opts.tone}` : ''}">${value}</div>${note ? `<div class="statnote">${note}</div>` : ''}</div>`;
+}
+
+/** A small coloured label for a state ("auto", "owner", "on"). */
+export function badge(text: string, tone: 'ok' | 'warn' | 'bad' | 'info' | '' = ''): string {
+  return `<span class="badge${tone ? ` ${tone}` : ''}">${e(text)}</span>`;
+}
+
 export function layout(title: string, body: string, pc: PageContext): string {
   const s = pc.session;
-  const nav = s
-    ? `<nav class="nav">${NAV.map(([key, label]) => `<a href="/admin/${key === 'overview' ? '' : key}" class="${pc.active === key ? 'on' : ''}">${label}</a>`).join('')}</nav>`
-    : '';
-  const user = s
-    ? `<div class="user"><img src="${e(avatarUrl(s.userId, s.avatar))}" alt="">${e(s.username)}<form class="inline" method="post" action="/admin/logout">${csrfField(s)}<button class="ghost">Log out</button></form></div>`
-    : '';
   const flash = [pc.flash?.ok ? `<div class="flash ok">${e(pc.flash.ok)}</div>` : '', pc.flash?.err ? `<div class="flash err">${e(pc.flash.err)}</div>` : ''].join('');
+  const nav = NAV.map(
+    ({ group, items }) =>
+      `${group ? `<div class="navgroup">${e(group)}</div>` : ''}${items
+        .map(([key, label]) => `<a class="navlink${pc.active === key ? ' on' : ''}" href="/admin/${key === 'overview' ? '' : key}">${e(label)}</a>`)
+        .join('')}`,
+  ).join('');
+  const page = s
+    ? `<div class="shell">
+<aside class="side">
+<a class="brandbar" href="/admin/"><img src="/logo.png" alt=""><div><b>Cephalon Ordis</b><span>Admin panel</span></div></a>
+<nav>${nav}<div class="navgroup">Public</div><a class="navlink" href="/">Status page</a></nav>
+</aside>
+<div class="content">
+<div class="topbar"><div class="user"><img src="${e(avatarUrl(s.userId, s.avatar))}" alt="">${e(s.username)}<form class="inline" method="post" action="/admin/logout">${csrfField(s)}<button class="ghost">Log out</button></form></div></div>
+<main>${flash}${body}</main>
+</div>
+</div>`
+    : `<main class="solo">${flash}${body}</main>`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#07121d">
 <title>${e(title)} · Ordis admin</title>
 <link rel="icon" href="/logo.png">
-<style nonce="${pc.nonce}">${STYLE}</style>
+<style nonce="${pc.nonce}">${ADMIN_CSS}</style>
 </head>
 <body>
-<header class="top"><img class="logo" src="/logo.png" alt=""><span class="brand">Cephalon Ordis · Admin</span>${user}</header>
-${nav}
-<main>${flash}${body}</main>
+${page}
 </body>
 </html>`;
 }
@@ -143,7 +96,7 @@ ${nav}
 export function loginPage(pc: PageContext, clanName: string): string {
   return layout(
     'Sign in',
-    `<div class="center"><img src="/logo.png" alt=""><h1>Ordis admin panel</h1><p class="muted">For ${e(clanName)} administrators. Sign in with your Discord account; only whitelisted admins get in.</p><a class="discord" href="/admin/login">Log in with Discord</a></div>`,
+    `<img src="/logo.png" alt=""><h1>Ordis admin panel</h1><p class="muted">For ${e(clanName)} administrators. Sign in with your Discord account; only whitelisted admins get in.</p><p><a class="discord" href="/admin/login">Log in with Discord</a></p>`,
     pc,
   );
 }
@@ -151,7 +104,7 @@ export function loginPage(pc: PageContext, clanName: string): string {
 export function deniedPage(pc: PageContext, userId: string): string {
   return layout(
     'Not allowed',
-    `<div class="center"><img src="/logo.png" alt=""><h1>Access denied</h1><p class="muted">Your Discord account (<code>${e(userId)}</code>) isn't on the admin whitelist. Ask a clan admin to add it under Admins.</p><p><a href="/">Back to the status page</a></p></div>`,
+    `<img src="/logo.png" alt=""><h1>Access denied</h1><p class="muted">Your Discord account (<code>${e(userId)}</code>) isn't on the admin whitelist. Ask a clan admin to add it under Admins.</p><p><a href="/">Back to the status page</a></p>`,
     pc,
   );
 }
@@ -160,7 +113,7 @@ export function deniedPage(pc: PageContext, userId: string): string {
 export function notConfiguredPage(pc: PageContext, missing: string[]): string {
   return layout(
     'Not configured',
-    `<div class="center"><img src="/logo.png" alt=""><h1>Admin panel is off</h1><p class="muted">The bot's environment is missing ${missing.map((m) => `<code>${e(m)}</code>`).join(' and ')}. Add ${missing.length > 1 ? 'them' : 'it'} to the bot's <code>environment:</code> block in the stack and redeploy, and add <code>PUBLIC_URL/admin/callback</code> as a redirect in the Discord Developer Portal.</p></div>`,
+    `<img src="/logo.png" alt=""><h1>Admin panel is off</h1><p class="muted">The bot's environment is missing ${missing.map((m) => `<code>${e(m)}</code>`).join(' and ')}. Add ${missing.length > 1 ? 'them' : 'it'} to the bot's <code>environment:</code> block in the stack and redeploy, and add <code>PUBLIC_URL/admin/callback</code> as a redirect in the Discord Developer Portal.</p>`,
     pc,
   );
 }

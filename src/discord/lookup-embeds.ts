@@ -13,6 +13,7 @@ import {
 import type { DropLocation } from '../warframe/drops.js';
 import type { WikiResult } from '../warframe/wiki.js';
 import { COLORS, clampLines } from './embeds.js';
+import { footer, heading } from './style.js';
 
 const POLARITY: Record<string, string> = {
   madurai: 'Madurai (V)', vazarin: 'Vazarin (D)', naramon: 'Naramon (—)', zenurik: 'Zenurik (=)',
@@ -35,7 +36,7 @@ function baseEmbed(item: WfItem): EmbedBuilder {
     .setDescription(item.description ? item.description.slice(0, 600) : null)
     .setThumbnail(itemImage(item.imageName));
   const tags = [item.type ?? item.category, typeof item.masteryReq === 'number' && item.masteryReq > 0 ? `MR ${item.masteryReq}` : null, item.vaulted ? '🔒 Vaulted' : null, item.tradable ? '💰 Tradable' : null];
-  return embed.setFooter({ text: `${tags.filter(Boolean).join(' · ')} · data: warframestat.us` });
+  return embed.setFooter(footer(`${tags.filter(Boolean).join(' · ')} · data: warframestat.us`));
 }
 
 function frameEmbed(item: WfItem): EmbedBuilder {
@@ -120,7 +121,7 @@ export function relicEmbed(relic: RelicInfo): EmbedBuilder {
   const locations = relic.locations.slice(0, 6).map((l) => `${l.location}${typeof l.chance === 'number' ? ` — ${l.chance}%` : ''}`);
   const embed = new EmbedBuilder()
     .setColor(COLORS.void)
-    .setTitle(relic.name)
+    .setTitle(heading('relic', relic.name))
     .setURL(`https://wiki.warframe.com/w/${encodeURIComponent(relic.name.replace(/ /g, '_'))}`)
     .setThumbnail(itemImage(relic.imageName))
     .setDescription(clampLines(lines, 2000))
@@ -133,7 +134,7 @@ export function relicEmbed(relic: RelicInfo): EmbedBuilder {
           : `Drops from regular missions; try \`/drops ${relic.name}\`.`,
     });
   if (relic.marketSlug) embed.addFields({ name: 'Market', value: `[warframe.market](https://warframe.market/items/${relic.marketSlug}) · \`/price ${relic.name}\`` });
-  return embed.setFooter({ text: 'Chances: intact → radiant · data: warframestat.us' });
+  return embed.setFooter(footer('Chances: intact → radiant · data: warframestat.us'));
 }
 
 /** True when the item's embed shows drop sources, so callers know to fetch the full drop table. */
@@ -155,13 +156,13 @@ export function wikiEmbed(query: string, results: WikiResult[], sourceOnly = fal
   const direct = answerFrom(query, results);
   const ordered = direct ? [direct.source, ...results.filter((r) => r !== direct.source)] : results;
   const [top, ...rest] = ordered;
-  if (!top) return new EmbedBuilder().setColor(COLORS.warn).setTitle('Wiki').setDescription(`Nothing on the wiki matches "${query}".`);
+  if (!top) return new EmbedBuilder().setColor(COLORS.warn).setTitle(heading('wiki', 'Wiki')).setDescription(`Nothing on the wiki matches "${query}".`).setFooter(footer());
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
-    .setTitle(sourceOnly ? `Read more: ${top.title}` : top.title)
+    .setTitle(heading('wiki', sourceOnly ? `Read more: ${top.title}` : top.title))
     .setURL(top.url)
     .setDescription(sourceOnly ? null : direct ? direct.text : top.extract.length > 1500 ? `${top.extract.slice(0, 1500)}…` : top.extract)
-    .setFooter({ text: 'wiki.warframe.com · CC BY-SA' });
+    .setFooter(footer('wiki.warframe.com · CC BY-SA'));
   if (rest.length) embed.addFields({ name: 'Also see', value: rest.map((r) => `[${r.title}](${r.url})`).join(' · ') });
   return embed;
 }

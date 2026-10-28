@@ -9,7 +9,7 @@ import { scanCard } from '../../rivens/scan.js';
 import { rivenStatus } from '../../rivens/service.js';
 import { UserError } from '../../services/clan.js';
 import { escapeHtml as e } from '../status.js';
-import { type Option, type PageContext, actionButton, csrfField, layout, select } from './pages.js';
+import { type Option, type PageContext, actionButton, csrfField, head, layout, select, statCard } from './pages.js';
 
 /**
  * The panel's Rivens page: where riven scanning happens (the channel), how it is doing (scans since the last start, the slow market
@@ -97,12 +97,12 @@ export function registerRivenRoutes({ router, ctx, pc, html, action, audit, chan
           `<tr><td>${clock(s.at)}</td><td>${e(s.via)}</td><td>${e(s.userName)}</td><td>${e(s.weapon ?? '—')}</td><td>${s.letter ? `<strong>${e(s.letter)}</strong>` : '❌'}${s.note ? ` <span class="muted">${e(s.note.slice(0, 80))}</span>` : ''}</td><td>${(s.ms / 1000).toFixed(1)} s</td></tr>`,
       )
       .join('');
-    const body = `<h1>Rivens</h1>
+    const body = `${head('Rivens', 'Members post a riven card and Ordis grades every roll against the game\'s fixed ranges.')}
 <div class="grid">
-<div class="card"><div class="stat small">${current ? e(channels.find((c) => c.value === current)?.label ?? current) : 'off'}</div><div class="muted">Scan channel</div></div>
-<div class="card"><div class="stat">${totals.scans}</div><div class="muted">Scans since start · ${totals.graded} graded · ${totals.failed} failed</div></div>
-<div class="card"><div class="stat">${status.weaponsRead}${status.weaponsKnown ? ` / ${status.weaponsKnown}` : ''}</div><div class="muted">Weapons read from the market · ${status.listings.toLocaleString('en-US')} listings</div></div>
-<div class="card"><div class="stat small">${status.enabled ? (status.pausedMs > 0 ? `paused ${Math.ceil(status.pausedMs / 60_000)} min` : `1 weapon / ${status.intervalSeconds} s`) : 'off'}</div><div class="muted">Slow market read · last ${ago(status.lastReadAt)}</div></div>
+${statCard('Scan channel', current ? e(channels.find((c) => c.value === current)?.label ?? current) : 'off', '', { small: true })}
+${statCard('Scans since start', String(totals.scans), `${totals.graded} graded · ${totals.failed} failed`)}
+${statCard('Weapons read from the market', `${status.weaponsRead}${status.weaponsKnown ? ` / ${status.weaponsKnown}` : ''}`, `${status.listings.toLocaleString('en-US')} listings`)}
+${statCard('Slow market read', status.enabled ? (status.pausedMs > 0 ? `paused ${Math.ceil(status.pausedMs / 60_000)} min` : `1 weapon / ${status.intervalSeconds} s`) : 'off', `last ${ago(status.lastReadAt)}`, { small: true })}
 </div>
 <h2>Scan channel</h2>
 <div class="card"><form class="stack" method="post" action="/admin/rivens/channel">${csrfField(p.session)}
@@ -114,7 +114,7 @@ ${current ? `<p>${actionButton(p.session, '/admin/rivens/off', 'Turn scanning of
 <div class="card"><form class="stack" id="rvform"><input type="hidden" id="rvcsrf" value="${e(p.session?.csrf ?? '')}">
 <label>Riven card (PNG, JPG or WebP, up to 8 MB)<input type="file" id="rvfile" accept="image/png,image/jpeg,image/webp"></label>
 <div><button id="rvgo" type="submit">Scan</button></div></form>
-<div id="rvout" class="stack" style="margin-top:12px"></div></div>
+<div id="rvout" class="stack mt"></div></div>
 <h2>Latest scans</h2>
 <div class="card">${recent.length ? `<table><tr><th>When (UTC)</th><th>From</th><th>Member</th><th>Weapon</th><th>Grade</th><th>Time</th></tr>${rows}</table>` : '<p class="muted">Nothing scanned since the bot started.</p>'}</div>
 ${status.failing.length ? `<h2>Market read problems</h2><div class="card"><table>${status.failing.map((f) => `<tr><td>${e(f.weapon)}</td><td class="muted">${e(f.error.slice(0, 160))}</td></tr>`).join('')}</table></div>` : ''}

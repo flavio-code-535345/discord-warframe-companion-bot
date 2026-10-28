@@ -8,7 +8,7 @@ import { api } from '../../warframe/fetch.js';
 import { questionQueue, screenshotQueue } from '../../queue.js';
 import { formatDuration } from '../../time.js';
 import { escapeHtml as e } from '../status.js';
-import { type PageContext, csrfField, layout } from './pages.js';
+import { type PageContext, badge, csrfField, head, layout } from './pages.js';
 
 /**
  * The panel's Config page: the settings that used to be environment variables, editable without a redeploy (see
@@ -24,7 +24,7 @@ interface Deps {
   audit: (session: PanelSession, what: string, fields?: { name: string; value: string }[]) => Promise<void>;
 }
 
-const BADGE: Record<SettingState['source'], string> = { panel: '🟢 set here', environment: '🟡 from the environment', default: '⚪ built-in default' };
+const SOURCE: Record<SettingState['source'], string> = { panel: badge('set here', 'ok'), environment: badge('from the environment', 'warn'), default: badge('built-in default') };
 
 function field(st: SettingState): string {
   const d = st.def;
@@ -59,7 +59,7 @@ ${pending.length ? `<div class="flash err">Needs a restart to take effect: ${pen
           .filter((s) => s.def.group === g)
           .map((s) => {
             const locked = s.def.ownerOnly && !owner;
-            return `<div class="card"><div class="row"><div><strong>${e(s.def.label)}</strong>${s.def.restart ? ' <span class="muted">(restart)</span>' : ''}<div class="muted">${e(s.def.help)}</div><div class="muted"><code>${e(s.def.key)}</code> · ${BADGE[s.source]}${s.source === 'panel' ? ` · otherwise: ${e(s.fallback || 'off / empty')}` : ''}${locked ? ' · 🔒 panel owners only' : ''}</div></div><div>${locked ? `<code>${e(s.value || '—')}</code>` : field(s)}${locked || s.source !== 'panel' ? '' : `<label class="check"><input type="checkbox" name="reset_${e(s.def.key)}" value="1"> reset</label>`}</div></div></div>`;
+            return `<div class="card"><div class="row"><div><strong>${e(s.def.label)}</strong>${s.def.restart ? ' <span class="muted">(restart)</span>' : ''}<div class="muted">${e(s.def.help)}</div><div class="muted"><code>${e(s.def.key)}</code> ${SOURCE[s.source]}${s.source === 'panel' ? ` otherwise: ${e(s.fallback || 'off / empty')}` : ''}${locked ? ` ${badge('panel owners only', 'warn')}` : ''}</div></div><div>${locked ? `<code>${e(s.value || '—')}</code>` : field(s)}${locked || s.source !== 'panel' ? '' : `<label class="check"><input type="checkbox" name="reset_${e(s.def.key)}" value="1"> reset</label>`}</div></div></div>`;
           })
           .join('');
         return `<h2>${e(g)}</h2><form class="stack" method="post" action="/admin/config/save">${csrfField(p.session)}<input type="hidden" name="group" value="${e(g)}">${rows}<div><button>Save ${e(g)}</button></div></form>`;
@@ -75,7 +75,7 @@ ${holds.length ? holds.map((h) => `<p class="flush">⏸ <code>${e(h.host)}</code
     const line = (name: string, q: typeof questionQueue) => `<p class="flush"><strong>${name}</strong>: ${q.snapshot().running} running (up to ${q.config.concurrency}), ${q.snapshot().waiting} waiting · ${q.stats.served} served, ${q.stats.waitedOnce} had to wait, ${q.stats.refused} turned away since the last restart</p>`;
     const queues = `<h2>Queues</h2><div class="card stack">${line('Questions', questionQueue)}${line('Screenshots', screenshotQueue)}</div>`;
     const envOnly = `<h2>Still environment-only</h2><div class="card">${ENV_ONLY.map((o) => `<p class="flush"><code>${o.names.map(e).join('</code> <code>')}</code><br><span class="muted">${e(o.why)}</span></p>`).join('<hr>')}</div>`;
-    html(res, layout('Config', `<h1>Config</h1>${intro}${forms}${queues}${activity}${envOnly}`, p));
+    html(res, layout('Config', `${head('Config', 'Settings that used to be environment variables, editable without a redeploy.')}${intro}${forms}${queues}${activity}${envOnly}`, p));
   });
 
   router.post(

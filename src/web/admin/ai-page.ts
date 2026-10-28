@@ -8,7 +8,7 @@ import type { AppContext } from '../../context.js';
 import type { PanelSession } from '../../db.js';
 import { UserError } from '../../services/clan.js';
 import { escapeHtml as e } from '../status.js';
-import { type PageContext, csrfField, layout, select } from './pages.js';
+import { type PageContext, badge, csrfField, head, layout, select, statCard } from './pages.js';
 
 /**
  * The panel's AI page: the same controls as the /ai command (both call ai/control.ts), plus the recent question log.
@@ -41,16 +41,16 @@ export function registerAiRoutes({ router, ctx, pc, html, action, audit }: Deps)
       ? '<p class="muted">No local AI server is set up. Add <code>LOCAL_AI_URL</code> and <code>LOCAL_AI_MODEL</code> to the bot\'s environment to use Ollama; answers use the free cloud model until then.</p>'
       : o.reachable
         ? `<div class="grid">
-<div class="card"><div class="stat">🟢 Online</div><div class="muted">Ollama ${e(o.version ?? '')}</div></div>
-<div class="card"><div class="stat small">${e(o.model ?? '—')}</div><div class="muted">${o.chosen ? 'chosen here or with /ai model' : 'the bot\'s default'}${o.thinkingCapable ? ' · can think' : ''}${o.skippedAfterFailure ? ' · ⚠️ skipped after a failure' : ''}</div></div>
-<div class="card"><div class="stat small">${o.loaded.length ? e(o.loaded.map((m) => `${m.name} (${gb(m.size)})`).join(', ')) : 'nothing loaded'}</div><div class="muted">in memory right now</div></div>
+${statCard('AI server', 'Online', `Ollama ${e(o.version ?? '')}`, { tone: 'ok' })}
+${statCard('Model', e(o.model ?? '—'), `${o.chosen ? 'chosen here or with /ai model' : 'the bot\'s default'}${o.thinkingCapable ? ' · can think' : ''}${o.skippedAfterFailure ? ' · skipped after a failure' : ''}`, { small: true })}
+${statCard('In memory right now', o.loaded.length ? e(o.loaded.map((m) => `${m.name} (${gb(m.size)})`).join(', ')) : 'nothing loaded', '', { small: true })}
 </div>`
         : `<div class="flash err">The AI server is not reachable: ${e(o.error ?? 'unknown error')}</div>`;
 
     const toggles = `<div class="card"><table>${o.toggles
       .map(
         (t) =>
-          `<tr><td><strong>${e(t.label)}</strong><div class="muted">${e(t.help)}</div></td><td>${t.on ? '🟢 on' : '⚫ off'}</td><td><form class="inline" method="post" action="/admin/ai/toggle">${csrfField(p.session)}<input type="hidden" name="feature" value="${e(t.key)}"><input type="hidden" name="on" value="${t.on ? '0' : '1'}"><button class="ghost">${t.on ? 'Turn off' : 'Turn on'}</button></form></td></tr>`,
+          `<tr><td><strong>${e(t.label)}</strong><div class="muted">${e(t.help)}</div></td><td>${badge(t.on ? 'on' : 'off', t.on ? 'ok' : '')}</td><td><form class="inline" method="post" action="/admin/ai/toggle">${csrfField(p.session)}<input type="hidden" name="feature" value="${e(t.key)}"><input type="hidden" name="on" value="${t.on ? '0' : '1'}"><button class="ghost">${t.on ? 'Turn off' : 'Turn on'}</button></form></td></tr>`,
       )
       .join('')}</table>
 <p class="muted">Web search: ${o.webSearch.configured ? `SearXNG at <code>${e(o.webSearch.host ?? '')}</code>` : 'not configured (<code>SEARXNG_URL</code>)'} · operators: ${o.operators} Discord IDs (<code>OPERATOR_IDS</code>)</p></div>`;
@@ -102,7 +102,7 @@ ${
 ${cacheRows}
 <form class="inline" method="post" action="/admin/ai/cache/refresh">${csrfField(p.session)}<button class="ghost">Refresh now</button></form></div>`;
 
-    const body = `<h1>AI</h1>
+    const body = `${head('AI', 'The model that writes Ordis\'s answers, the switches around it, and what it has been asked lately.')}
 ${status}
 <h2>Switches</h2>
 ${toggles}
