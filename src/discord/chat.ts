@@ -3,10 +3,12 @@ import type { ChatTurn } from '../ai/ordis.js';
 import { splitForDiscord } from '../ai/ordis.js';
 import { isChannelQuestion } from '../answers/intent.js';
 import { logAnswer } from '../answers/log.js';
+import { memoryKey } from '../answers/memory.js';
 import { isOperatorId } from '../answers/operator.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
+import { handleCorrectionReply } from './corrections.js';
 import { startProgress } from './progress.js';
 
 const HISTORY_TURNS = 8;
@@ -67,7 +69,11 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   // In the chat channel Ordis only picks up actual questions, so ordinary chatter ("good night all") is left alone.
   // The two operators can also address Ordis by name in the chat channel ("Ordis, design me a ...").
   const operatorCall = inChatChannel && !mentioned && isOperatorId(config, message.author.id) && /^ordis\b/i.test(question);
-  if (inChatChannel && !mentioned && !operatorCall && !isChannelQuestion(question)) return;
+  // A reply to one of Ordis's logged answers: staff replying with the right answer correct him (members suggest a correction for staff to approve);
+  // a question in reply is a follow-up, and a reply always continues the conversation, so it needs no "?" to be picked up.
+  const answered = !isDM && message.reference?.messageId ? store.aiLogByMessage(config.DISCORD_GUILD_ID, message.reference.messageId) : null;
+  if (answered && (await handleCorrectionReply(message, ctx, answered, question))) return;
+  if (inChatChannel && !mentioned && !operatorCall && !answered && !isChannelQuestion(question)) return;
 
   // Ordis is the clan's bot: DMs are for clan members only.
   if (isDM) {
@@ -85,11 +91,11 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
     // A slow answer (model, tools) shows a "thinking" notice with a progress bar; it is removed before the answer is posted.
     const progress = startProgress((text) => message.reply({ content: text, allowedMentions: { parse: [], repliedUser: false } }));
     try {
-      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName }, progress.listener));
+      const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, key: memoryKey(isDM ? null : message.channelId, message.author.id) }, progress.listener));
       await progress.discard();
       if (!answer.found && inChatChannel && !mentioned) return;
-      await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
-      logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer);
+      const sent = await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
+      logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer, sent.id);
     } catch (err) {
       await progress.discard();
       console.error('[chat] answer failed:', err);

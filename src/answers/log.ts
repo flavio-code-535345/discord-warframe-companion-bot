@@ -15,10 +15,11 @@ export interface LoggedAsker {
   via: AiLogEntry['via'];
 }
 
-export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: LoggedAsker, question: string, answer: SmartAnswer): void {
-  if (!aiToggle('log')) return;
+/** Records the answer and returns its log id (null when logging is off or failed). `messageId` is the Discord message that carried it. */
+export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: LoggedAsker, question: string, answer: SmartAnswer, messageId: string | null = null): number | null {
+  if (!aiToggle('log')) return null;
   try {
-    ctx.store.addAiLog(ctx.config.DISCORD_GUILD_ID, {
+    return ctx.store.addAiLog(ctx.config.DISCORD_GUILD_ID, {
       at: Date.now(),
       userId: who.id,
       userName: who.name.slice(0, 80),
@@ -31,9 +32,11 @@ export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: Logged
       found: answer.found,
       ms: answer.ms ?? 0,
       answer: answer.content.slice(0, 1500),
+      messageId,
     });
   } catch (err) {
     console.warn('[ailog] could not record the question:', err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
@@ -43,6 +46,7 @@ const SOURCE_LABEL: Record<AiSource, string> = {
   excerpt: '📄 wiki excerpt',
   lookup: '🔎 lookup',
   cache: '💾 saved answer',
+  correction: '✏️ staff correction',
 };
 
 export const sourceLabel = (e: Pick<AiLogEntry, 'source' | 'model'>): string => `${SOURCE_LABEL[e.source]}${e.model ? ` (${e.model})` : ''}`;

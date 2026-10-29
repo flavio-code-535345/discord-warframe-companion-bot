@@ -113,6 +113,15 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
 <p class="muted flush">Now: ${e(band.text)}</p>
 </div>
 
+<h2>Conversation memory</h2>
+<div class="card stack">
+<label>Messages remembered per person and channel: <strong>${s.memoryMessages === 0 ? 'off' : s.memoryMessages}</strong>
+<input type="range" name="memoryMessages" min="${LIMITS.memoryMessages.min}" max="${LIMITS.memoryMessages.max}" step="${LIMITS.memoryMessages.step}" value="${s.memoryMessages}" list="memticks">
+<datalist id="memticks">${[0, 10, 20, 30].map((v) => `<option value="${v}"></option>`).join('')}</datalist>
+<span class="muted">0 = every question stands alone · 10 = the last five questions and answers (default) · 30 = the last fifteen</span></label>
+<p class="muted flush">Ordis replays these messages to the model, so a follow-up like "and how do I get it?" is understood. Each person has their own conversation per channel (and in DMs); it is forgotten after 30 minutes without a message and when the bot restarts. A reply to one of his answers continues the conversation without needing a question mark. Follow-ups always go to the agent, whoever asks.</p>
+</div>
+
 <h2>System prompt</h2>
 <div class="card stack">
 <label>The instructions the model gets (empty or unchanged = the built-in default)
@@ -174,6 +183,7 @@ ${runs.length ? `<div class="card"><table><tr><th>When</th><th>Who</th><th>Quest
         maxTokens: b.maxTokens,
         maxChars: b.maxChars,
         toolResultChars: b.toolResultChars,
+        memoryMessages: b.memoryMessages,
         agentFor: b.agentFor,
         scope: b.scope,
         toolMode: b.toolMode,
@@ -182,6 +192,7 @@ ${runs.length ? `<div class="card"><table><tr><th>When</th><th>Who</th><th>Quest
       });
       await audit(session, 'Changed the agent brain', [
         { name: 'Ordis-ness', value: String(saved.ordisness) },
+        { name: 'Memory', value: `${saved.memoryMessages} messages` },
         { name: 'Agent for', value: saved.agentFor },
         { name: 'Custom prompt', value: saved.prompt ? 'yes' : 'default' },
       ]);

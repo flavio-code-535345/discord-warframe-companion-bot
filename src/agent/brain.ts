@@ -25,6 +25,8 @@ export interface BrainSettings {
   maxChars: number;
   /** One tool result is cut to this many characters before the model sees it. */
   toolResultChars: number;
+  /** Conversation memory: how many earlier messages (questions and answers) Ordis replays to the model for follow-ups. 0 = none. */
+  memoryMessages: number;
   agentFor: AgentFor;
   /** open: only open-ended questions (wiki/build); all: every question except "help". */
   scope: AgentScope;
@@ -61,6 +63,7 @@ export const DEFAULT_BRAIN: BrainSettings = {
   maxTokens: 1200,
   maxChars: 1800,
   toolResultChars: 3000,
+  memoryMessages: 10,
   agentFor: 'operators',
   scope: 'open',
   toolMode: 'auto',
@@ -77,6 +80,7 @@ export const LIMITS = {
   maxTokens: { min: 200, max: 4000, step: 100 },
   maxChars: { min: 300, max: 1900, step: 100 },
   toolResultChars: { min: 500, max: 8000, step: 500 },
+  memoryMessages: { min: 0, max: 30, step: 1 },
 } as const;
 
 const num = (v: unknown, fallback: number, min: number, max: number, round = false): number => {
@@ -100,6 +104,7 @@ export function normalizeBrain(raw: unknown, base: BrainSettings = DEFAULT_BRAIN
     maxTokens: num(r.maxTokens, base.maxTokens, L.maxTokens.min, L.maxTokens.max, true),
     maxChars: num(r.maxChars, base.maxChars, L.maxChars.min, L.maxChars.max, true),
     toolResultChars: num(r.toolResultChars, base.toolResultChars, L.toolResultChars.min, L.toolResultChars.max, true),
+    memoryMessages: num(r.memoryMessages, base.memoryMessages, L.memoryMessages.min, L.memoryMessages.max, true),
     agentFor: oneOf(r.agentFor, ['off', 'operators', 'everyone'], base.agentFor),
     scope: oneOf(r.scope, ['open', 'all'], base.scope),
     toolMode: oneOf(r.toolMode, ['auto', 'native', 'text'], base.toolMode),

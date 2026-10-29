@@ -32,11 +32,11 @@ export const operatorSystemPrompt = (name: string): string =>
   ].join('\n');
 
 /** An answer for an operator, or null when no model could write one (the normal grounded answer is used then). */
-export async function operatorAnswer(ctx: AppContext, question: string, name: string): Promise<SmartAnswer | null> {
+export async function operatorAnswer(ctx: AppContext, question: string, name: string, extra = ''): Promise<SmartAnswer | null> {
   const [wiki, web] = await Promise.all([searchWiki(question, 3).catch(() => []), webSearch(ctx.config.SEARXNG_URL, question, 3)]);
   const results = [...wiki, ...asPassages(web)];
   const excerpts = results.length ? results.map((p, i) => `[${i + 1}] ${p.title}\n${p.extract.slice(0, 1200)}`).join('\n\n') : '(none found)';
-  const written = await composeWith(ctx.config, operatorSystemPrompt(name), `Instruction: ${question}\n\nReference excerpts (may be unrelated):\n${excerpts}`, fetch, Date.now(), 1900);
+  const written = await composeWith(ctx.config, extra ? `${operatorSystemPrompt(name)}\n\n${extra}` : operatorSystemPrompt(name), `Instruction: ${question}\n\nReference excerpts (may be unrelated):\n${excerpts}`, fetch, Date.now(), 1900);
   if (!written) return null;
   return {
     content: written.text,

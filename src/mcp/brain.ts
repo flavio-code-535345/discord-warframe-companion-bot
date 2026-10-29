@@ -38,6 +38,7 @@ export function registerBrainTools(server: McpServer, ctx: AppContext): void {
         maxTokens: z.number().int().min(LIMITS.maxTokens.min).max(LIMITS.maxTokens.max).optional(),
         maxChars: z.number().int().min(LIMITS.maxChars.min).max(LIMITS.maxChars.max).optional(),
         toolResultChars: z.number().int().min(LIMITS.toolResultChars.min).max(LIMITS.toolResultChars.max).optional(),
+        memoryMessages: z.number().int().min(LIMITS.memoryMessages.min).max(LIMITS.memoryMessages.max).optional(),
         agentFor: z.enum(['off', 'operators', 'everyone']).optional(),
         scope: z.enum(['open', 'all']).optional(),
         toolMode: z.enum(['auto', 'native', 'text']).optional(),

@@ -44,7 +44,7 @@ export interface GuildSettings {
 }
 
 /** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, a direct lookup (prices, drops, world state...), or a saved, verified answer (the cache). */
-export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup' | 'cache';
+export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup' | 'cache' | 'correction';
 
 export interface AiLogEntry {
   id: number;
@@ -60,6 +60,39 @@ export interface AiLogEntry {
   found: boolean;
   ms: number;
   answer: string | null;
+  /** The Discord message that carried the answer, so a reply to it can be matched back to this entry. */
+  messageId: string | null;
+  /** Staff feedback from the admin panel, used as guidance for the model. */
+  rating: 'right' | 'wrong' | null;
+}
+
+/** Input for addAiLog: the message id is filled in after the reply has been sent. */
+export type NewAiLogEntry = Omit<AiLogEntry, 'id' | 'messageId' | 'rating'> & { messageId?: string | null };
+
+/**
+ * A staff correction to an answer. Approved ones are served word for word when the same question comes back and are shown to
+ * the model as guidance for related questions; pending ones are suggestions from members that staff approve in the panel.
+ */
+export interface Correction {
+  id: number;
+  createdAt: number;
+  /** The question the wrong answer was given to. */
+  question: string;
+  /** normalizeQuestion(question), for exact matching. */
+  key: string;
+  /** What the bot had answered (clipped). */
+  badAnswer: string | null;
+  /** The right answer, as staff (or the suggesting member) wrote it. */
+  correction: string;
+  /** Who asked the original question. */
+  askerId: string | null;
+  authorId: string;
+  authorName: string;
+  status: 'pending' | 'approved' | 'rejected';
+  source: 'staff_reply' | 'member_reply' | 'panel';
+  logId: number | null;
+  decidedBy: string | null;
+  decidedAt: number | null;
 }
 
 /** A saved answer to a frequently asked question. `verifiedAt` is null for a row that only records failed refreshes (such a row is never served). */
@@ -521,6 +554,32 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE guild_settings ADD COLUMN riven_channel_id TEXT;
   `,
+  `
+  ALTER TABLE ai_log ADD COLUMN message_id TEXT;
+  ALTER TABLE ai_log ADD COLUMN rating TEXT;
+  ALTER TABLE ai_log ADD COLUMN rated_by TEXT;
+  ALTER TABLE ai_log ADD COLUMN rated_at INTEGER;
+  CREATE INDEX ai_log_message ON ai_log (guild_id, message_id);
+  CREATE TABLE corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    question TEXT NOT NULL,
+    key TEXT NOT NULL,
+    bad_answer TEXT,
+    correction TEXT NOT NULL,
+    asker_id TEXT,
+    author_id TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    log_id INTEGER,
+    decided_by TEXT,
+    decided_at INTEGER
+  );
+  CREATE INDEX corrections_status ON corrections (guild_id, status, created_at);
+  CREATE INDEX corrections_key ON corrections (guild_id, key);
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -891,18 +950,17 @@ export class Store {
   }
 
   /** Records one answered question and drops entries older than the retention window. */
-  addAiLog(guildId: string, e: Omit<AiLogEntry, 'id'>, retentionMs = 30 * 86_400_000): void {
-    this.db
-      .prepare('INSERT INTO ai_log (guild_id, at, user_id, user_name, channel_id, via, question, intent, source, model, found, ms, answer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(guildId, e.at, e.userId, e.userName, e.channelId, e.via, e.question, e.intent, e.source, e.model, e.found ? 1 : 0, e.ms, e.answer);
-    this.db.prepare('DELETE FROM ai_log WHERE guild_id = ? AND at < ?').run(guildId, e.at - retentionMs);
+  addAiLog(guildId: string, e: NewAiLogEntry, retentionMs = 30 * 86_400_000): number {
+    const r = this.db
+      .prepare('INSERT INTO ai_log (guild_id, at, user_id, user_name, channel_id, via, question, intent, source, model, found, ms, answer, message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(guildId, e.at, e.userId, e.userName, e.channelId, e.via, e.question, e.intent, e.source, e.model, e.found ? 1 : 0, e.ms, e.answer, e.messageId ?? null);
+    // Entries that carry staff feedback are kept: they are guidance, not just a log.
+    this.db.prepare('DELETE FROM ai_log WHERE guild_id = ? AND at < ? AND rating IS NULL').run(guildId, e.at - retentionMs);
+    return Number(r.lastInsertRowid);
   }
 
-  recentAiLog(guildId: string, limit: number, userId?: string): AiLogEntry[] {
-    const rows = (userId
-      ? this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND user_id = ? ORDER BY at DESC, id DESC LIMIT ?').all(guildId, userId, limit)
-      : this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? ORDER BY at DESC, id DESC LIMIT ?').all(guildId, limit)) as Row[];
-    return rows.map((r) => ({
+  private toAiLog(r: Row): AiLogEntry {
+    return {
       id: Number(r.id),
       at: Number(r.at),
       userId: String(r.user_id),
@@ -916,7 +974,104 @@ export class Store {
       found: Number(r.found) === 1,
       ms: Number(r.ms),
       answer: str(r.answer),
-    }));
+      messageId: str(r.message_id),
+      rating: r.rating === 'right' || r.rating === 'wrong' ? r.rating : null,
+    };
+  }
+
+  getAiLog(guildId: string, id: number): AiLogEntry | null {
+    const r = this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND id = ?').get(guildId, id) as Row | undefined;
+    return r ? this.toAiLog(r) : null;
+  }
+
+  /** The logged answer that a Discord message carried (a reply to that message is a correction or a follow-up). */
+  aiLogByMessage(guildId: string, messageId: string): AiLogEntry | null {
+    const r = this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND message_id = ? ORDER BY id DESC LIMIT 1').get(guildId, messageId) as Row | undefined;
+    return r ? this.toAiLog(r) : null;
+  }
+
+  setAiLogMessage(guildId: string, id: number, messageId: string): void {
+    this.db.prepare('UPDATE ai_log SET message_id = ? WHERE guild_id = ? AND id = ?').run(messageId, guildId, id);
+  }
+
+  /** Staff feedback on an answer: 'right', 'wrong', or null to clear it. */
+  rateAiLog(guildId: string, id: number, rating: 'right' | 'wrong' | null, by: string, now = Date.now()): boolean {
+    return Number(this.db.prepare('UPDATE ai_log SET rating = ?, rated_by = ?, rated_at = ? WHERE guild_id = ? AND id = ?').run(rating, rating ? by : null, rating ? now : null, guildId, id).changes) > 0;
+  }
+
+  ratedAiLog(guildId: string, rating: 'right' | 'wrong', limit: number): AiLogEntry[] {
+    return (this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND rating = ? ORDER BY rated_at DESC, id DESC LIMIT ?').all(guildId, rating, limit) as Row[]).map((r) => this.toAiLog(r));
+  }
+
+  ratingCounts(guildId: string): { right: number; wrong: number } {
+    const rows = this.db.prepare('SELECT rating, COUNT(*) AS n FROM ai_log WHERE guild_id = ? AND rating IS NOT NULL GROUP BY rating').all(guildId) as Row[];
+    const n = (k: string) => Number(rows.find((r) => r.rating === k)?.n ?? 0);
+    return { right: n('right'), wrong: n('wrong') };
+  }
+
+  // --- corrections (see answers/corrections.ts) ---
+
+  private toCorrection(r: Row): Correction {
+    return {
+      id: Number(r.id),
+      createdAt: Number(r.created_at),
+      question: String(r.question),
+      key: String(r.key),
+      badAnswer: str(r.bad_answer),
+      correction: String(r.correction),
+      askerId: str(r.asker_id),
+      authorId: String(r.author_id),
+      authorName: String(r.author_name),
+      status: r.status as Correction['status'],
+      source: r.source as Correction['source'],
+      logId: r.log_id === null || r.log_id === undefined ? null : Number(r.log_id),
+      decidedBy: str(r.decided_by),
+      decidedAt: r.decided_at === null || r.decided_at === undefined ? null : Number(r.decided_at),
+    };
+  }
+
+  addCorrection(guildId: string, c: Omit<Correction, 'id' | 'decidedBy' | 'decidedAt'> & { decidedBy?: string | null; decidedAt?: number | null }): number {
+    const r = this.db
+      .prepare('INSERT INTO corrections (guild_id, created_at, question, key, bad_answer, correction, asker_id, author_id, author_name, status, source, log_id, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(guildId, c.createdAt, c.question, c.key, c.badAnswer, c.correction, c.askerId, c.authorId, c.authorName, c.status, c.source, c.logId, c.decidedBy ?? null, c.decidedAt ?? null);
+    return Number(r.lastInsertRowid);
+  }
+
+  getCorrection(guildId: string, id: number): Correction | null {
+    const r = this.db.prepare('SELECT * FROM corrections WHERE guild_id = ? AND id = ?').get(guildId, id) as Row | undefined;
+    return r ? this.toCorrection(r) : null;
+  }
+
+  listCorrections(guildId: string, status: Correction['status'], limit = 200): Correction[] {
+    return (this.db.prepare('SELECT * FROM corrections WHERE guild_id = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(guildId, status, limit) as Row[]).map((r) => this.toCorrection(r));
+  }
+
+  countCorrections(guildId: string): Record<Correction['status'], number> {
+    const rows = this.db.prepare('SELECT status, COUNT(*) AS n FROM corrections WHERE guild_id = ? GROUP BY status').all(guildId) as Row[];
+    const n = (k: string) => Number(rows.find((r) => r.status === k)?.n ?? 0);
+    return { pending: n('pending'), approved: n('approved'), rejected: n('rejected') };
+  }
+
+  /** Decides a suggestion or edits a correction (a new text replaces the old one). */
+  updateCorrection(guildId: string, id: number, patch: { status?: Correction['status']; correction?: string; decidedBy?: string; now?: number }): boolean {
+    const cur = this.getCorrection(guildId, id);
+    if (!cur) return false;
+    const decided = patch.status !== undefined && patch.status !== cur.status;
+    this.db
+      .prepare('UPDATE corrections SET status = ?, correction = ?, decided_by = ?, decided_at = ? WHERE guild_id = ? AND id = ?')
+      .run(patch.status ?? cur.status, patch.correction ?? cur.correction, decided ? (patch.decidedBy ?? cur.decidedBy) : cur.decidedBy, decided ? (patch.now ?? Date.now()) : cur.decidedAt, guildId, id);
+    return true;
+  }
+
+  deleteCorrection(guildId: string, id: number): boolean {
+    return Number(this.db.prepare('DELETE FROM corrections WHERE guild_id = ? AND id = ?').run(guildId, id).changes) > 0;
+  }
+
+  recentAiLog(guildId: string, limit: number, userId?: string): AiLogEntry[] {
+    const rows = (userId
+      ? this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND user_id = ? ORDER BY at DESC, id DESC LIMIT ?').all(guildId, userId, limit)
+      : this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? ORDER BY at DESC, id DESC LIMIT ?').all(guildId, limit)) as Row[];
+    return rows.map((r) => this.toAiLog(r));
   }
 
   /** Answers per source since a point in time. */

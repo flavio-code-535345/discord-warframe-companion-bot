@@ -29,6 +29,7 @@ import {
 } from './auth.js';
 import { registerAiRoutes } from './ai-page.js';
 import { registerBrainRoutes } from './brain-page.js';
+import { registerCorrectionsRoutes } from './corrections-page.js';
 import { registerRivenRoutes } from './riven-page.js';
 import { registerSsTestRoutes } from './sstest-page.js';
 import { registerConfigRoutes } from './config-page.js';
@@ -410,6 +411,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
 
   registerAiRoutes({ router, ctx, pc, html, action, audit });
   registerBrainRoutes({ router, ctx, pc, html, action, audit });
+  registerCorrectionsRoutes({ router, ctx, pc, html, action, audit });
   registerSsTestRoutes({ router, ctx, pc, html });
   registerRivenRoutes({ router, ctx, pc, html, action, audit, channelOptions: async () => channelOptions(await guild()) });
   registerConfigRoutes({ router, ctx, pc, html, action, audit });

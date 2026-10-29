@@ -71,8 +71,10 @@ export interface AgentDeps {
   stream?: boolean;
   /** Stops the run (the browser's Stop button or a closed connection). */
   signal?: AbortSignal;
-  /** Earlier turns of a conversation (the panel's chat), oldest first. */
+  /** Earlier turns of a conversation (the panel's chat, or the asker's remembered messages in Discord), oldest first. */
   history?: { role: 'user' | 'assistant'; content: string }[];
+  /** Staff corrections and rated answers for this question (see answers/corrections.ts), added to the system prompt. */
+  guidance?: string;
 }
 
 const MAX_CALLS_PER_STEP = 4;
@@ -369,7 +371,7 @@ export async function runAgent(ctx: AppContext, question: string, who: { id: str
   const s = brain();
   const emit = deps.onEvent ?? (() => {});
   const tools = enabledTools(ctx, deps.tools);
-  const system = [buildSystemPrompt({ bot: config.BOT_NAME, clan: config.CLAN_NAME }), who.operator ? OPERATOR_NOTE : ''].filter(Boolean).join('\n\n');
+  const system = [buildSystemPrompt({ bot: config.BOT_NAME, clan: config.CLAN_NAME }), who.operator ? OPERATOR_NOTE : '', deps.guidance ?? ''].filter(Boolean).join('\n\n');
   const run = deps.run ?? newRun({ who: who.name, operator: who.operator, question, system });
   run.system = system;
   emit({ t: 'start', id: run.id });

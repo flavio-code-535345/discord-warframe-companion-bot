@@ -35,9 +35,18 @@ import { QueueFullError } from '../queue.js';
 import { withAsker, withModelSlot } from './slot.js';
 import { brain } from '../agent/brain.js';
 import { cacheAllowedFor, getCachedAnswer, noteCacheHit } from './cache.js';
+import { findCorrection, guidanceFor } from './corrections.js';
+import { isFollowUp, recall, remember, transcript } from './memory.js';
 import { isOperatorId, operatorAnswer, useOperatorMode } from './operator.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
+
+/** Who is asking. `key` (memoryKey of channel and person) turns on conversation memory for the exchange. */
+export interface Asker {
+  id: string;
+  name: string;
+  key?: string;
+}
 
 export interface SmartAnswer {
   content: string;
@@ -104,7 +113,7 @@ function worldEmbed(ws: WorldState, view: WorldView): EmbedBuilder {
   }
 }
 
-async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> {
+async function wikiAnswer(query: string, ctx: AppContext, extra = ''): Promise<SmartAnswer> {
   reportStatus('🔎 Searching the wiki');
   const [results, web] = await Promise.all([searchWiki(query, 3).catch(() => []), webSearch(ctx.config.SEARXNG_URL, query, 2)]);
   if (!results.length && !web.length) {
@@ -116,15 +125,15 @@ async function wikiAnswer(query: string, ctx: AppContext): Promise<SmartAnswer> 
   }
   reportStatus('✍️ Writing the answer');
   // With a free-tier model configured, the excerpts are worded into a real answer; the source stays below it.
-  const written = await withModelSlot(() => composeDetailed(ctx.config, query, [...results, ...asPassages(web)]));
+  const written = await withModelSlot(() => composeDetailed(ctx.config, query, [...results, ...asPassages(web)], fetch, Date.now(), extra));
   if (written) return { content: written.text, embeds: [wikiEmbed(query, results.length ? results : asPassages(web), true)], found: true, source: written.via, model: written.model };
   if (!results.length) return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, asPassages(web))], found: true, source: 'excerpt' };
   return { content: pick(LINES.wiki!), embeds: [wikiEmbed(query, results)], found: true, source: 'excerpt' };
 }
 
-async function itemAnswer(name: string, line: string, fallbackQuery: string, ctx: AppContext): Promise<SmartAnswer> {
+async function itemAnswer(name: string, line: string, fallbackQuery: string, ctx: AppContext, extra = ''): Promise<SmartAnswer> {
   const result = await lookupItem(name).catch(() => null);
-  if (!result) return wikiAnswer(fallbackQuery, ctx);
+  if (!result) return wikiAnswer(fallbackQuery, ctx, extra);
   let drops;
   if (showsDrops(result) && result.kind === 'item') {
     const groups = await searchDrops(result.item.name, 6, 10).catch(() => []);
@@ -133,7 +142,7 @@ async function itemAnswer(name: string, line: string, fallbackQuery: string, ctx
   return { content: line, embeds: [lookupEmbed(result, drops)], found: true };
 }
 
-async function answerIntent(intent: Intent, question: string, ctx: AppContext): Promise<SmartAnswer> {
+async function answerIntent(intent: Intent, question: string, ctx: AppContext, extra = ''): Promise<SmartAnswer> {
   const fallback = cleanQuestion(question);
   switch (intent.kind) {
     case 'help':
@@ -152,13 +161,13 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
       const groups = await searchDrops(intent.item).catch(() => []);
       if (groups.length) return { content: pick(LINES.drops!), embeds: [dropsEmbed(intent.item, groups)], found: true };
       // Not in the drop tables (e.g. a Warframe or a place): the item card or the wiki explains how to get it.
-      return itemAnswer(intent.item, pick(LINES.item!), fallback, ctx);
+      return itemAnswer(intent.item, pick(LINES.item!), fallback, ctx, extra);
     }
 
     case 'relic': {
       const result = await lookupItem(intent.name).catch(() => null);
       if (result?.kind === 'relic') return { content: pick(LINES.relic!), embeds: [relicEmbed(result.relic)], found: true };
-      return wikiAnswer(fallback, ctx);
+      return wikiAnswer(fallback, ctx, extra);
     }
 
     case 'world': {
@@ -199,7 +208,7 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
     }
 
     case 'build': {
-      const answer = await itemAnswer(intent.item, pick(LINES.build!), fallback, ctx);
+      const answer = await itemAnswer(intent.item, pick(LINES.build!), fallback, ctx, extra);
       if (answer.found) {
         const q = encodeURIComponent(intent.item);
         answer.content += `\nCommunity builds: <https://overframe.gg/search/?q=${q}> · wiki: <https://wiki.warframe.com/index.php?search=${q}>`;
@@ -208,17 +217,23 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext): 
     }
 
     case 'item':
-      return itemAnswer(intent.name, pick(LINES.item!), fallback, ctx);
+      return itemAnswer(intent.name, pick(LINES.item!), fallback, ctx, extra);
 
     case 'wiki':
-      return wikiAnswer(intent.query, ctx);
+      return wikiAnswer(intent.query, ctx, extra);
   }
 }
 
 /** Answers a chat question from live data and the wiki, without any AI model. */
-export function smartAnswer(question: string, ctx: AppContext, asker?: { id: string; name: string }, onStatus?: StatusListener): Promise<SmartAnswer> {
+export function smartAnswer(question: string, ctx: AppContext, asker?: Asker, onStatus?: StatusListener): Promise<SmartAnswer> {
   return withStatus(onStatus, () =>
-    withAsker(asker?.id ?? '', () => smartAnswerInner(question, ctx, asker)).catch((err: unknown) => {
+    withAsker(asker?.id ?? '', () => smartAnswerInner(question, ctx, asker))
+      .then((answer) => {
+        // The exchange goes into this person's conversation memory (see answers/memory.ts) so a follow-up can lean on it.
+        if (asker?.key && answer.found && answer.intent !== 'busy' && brain().memoryMessages > 0) remember(asker.key, question, answer.content.replace(/\n-# [^\n]*$/, ''));
+        return answer;
+      })
+      .catch((err: unknown) => {
       if (!(err instanceof QueueFullError)) throw err;
       // Too many waiting: say so instead of failing, and keep it out of the saved answers (source 'lookup', intent 'busy').
       const content = err.reason === 'user' ? 'Ordis is already working on two of your questions, Operator. Wait for those answers first.' : 'Ordis has a long line of questions right now, Operator. Please ask again in a few minutes.';
@@ -227,12 +242,22 @@ export function smartAnswer(question: string, ctx: AppContext, asker?: { id: str
   );
 }
 
-async function smartAnswerInner(question: string, ctx: AppContext, asker?: { id: string; name: string }): Promise<SmartAnswer> {
+async function smartAnswerInner(question: string, ctx: AppContext, asker?: Asker): Promise<SmartAnswer> {
   const intent = detectIntent(question);
   const started = Date.now();
+  // The conversation so far (the Brain page's memory slider) and what makes this a follow-up: such a message only makes sense with that context.
+  const history = asker?.key ? recall(asker.key, brain().memoryMessages) : [];
+  const followUp = history.length > 0 && isFollowUp(question);
+  // A staff correction (see answers/corrections.ts) for exactly this question wins over everything else, a saved answer included.
+  const fix = followUp ? null : findCorrection(ctx, question);
+  if (fix) return { content: fix.correction, embeds: [], found: true, source: 'correction', model: null, intent: 'correction', ms: Date.now() - started };
+  // Staff corrections and rated answers related to this question, plus the conversation, for the models.
+  const lastUser = [...history].reverse().find((t) => t.role === 'user')?.content ?? '';
+  const guidance = guidanceFor(ctx, followUp ? `${lastUser} ${question}` : question);
+  const extra = [guidance, history.length ? `Conversation so far (context only; answer the newest question):\n${transcript(history)}` : ''].filter(Boolean).join('\n\n');
   // Prices, drops, relics, world state and the clan schedule stay plain API lookups for everyone, operators included.
   // A saved, verified answer to a repeat question (see answers/cache.ts): same answer every time, no model call. Operators always get a fresh one.
-  if (!(asker && isOperatorId(ctx.config, asker.id)) && cacheAllowedFor(intent.kind)) {
+  if (!followUp && !(asker && isOperatorId(ctx.config, asker.id)) && cacheAllowedFor(intent.kind)) {
     const hit = getCachedAnswer(ctx, question);
     if (hit) {
       noteCacheHit(ctx, hit);
@@ -242,8 +267,8 @@ async function smartAnswerInner(question: string, ctx: AppContext, asker?: { id:
   }
   // The agent (tools it picks itself, see src/agent) comes first where it is switched on; the operator answer and the plain lookups are the fallbacks.
   const who = asker ?? { id: '', name: 'a clan member' };
-  const agent = useAgent(ctx, who.id, intent.kind) ? await withModelSlot(() => agentAnswer(ctx, question, who)) : null;
-  const operator = !agent && asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await withModelSlot(() => operatorAnswer(ctx, question, asker.name)) : null;
-  const answer = agent ?? operator ?? (await answerIntent(intent, question, ctx));
+  const agent = useAgent(ctx, who.id, intent.kind, followUp) ? await withModelSlot(() => agentAnswer(ctx, question, who, { history, guidance })) : null;
+  const operator = !agent && asker && useOperatorMode(ctx.config, asker.id, intent.kind) ? await withModelSlot(() => operatorAnswer(ctx, question, asker.name, extra)) : null;
+  const answer = agent ?? operator ?? (await answerIntent(intent, question, ctx, extra));
   return { ...answer, source: answer.source ?? 'lookup', model: answer.model ?? null, intent: answer.intent ?? intent.kind, ms: Date.now() - started };
 }

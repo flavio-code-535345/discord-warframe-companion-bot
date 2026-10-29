@@ -136,13 +136,13 @@ export async function composeAnswer(config: ComposeConfig, question: string, pas
 }
 
 /** Same as composeAnswer, but also says which model answered (for the AI log). */
-export async function composeDetailed(config: ComposeConfig, question: string, passages: WikiResult[], fetcher: Fetcher = fetch, now = Date.now()): Promise<Composed | null> {
+export async function composeDetailed(config: ComposeConfig, question: string, passages: WikiResult[], fetcher: Fetcher = fetch, now = Date.now(), extra = ''): Promise<Composed | null> {
   if (!passages.length) return null;
   const excerpts = passages
     .slice(0, 5)
     .map((p, i) => `[${i + 1}] ${p.title}\n${p.extract.slice(0, 1500)}`)
     .join('\n\n');
-  return composeWith(config, system(), `Question: ${question}\n\nExcerpts:\n${excerpts}`, fetcher, now, 1500);
+  return composeWith(config, extra ? `${system()}\n\n${extra}` : system(), `Question: ${question}\n\nExcerpts:\n${excerpts}`, fetcher, now, 1500);
 }
 
 /** One model call with any system prompt, local model first, then the free cloud one. Used by the grounded answers and by operator mode. */

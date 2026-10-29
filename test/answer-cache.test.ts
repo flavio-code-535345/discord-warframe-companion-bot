@@ -41,7 +41,7 @@ describe('what may be cached', () => {
 });
 
 describe('choosing what to research', () => {
-  const log = (q: string, n: number, over: Partial<AiLogEntry> = {}): AiLogEntry[] => Array.from({ length: n }, (_, i) => ({ id: i, at: NOW - i * 1000, userId: '2', userName: 'r', channelId: null, via: 'chat', question: q, intent: 'wiki', source: 'local', model: 'g', found: true, ms: 1, answer: null, ...over }));
+  const log = (q: string, n: number, over: Partial<AiLogEntry> = {}): AiLogEntry[] => Array.from({ length: n }, (_, i) => ({ id: i, at: NOW - i * 1000, userId: '2', userName: 'r', channelId: null, via: 'chat', question: q, intent: 'wiki', source: 'local', model: 'g', found: true, ms: 1, answer: null, messageId: null, rating: null, ...over }));
 
   it('takes the most asked first, only questions asked twice or more, capped', () => {
     const entries = [...log('where do I get bite', 3), ...log('how does arbitrations work', 5), ...log('what is a kuva lich', 1), ...log('how do i get Rhino', 2)];

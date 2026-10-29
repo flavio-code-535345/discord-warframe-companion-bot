@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { brain, resetBrainState } from '../src/agent/brain.js';
 import { aiToggle, resetAiToggles } from '../src/ai/settings.js';
+import { addCorrection } from '../src/answers/corrections.js';
 import { Store } from '../src/db.js';
 import { startHttpServer } from '../src/http.js';
 import { SESSION_COOKIE, sessionSecret, sign, unsign } from '../src/web/admin/auth.js';
@@ -342,4 +343,62 @@ test('the Rivens page shows the scan channel, needs the CSRF header to scan, and
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test('the Brain page has a conversation memory slider that saves and clamps', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const body = await (await get('/admin/brain', cookie)).text();
+  assert.match(body, /type="range" name="memoryMessages" min="0" max="30" step="1" value="10"/);
+  await post('/admin/brain/save', { memoryMessages: '4', _csrf: 'csrf-token' }, cookie);
+  assert.equal(brain().memoryMessages, 4);
+  assert.match(await (await get('/admin/brain', cookie)).text(), /name="memoryMessages"[^>]*value="4"/);
+  await post('/admin/brain/save', { memoryMessages: '500', _csrf: 'csrf-token' }, cookie);
+  assert.equal(brain().memoryMessages, 30);
+  resetBrainState();
+});
+
+test('the Corrections page approves suggestions, edits and deletes corrections, adds one, and rates answers', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const logId = store.addAiLog(GUILD, { at: Date.now(), userId: '55', userName: 'Asker', channelId: 'c', via: 'chat', question: 'How do I unlock Venus?', intent: 'wiki', source: 'local', model: 'gemma', found: true, ms: 5, answer: 'Complete the Earth quest.', messageId: 'msg-1' });
+  const entry = store.getAiLog(GUILD, logId)!;
+  const suggested = addCorrection({ config: { DISCORD_GUILD_ID: GUILD }, store } as never, { entry, text: 'Finish Vor’s Prize.', authorId: '66', authorName: 'Rat', staff: false, source: 'member_reply' })!;
+
+  const page = await get('/admin/corrections', cookie);
+  assert.equal(page.status, 200);
+  const body = await page.text();
+  assert.match(body, /<h1>Corrections<\/h1>/);
+  assert.match(body, /href="\/admin\/corrections"/, 'in the navigation');
+  assert.match(body, /suggested by <strong>Rat<\/strong>/);
+  assert.match(body, /Finish Vor’s Prize/);
+
+  assert.equal((await post(`/admin/corrections/${suggested.id}/approve`, { text: 'x' }, cookie)).status, 403, 'needs the CSRF token');
+  await post(`/admin/corrections/${suggested.id}/approve`, { text: 'Finish Vor’s Prize first.', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getCorrection(GUILD, suggested.id)!.status, 'approved');
+  assert.equal(store.getCorrection(GUILD, suggested.id)!.correction, 'Finish Vor’s Prize first.');
+  assert.equal(store.getAiLog(GUILD, logId)!.rating, 'wrong', 'approving marks the original answer wrong');
+  assert.match(await (await get('/admin/corrections', cookie)).text(), /Finish Vor’s Prize first\./);
+
+  await post(`/admin/corrections/${suggested.id}/save`, { text: 'Complete Vor’s Prize.', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getCorrection(GUILD, suggested.id)!.correction, 'Complete Vor’s Prize.');
+  const noConfirm = await post(`/admin/corrections/${suggested.id}/delete`, { _csrf: 'csrf-token' }, cookie);
+  assert.match(decodeURIComponent((noConfirm.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Tick/);
+  await post(`/admin/corrections/${suggested.id}/delete`, { confirm: 'yes', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getCorrection(GUILD, suggested.id), null);
+
+  await post('/admin/corrections/add', { question: 'What is a Kuva Lich?', text: 'An enemy that steals your Kuva.', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.listCorrections(GUILD, 'approved')[0]!.source, 'panel');
+
+  const second = addCorrection({ config: { DISCORD_GUILD_ID: GUILD }, store } as never, { entry, text: 'Nope.', authorId: '67', authorName: 'Other', staff: false, source: 'member_reply' })!;
+  await post(`/admin/corrections/${second.id}/reject`, { _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getCorrection(GUILD, second.id)!.status, 'rejected');
+
+  const fresh = store.addAiLog(GUILD, { at: Date.now(), userId: '55', userName: 'Asker', channelId: 'c', via: 'chat', question: 'What is Nightwave?', intent: 'wiki', source: 'local', model: 'gemma', found: true, ms: 5, answer: 'A series of challenges.', messageId: 'msg-2' });
+  await post('/admin/corrections/rate', { id: String(fresh), rating: 'right', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getAiLog(GUILD, fresh)!.rating, 'right');
+  await post('/admin/corrections/rate', { id: String(fresh), rating: 'clear', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getAiLog(GUILD, fresh)!.rating, null);
+  await post('/admin/corrections/from-answer', { id: String(fresh), text: 'Nightwave is a weekly challenge series by Nora Night.', _csrf: 'csrf-token' }, cookie);
+  assert.equal(store.getAiLog(GUILD, fresh)!.rating, 'wrong');
+  assert.equal(store.listCorrections(GUILD, 'approved').some((c) => c.question === 'What is Nightwave?'), true);
+  assert.equal((await post('/admin/corrections/rate', { id: String(fresh), rating: 'bogus', _csrf: 'csrf-token' }, cookie)).status, 302);
 });

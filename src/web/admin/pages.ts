@@ -20,7 +20,7 @@ export interface Option {
 const NAV: { group: string | null; items: [string, string][] }[] = [
   { group: null, items: [['overview', 'Overview']] },
   { group: 'Server', items: [['settings', 'Settings'], ['announce', 'Announce'], ['events', 'Events'], ['members', 'Members'], ['backups', 'Backups']] },
-  { group: 'Ordis AI', items: [['ai', 'AI'], ['brain', 'Brain'], ['sstest', 'Screenshots'], ['rivens', 'Rivens']] },
+  { group: 'Ordis AI', items: [['ai', 'AI'], ['brain', 'Brain'], ['corrections', 'Corrections'], ['sstest', 'Screenshots'], ['rivens', 'Rivens']] },
   { group: 'System', items: [['config', 'Config'], ['admins', 'Admins']] },
 ];
 
