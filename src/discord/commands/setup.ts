@@ -8,6 +8,7 @@ import { disableSsRoles, resetSsClaims, setupSsRoles } from '../../ssroles/servi
 import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
+import { syncChatTopic } from '../chat-topic.js';
 
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement] as const;
 
@@ -49,7 +50,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       },
       {
         name: 'Ordis chat channel',
-        value: `${ch(s.chatChannelId)} · mentions, replies, /ask and DMs always work · Ordis remembers follow-ups, and an admin's reply to an answer corrects him${chatWarnings.length ? `
+        value: `${ch(s.chatChannelId)} · Ordis answers everything written there (no question mark needed); mentions, replies, /ask and DMs work everywhere · he remembers follow-ups, and an admin's reply to an answer corrects him${chatWarnings.length ? `
 ⚠️ ${chatWarnings.join('; ')}` : ''}`,
       },
     );
@@ -218,6 +219,7 @@ export const setup: Command = {
         const chat = channelId();
         assertChannelFree(ctx, { chatChannelId: chat });
         settings = ctx.store.updateSettings(guildId, { chatChannelId: chat });
+        void syncChatTopic(ctx);
         break;
       }
       case 'modlog':

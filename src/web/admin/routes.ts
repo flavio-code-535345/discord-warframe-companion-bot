@@ -29,6 +29,7 @@ import {
 } from './auth.js';
 import { registerAiRoutes } from './ai-page.js';
 import { registerBrainRoutes } from './brain-page.js';
+import { syncChatTopic } from '../../discord/chat-topic.js';
 import { registerCorrectionsRoutes } from './corrections-page.js';
 import { registerRivenRoutes } from './riven-page.js';
 import { registerSsTestRoutes } from './sstest-page.js';
@@ -299,6 +300,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
         welcomeChannelId: ch('welcomeChannelId'),
         chatChannelId,
       });
+      void syncChatTopic(ctx);
       await audit(session, 'Changed bot channel settings');
       return 'Settings saved.';
     }),

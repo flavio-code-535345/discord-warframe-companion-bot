@@ -13,6 +13,9 @@ import { smartAnswer } from '../src/answers/smart.js';
 import { Store } from '../src/db.js';
 import { handleCorrectionReply } from '../src/discord/corrections.js';
 import { addRatingReactions, handleRatingReaction } from '../src/discord/ratings.js';
+import { handleChatMessage } from '../src/discord/chat.js';
+import { CHAT_TOPIC, syncChatTopic } from '../src/discord/chat-topic.js';
+import { ChannelType } from 'discord.js';
 
 const config = {
   BOT_NAME: 'Cephalon Ordis',
@@ -355,5 +358,86 @@ describe('rating answers with reactions', () => {
     const { store, ctx } = setup();
     await handleRatingReaction(reaction('❌', { manage: true }), user('5'), ctx, true);
     assert.match(guidanceFor(ctx, 'how do I unlock venus quickly'), /marked WRONG[\s\S]*Do the quest/);
+  });
+});
+
+describe('the chat channel answers anything', () => {
+  const CHAT = 'chat-channel';
+  const setup = () => {
+    const store = new Store(':memory:');
+    store.updateSettings('g', { chatChannelId: CHAT });
+    addCorrection({ config, store } as never, { entry: null, question: 'Kuva Lich', text: 'An enemy that steals your Kuva.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
+    const replies: string[] = [];
+    const ctx = { config: { ...config, ENABLE_MESSAGE_CONTENT: true }, store, ai: null, client: { user: { id: 'bot' } } } as never;
+    const message = (content: string, over: { mention?: boolean; reference?: { authorId: string } | null; id?: string } = {}) =>
+      ({
+        id: over.id ?? 'x1',
+        content,
+        guildId: 'g',
+        channelId: CHAT,
+        author: { id: '5', bot: false, displayName: 'Rat', username: 'rat' },
+        member: { displayName: 'Rat', permissions: { has: () => false } },
+        inGuild: () => true,
+        mentions: { has: () => over.mention === true },
+        reference: over.reference ? { messageId: 'ref1' } : null,
+        fetchReference: async () => ({ id: 'ref1', author: { id: over.reference?.authorId ?? 'bot' } }),
+        channel: { isSendable: () => true, sendTyping: async () => {} },
+        reply: async (o: { content: string }) => {
+          replies.push(o.content);
+          return { id: `sent-${replies.length}`, react: async () => {} };
+        },
+      }) as unknown as Message;
+    return { ctx, store, replies, message };
+  };
+
+  it('replies without a question mark, and keeps the answer in the log for corrections', async () => {
+    const { ctx, store, replies, message } = setup();
+    await handleChatMessage(message('Kuva Lich'), ctx);
+    assert.deepEqual(replies, ['An enemy that steals your Kuva.']);
+    assert.equal(store.aiLogByMessage('g', 'sent-1')?.question, 'Kuva Lich');
+  });
+
+  it('stays out of picture-only posts and of conversations between members', async () => {
+    const { ctx, replies, message } = setup();
+    await handleChatMessage(message(''), ctx);
+    await handleChatMessage(message('Kuva Lich', { reference: { authorId: 'someone-else' } }), ctx);
+    assert.deepEqual(replies, []);
+    // A mention still always works, and so does a reply to the bot.
+    await handleChatMessage(message('Kuva Lich', { mention: true, reference: { authorId: 'someone-else' } }), ctx);
+    assert.equal(replies.length, 1);
+  });
+});
+
+describe('the chat channel description', () => {
+  const channelOf = (topic: string | null) => {
+    const calls: string[] = [];
+    return { calls, channel: { type: ChannelType.GuildText, topic, setTopic: async (t: string) => void calls.push(t) } };
+  };
+  const ctxFor = (channel: unknown, over: { content?: boolean; chat?: string | null } = {}) => {
+    const store = new Store(':memory:');
+    if (over.chat !== null) store.updateSettings('g', { chatChannelId: over.chat ?? 'c1' });
+    return { config: { ...config, ENABLE_MESSAGE_CONTENT: over.content ?? true }, store, client: { channels: { fetch: async () => channel } } } as never;
+  };
+
+  it('tells members they can just write, within Discord limits', () => {
+    assert.match(CHAT_TOPIC, /no question mark needed/);
+    assert.ok(CHAT_TOPIC.length <= 1024);
+  });
+
+  it('sets the description once, and leaves a matching one alone', async () => {
+    const a = channelOf('old description');
+    await syncChatTopic(ctxFor(a.channel));
+    assert.deepEqual(a.calls, [CHAT_TOPIC]);
+    const b = channelOf(CHAT_TOPIC);
+    await syncChatTopic(ctxFor(b.channel));
+    assert.deepEqual(b.calls, []);
+  });
+
+  it('does nothing without a chat channel or while Ordis cannot read messages, and survives a refusal', async () => {
+    const a = channelOf(null);
+    await syncChatTopic(ctxFor(a.channel, { chat: null }));
+    await syncChatTopic(ctxFor(a.channel, { content: false }));
+    assert.deepEqual(a.calls, []);
+    await syncChatTopic(ctxFor({ type: ChannelType.GuildText, topic: null, setTopic: async () => Promise.reject(new Error('Missing Permissions')) }));
   });
 });

@@ -1,7 +1,6 @@
 import { type Message, type SendableChannels } from 'discord.js';
 import type { ChatTurn } from '../ai/ordis.js';
 import { splitForDiscord } from '../ai/ordis.js';
-import { isChannelQuestion } from '../answers/intent.js';
 import { logAnswer } from '../answers/log.js';
 import { memoryKey } from '../answers/memory.js';
 import { isOperatorId } from '../answers/operator.js';
@@ -48,7 +47,7 @@ export function limitMessage(reason: 'user' | 'daily', retryAfterMs: number): st
 }
 
 /**
- * Answers Warframe questions in chat. Triggers: a mention of the bot (or a reply that pings it), questions
+ * Answers Warframe questions in chat. Triggers: a mention of the bot (or a reply that pings it), anything written
  * in the /setup chat channel (requires the Message Content intent), and DMs from clan members. Uses the free
  * rule-based answers, or Claude when ANTHROPIC_API_KEY is configured.
  */
@@ -74,7 +73,13 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   // a question in reply is a follow-up, and a reply always continues the conversation, so it needs no "?" to be picked up.
   const answered = !isDM && message.reference?.messageId ? store.aiLogByMessage(config.DISCORD_GUILD_ID, message.reference.messageId) : null;
   if (answered && (await handleCorrectionReply(message, ctx, answered, question))) return;
-  if (inChatChannel && !mentioned && !operatorCall && !answered && !isChannelQuestion(question)) return;
+  // In the chat channel Ordis answers anything written there, no question mark needed. He stays out of conversations between members
+  // (a reply to someone else's message) and of messages with no text (a picture on its own).
+  if (inChatChannel && !mentioned && !question && !answered) return;
+  if (inChatChannel && !mentioned && !answered && message.reference?.messageId) {
+    const ref = await message.fetchReference().catch(() => null);
+    if (ref && ref.author.id !== botId) return;
+  }
 
   // Ordis is the clan's bot: DMs are for clan members only.
   if (isDM) {
@@ -94,7 +99,6 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
     try {
       const answer = await withTyping(message.channel, smartAnswer(question.slice(0, 500), ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, key: memoryKey(isDM ? null : message.channelId, message.author.id) }, progress.listener));
       await progress.discard();
-      if (!answer.found && inChatChannel && !mentioned) return;
       const sent = await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
       const logged = logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer, sent.id);
       // The ✅ and ❌ under a logged answer are staff's quick rating (see ratings.ts); DMs, staff corrections and notices don't get them.

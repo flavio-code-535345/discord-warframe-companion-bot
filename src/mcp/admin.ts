@@ -20,6 +20,7 @@ import { disableRivenChannel, setupRivenChannel } from '../rivens/channel.js';
 import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
+import { syncChatTopic } from '../discord/chat-topic.js';
 import { own } from '../own.js';
 import { UserError, assertChannelFree } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -733,7 +734,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       } else if (args.riven_channel_id === null) {
         disableRivenChannel(ctx);
       }
-      return ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
+      const saved = ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
+      if (args.chat_channel_id) void syncChatTopic(ctx);
+      return saved;
     }),
   );
 }

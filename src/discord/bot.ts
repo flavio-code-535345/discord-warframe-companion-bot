@@ -20,6 +20,7 @@ import { handleRivenMessage } from '../rivens/channel.js';
 import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { handleChatMessage } from './chat.js';
+import { syncChatTopic } from './chat-topic.js';
 import { handleRatingReaction } from './ratings.js';
 import { handleVerifyModal } from './verification.js';
 import { postWelcome } from './welcome.js';
@@ -81,6 +82,7 @@ export function attachHandlers(ctx: AppContext): void {
   client.once(Events.ClientReady, async (ready) => {
     console.log(`[discord] logged in as ${ready.user.tag}`);
     await syncIdentity(ctx);
+    void syncChatTopic(ctx);
     const guild = await ready.guilds.fetch(config.DISCORD_GUILD_ID).catch(() => null);
     if (!guild) {
       console.error(`[discord] the bot is not in guild ${config.DISCORD_GUILD_ID}; invite it with the applications.commands and bot scopes.`);

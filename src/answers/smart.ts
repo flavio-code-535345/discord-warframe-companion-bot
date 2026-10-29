@@ -83,7 +83,7 @@ export const HELP_TEXT = [
   '• **Right now:** "when is Baro coming?", "is it night on Cetus?", "steel path axi fissures", "today\'s sortie", "Entrati bounties", "what is Varzia selling?"',
   '• **Your clan:** "when is our next clan event?"',
   '• **Anything else:** Ordis checks the wiki ("how do Archon Shards work?").',
-  '• **Follow-ups:** Ordis remembers your last few messages here, so "and how do I get it?" works. Reply to his answer to carry on.',
+  '• **Just write:** in the chat channel Ordis answers anything, no question mark needed. He remembers your last few messages, so "and how do I get it?" works; reply to his answer to carry on.',
   '• **Wrong answer?** Reply to it with the right one (no question mark). When an admin replies it takes effect at once; other replies go to the admins to approve.',
   'Slash commands: `/item` `/price` `/drops` `/wiki` `/wf` `/track` `/event` `/lfg` `/clan`.',
 ].join('\n');
