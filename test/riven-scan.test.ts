@@ -495,3 +495,14 @@ describe('a faction curse the enlarged picture lost', () => {
     assert.deepEqual(whole.negative, { slug: 'damage_vs_grineer', value: 0.72 });
   });
 });
+
+describe('the element icon read as a small number', () => {
+  it('is not a stat of its own, whatever symbols OCR puts around it', () => {
+    const withElement: RivenAttribute[] = [...attrs, { slug: 'electric_damage', name: 'Electricity', positiveOnly: false, negativeOnly: false }, { slug: 'cold_damage', name: 'Cold', positiveOnly: false, negativeOnly: false }];
+    for (const line of ['+135.4% 4% Electricity', '+135.4% # 4% Electricity', '8 +135.4% 4) Electricity', '+135.4% @ +4% Electricity']) {
+      const r = parseRivenCard(card('Soma Visi-cron', '+162.2% Multishot', line, '-42.1% Zoom', 'MR 14'), withElement, weapons);
+      assert.deepEqual(r.positives, [{ slug: 'multishot', value: 162.2 }, { slug: 'electric_damage', value: 135.4 }], line);
+      assert.deepEqual(r.unknown, [], line);
+    }
+  });
+});
