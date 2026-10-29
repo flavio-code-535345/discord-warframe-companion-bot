@@ -478,3 +478,20 @@ describe('stat line pattern', () => {
     ]);
   });
 });
+
+describe('a faction curse the enlarged picture lost', () => {
+  const withFaction: RivenAttribute[] = [
+    ...attrs,
+    { slug: 'damage_vs_grineer', name: 'Damage vs Grineer', positiveOnly: false, negativeOnly: false },
+    { slug: 'electric_damage', name: 'Electricity', positiveOnly: false, negativeOnly: false },
+  ];
+  const vexican: RivenWeapon[] = [{ slug: 'felarx', name: 'Felarx' }];
+
+  it('counts a faction line without its multiplier as an unreadable stat, not as noise', () => {
+    const r = parseRivenCard(card('Felarx Vexican-tox', '+162.2% Multishot', '+135.4% Electricity', 'Jk Damage to Grineer', 'MR 14'), withFaction, vexican);
+    assert.deepEqual(r.unknown, ['Jk Damage to Grineer']);
+    const whole = parseRivenCard(card('Felarx Vexican-tox', '+162.2% Multishot', '+135.4% Electricity', 'x0.72 Damage to Grineer', 'MR 14'), withFaction, vexican);
+    assert.deepEqual(whole.unknown, []);
+    assert.deepEqual(whole.negative, { slug: 'damage_vs_grineer', value: 0.72 });
+  });
+});

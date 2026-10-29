@@ -90,10 +90,11 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   let best = await read(prepared.png, prepared.sourceScale);
   let readOriginal = false;
   // (not for a huge picture: reading it unshrunk takes minutes)
-  if (!enough(best.reading) && !prepared.shrunk) {
+  // (also when a stat line is missing its value: the enlarged copy can lose a small "x0.72" that the original shows plainly)
+  if ((!enough(best.reading) || best.reading.unknown.length) && !prepared.shrunk) {
     const original = await read(bytes, 1);
     readOriginal = true;
-    if (richness(original.reading) > richness(best.reading)) best = original;
+    if (richness(original.reading) > richness(best.reading) || original.reading.unknown.length < best.reading.unknown.length) best = original;
   }
   // A value that fits no range was probably misread ("d 195.2%" for "+95.2%"): the picture as it came is a second opinion on every value.
   const r = best.reading;

@@ -186,6 +186,8 @@ export function parseRivenCard(lines: OcrLine[], attrs: RivenAttribute[], weapon
     if (!m) {
       // A signed or decimal value with a percent sign but no readable name ("+112.5% Cr#t?cal"): still a stat line, to be interpreted.
       if (/[+\-−–—‒]\s*\d{1,4}(?:[.,]\d{1,2})?\s*%|\d[.,]\d{1,2}\s*%/.test(text)) unknown.push(text);
+      // A faction line whose multiplier was lost ("Jk Damage to Grineer" for "x0.72 Damage to Grineer") is a stat that went missing, not noise.
+      else if (/damage\s+(to|vs)\s+(grineer|corpus|infested|corrupted)/i.test(text)) unknown.push(text);
       continue;
     }
     const [, sign, number, unit, name] = m;
