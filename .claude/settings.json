@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(npm test)",
+      "mcp__ccd_turn__update_plan",
+      "mcp__ccd_turn__wrap_up",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__read_console_messages",
+      "mcp__Claude_Browser__tabs_context",
+      "mcp__cephalon-ordis__read_messages",
+      "mcp__cephalon-ordis__get_bot_health",
+      "mcp__cephalon-ordis__get_server_structure",
+      "mcp__cephalon-ordis__list_channels_and_roles",
+      "mcp__cephalon-ordis__get_ai_log",
+      "mcp__cephalon-ordis__get_worldstate",
+      "mcp__cephalon-ordis__get_clan_overview",
+      "mcp__cephalon-ordis__ollama_status",
+      "mcp__cephalon-ordis__riven_status",
+      "mcp__cephalon-ordis__list_code_files",
+      "mcp__cephalon-ordis__list_backups",
+      "mcp__cephalon-ordis__list_events"
+    ]
+  }
+}

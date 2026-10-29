@@ -7,13 +7,25 @@ import { COLORS, clampLines } from './embeds.js';
 
 /**
  * The one message in the alerts channel that says what is going on in Warframe right now: cycles, fissures by tier, the sortie, the
- * Archon Hunt, Baro, the Steel Path honors, alerts and the invasions worth running. It is edited in place (see notifier.ts) so the
+ * Archon Hunt, the Arbitration, Baro, the Steel Path honors, alerts and the invasions worth running. It is edited in place (see notifier.ts) so the
  * channel keeps a single, current message instead of a growing pile of separate alerts. Pure: it is handed the world state.
  */
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
 const FIELD_LIMIT = 1000;
+
+/** The `arbitration` entry of the warframestat.us world state. */
+interface Arbitration {
+  node?: string;
+  type?: string;
+  enemy?: string;
+  archwing?: boolean;
+  sharkwing?: boolean;
+  expired?: boolean;
+  activation?: Parameters<typeof toMs>[0];
+  expiry?: Parameters<typeof toMs>[0];
+}
 
 export interface SummaryOptions {
   botName: string;
@@ -70,6 +82,14 @@ export function summaryEmbed(ws: WorldState, opts: SummaryOptions, now = Date.no
     if (!a || !live(a.expiry)) return null;
     const lines = (a.missions ?? []).map((m, i) => `**${i + 1}.** ${m.type} — ${m.node}`);
     return `${clampLines(lines, FIELD_LIMIT - 60)}\nResets ${discordTime(a.expiry)}`;
+  });
+
+  section(fields, '⚖️ Arbitration', () => {
+    // The parser's types do not know this feed field. warframestat.us sends a placeholder (activation 1970, expired) when none is running.
+    const a = (ws as { arbitration?: Arbitration }).arbitration;
+    if (!a || a.expired || !a.node || toMs(a.activation) <= 0 || toMs(a.activation) > now || !live(a.expiry)) return null;
+    const flags = [a.archwing ? 'Archwing' : '', a.sharkwing ? 'Sharkwing' : ''].filter(Boolean);
+    return `**${a.type ?? 'Unknown'}** — ${a.node}${a.enemy ? ` · ${a.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}\nEnds ${discordTime(a.expiry)}`;
   });
 
   section(fields, "👑 Baro Ki'Teer", () => {

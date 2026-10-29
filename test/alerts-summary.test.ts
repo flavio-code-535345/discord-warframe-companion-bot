@@ -39,6 +39,23 @@ const world = (over: Record<string, unknown> = {}): WorldState =>
 
 const fieldsOf = (e: EmbedBuilder) => Object.fromEntries((e.toJSON().fields ?? []).map((f) => [f.name, f.value]));
 
+describe('the arbitration in the summary', () => {
+  const arbitration = (over: Record<string, unknown> = {}) => ({ node: 'Hydron (Sedna)', type: 'Defense', enemy: 'Grineer', archwing: false, sharkwing: false, expired: false, activation: at(-10), expiry: at(50), ...over });
+  const field = (a: unknown) => fieldsOf(summaryEmbed(world({ arbitration: a }), opts, now))['⚖️ Arbitration'];
+
+  it('shows the running arbitration with its mission, enemy and end', () => {
+    assert.match(field(arbitration())!, /^\*\*Defense\*\* — Hydron \(Sedna\) · Grineer\nEnds <t:\d+:R>$/);
+    assert.match(field(arbitration({ type: 'Interception', archwing: true }))!, /Grineer · Archwing\n/);
+  });
+
+  it('is left out when none runs (the feed then sends an expired placeholder) or it has ended', () => {
+    assert.equal(field({ node: 'SolNode000', type: 'Unknown', activation: '1970-01-01T00:00:00.000Z', expiry: '+275760-09-13T00:00:00.000Z', expired: true }), undefined);
+    assert.equal(field(arbitration({ expiry: at(-1) })), undefined);
+    assert.equal(field(arbitration({ activation: at(5) })), undefined, 'one that has not started yet');
+    assert.equal(field(undefined), undefined);
+  });
+});
+
 describe('the summary message', () => {
   it('says everything in one embed: cycles, fissures by tier, sortie, archon hunt, Baro, steel path, alerts and notable invasions', () => {
     const fields = fieldsOf(summaryEmbed(world(), opts, now));
