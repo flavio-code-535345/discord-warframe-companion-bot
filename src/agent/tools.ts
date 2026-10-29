@@ -121,7 +121,7 @@ export const AGENT_TOOLS: AgentTool[] = [
       const guildId = config.DISCORD_GUILD_ID;
       return {
         clan: config.CLAN_NAME,
-        upcomingEvents: store.upcomingEvents(guildId).slice(0, 10).map((e) => ({ title: e.title, description: e.description, startsAt: new Date(e.startsAt).toISOString(), going: store.getRsvps(e.id).going.length })),
+        upcomingEvents: store.upcomingEvents(guildId).slice(0, 10).map((e) => ({ title: e.title, description: e.description, startsAt: new Date(e.startsAt).toISOString(), endsAt: e.endsAt ? new Date(e.endsAt).toISOString() : null, going: store.getRsvps(e.id).going.length })),
         members: store.listMembers(guildId).map((m) => ({ ign: m.ign, masteryRank: m.masteryRank, platform: m.platform })),
       };
     },

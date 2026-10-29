@@ -148,6 +148,7 @@ export class OrdisBrain {
               title: e.title,
               description: e.description,
               startsAt: new Date(e.startsAt).toISOString(),
+              endsAt: e.endsAt ? new Date(e.endsAt).toISOString() : null,
               going: store.getRsvps(e.id).going.length,
             })),
             members: store.listMembers(guildId).map((m) => ({ ign: m.ign, masteryRank: m.masteryRank, platform: m.platform })),

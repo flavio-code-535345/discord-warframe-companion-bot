@@ -457,7 +457,7 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
     const rows = events
       .map((ev) => {
         const r = store.getRsvps(ev.id);
-        return `<tr><td>#${ev.id}</td><td>${e(ev.title)}</td><td>${utc(ev.startsAt)}</td><td>${r.going.length} going · ${r.maybe.length} maybe</td><td>${actionButton(p.session, `/admin/events/${ev.id}/cancel`, 'Cancel', { danger: true, confirm: true })}</td></tr>`;
+        return `<tr><td>#${ev.id}</td><td>${e(ev.title)}</td><td>${utc(ev.startsAt)}${ev.endsAt ? ` → ${utc(ev.endsAt)}` : ''}</td><td>${r.going.length} going · ${r.maybe.length} maybe</td><td>${actionButton(p.session, `/admin/events/${ev.id}/cancel`, 'Cancel', { danger: true, confirm: true })}</td></tr>`;
       })
       .join('');
     const body = `${head('Events', 'Clan events get RSVP buttons in the announcements channel and a reminder 15 minutes before they start.')}
@@ -465,11 +465,12 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
 <div class="row">
 <label>Title<input name="title" maxlength="200" required></label>
 <label>Starts (UTC)<input type="datetime-local" name="when" required></label>
+<label>Ends (UTC, optional)<input type="datetime-local" name="ends"></label>
 </div>
 <label>Description (optional)<textarea name="description" maxlength="2000"></textarea></label>
 <div class="actions"><button>Create event</button> <span class="muted">Posted with RSVP buttons in the announcements channel.</span></div></form></div>
 <h2>Upcoming</h2>
-<div class="card">${events.length ? `<table><tr><th>#</th><th>Title</th><th>Starts</th><th>RSVPs</th><th></th></tr>${rows}</table>` : '<p class="muted">Nothing scheduled.</p>'}</div>`;
+<div class="card">${events.length ? `<table><tr><th>#</th><th>Title</th><th>When</th><th>RSVPs</th><th></th></tr>${rows}</table>` : '<p class="muted">Nothing scheduled.</p>'}</div>`;
     html(res, layout('Events', body, p));
   });
 
@@ -479,7 +480,10 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
       const title = text(req.body.title, 200);
       const startsAt = parseWhen(text(req.body.when, 40));
       if (!title || startsAt === null) throw new UserError('Give the event a title and a start time.');
-      const event = await createClanEvent(ctx, { title, description: text(req.body.description, 2000) || null, startsAt, createdBy: session.userId });
+      const endsText = text(req.body.ends, 40);
+      const endsAt = endsText ? parseWhen(endsText) : null;
+      if (endsText && endsAt === null) throw new UserError('Could not read the end time.');
+      const event = await createClanEvent(ctx, { title, description: text(req.body.description, 2000) || null, startsAt, endsAt, createdBy: session.userId });
       await audit(session, `Created event #${event.id}: ${title}`);
       return `Event #${event.id} posted.`;
     }),

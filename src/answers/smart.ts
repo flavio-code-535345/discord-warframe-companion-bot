@@ -203,7 +203,7 @@ async function answerIntent(intent: Intent, question: string, ctx: AppContext, e
         .setTitle(`${ctx.config.CLAN_NAME}: upcoming events`)
         .setDescription(
           events.length
-            ? clampLines(events.map((e) => `**${e.title}** — ${discordTime(e.startsAt, 'f')} (${discordTime(e.startsAt)}) · ${ctx.store.getRsvps(e.id).going.length} going`))
+            ? clampLines(events.map((e) => `**${e.title}** — ${e.endsAt !== null && e.startsAt <= Date.now() ? `🟢 live, ends ${discordTime(e.endsAt)}` : `${discordTime(e.startsAt, 'f')} (${discordTime(e.startsAt)})${e.endsAt ? ` → ${discordTime(e.endsAt, 't')}` : ''}`} · ${ctx.store.getRsvps(e.id).going.length} going`))
             : 'Nothing scheduled yet. Create one with `/event create`.',
         );
       return { content: pick(LINES.clan!), embeds: [embed], found: true };

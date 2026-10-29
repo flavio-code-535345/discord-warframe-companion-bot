@@ -1,6 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import type { AppContext } from '../context.js';
-import { getSendableChannel } from '../services/clan.js';
+import { getSendableChannel, refreshEventMessage } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
 import { NOTABLE_REWARD, type WorldState, alertName, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
@@ -200,6 +200,7 @@ export class Notifier {
     try {
       // Reminders don't depend on the worldstate, so they still go out when the world state source is down.
       await this.sendEventReminders();
+      await this.finishEvents();
       if (!worldStateEnabled()) return;
       const ws = await getWorldState();
       await this.postWorldStateAlerts(ws);
@@ -279,6 +280,15 @@ ${item.detail}${ends}`);
       } catch (err) {
         console.warn(`[notifier] could not DM tracker update to ${userId} (DMs closed?):`, (err as Error).message);
       }
+    }
+  }
+
+  /** Events with an end time that has passed: mark them, and re-render their post as ended (the RSVP buttons go away). */
+  private async finishEvents(): Promise<void> {
+    const { store } = this.ctx;
+    for (const event of store.eventsDueToEnd(Date.now())) {
+      store.markEventEnded(event.id);
+      await refreshEventMessage(this.ctx, event.id).catch((err) => console.error(`[notifier] could not mark event #${event.id} as ended:`, err));
     }
   }
 

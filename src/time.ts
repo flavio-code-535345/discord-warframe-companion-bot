@@ -26,6 +26,25 @@ export function parseWhen(input: string, now = Date.now()): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+/** The longest an event may run; anything longer is a typo (or not an event). */
+export const MAX_EVENT_LENGTH_MS = 30 * 86_400_000;
+
+/**
+ * Parses an event end time. A plain length ("2h", "90m", "1d 2h") counts from the event's START, because "ends in 2h" is
+ * ambiguous and nobody means two hours from now for an event that starts next week; anything else is read like a start time
+ * ("2026-11-02 22:00" UTC, ISO-8601, a Unix timestamp). Null when it cannot be read.
+ */
+export function parseEnd(input: string, startsAt: number, now = Date.now()): number | null {
+  const s = input.trim().toLowerCase().replace(/^in\s+/, '');
+  if (!s) return null;
+  if (/^(\d+\s*[wdhm]\s*)+$/.test(s)) {
+    let total = 0;
+    for (const [, n, unit] of s.matchAll(/(\d+)\s*([wdhm])/g)) total += Number(n) * UNIT_MS[unit!]!;
+    return total > 0 && startsAt + total <= MAX_DATE_MS ? startsAt + total : null;
+  }
+  return parseWhen(input, now);
+}
+
 /** "10m", "1h30m", "2d", "1w", "30s" → milliseconds; null when it isn't a duration. */
 export function parseDuration(input: string): number | null {
   const s = input.trim().toLowerCase();

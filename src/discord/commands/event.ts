@@ -1,6 +1,6 @@
 import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { UserError, cancelClanEvent, createClanEvent } from '../../services/clan.js';
-import { discordTime, parseWhen } from '../../time.js';
+import { UserError, cancelClanEvent, createClanEvent, whenText } from '../../services/clan.js';
+import { discordTime, parseEnd, parseWhen } from '../../time.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';
 
@@ -15,6 +15,9 @@ export const event: Command = {
         .addStringOption((o) => o.setName('title').setDescription('e.g. "Eidolon hunt"').setRequired(true).setMaxLength(200))
         .addStringOption((o) =>
           o.setName('when').setDescription('"2h", "1d 4h", "2026-11-02 20:00" (UTC) or a Unix timestamp').setRequired(true),
+        )
+        .addStringOption((o) =>
+          o.setName('ends').setDescription('Optional end: a length after the start ("2h", "90m") or a time ("2026-11-02 22:00" UTC)').setMaxLength(40),
         )
         .addStringOption((o) => o.setName('description').setDescription('Details, requirements, etc.').setMaxLength(2000))
         .addChannelOption((o) =>
@@ -41,6 +44,9 @@ export const event: Command = {
       const when = interaction.options.getString('when', true);
       const startsAt = parseWhen(when);
       if (startsAt === null) throw new UserError(`I couldn't read "${when}" as a time. Try "2h", "1d 4h" or "2026-11-02 20:00".`);
+      const ends = interaction.options.getString('ends');
+      const endsAt = ends ? parseEnd(ends, startsAt) : null;
+      if (ends && endsAt === null) throw new UserError(`I couldn't read "${ends}" as an end. Try a length like "2h" (after the start) or "2026-11-02 22:00".`);
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const channelId =
         interaction.options.getChannel('channel')?.id ??
@@ -50,10 +56,11 @@ export const event: Command = {
         title: interaction.options.getString('title', true),
         description: interaction.options.getString('description'),
         startsAt,
+        endsAt,
         createdBy: interaction.user.id,
         channelId,
       });
-      await interaction.editReply(`Event #${created.id} posted in <#${created.channelId}> for ${discordTime(startsAt, 'F')}.`);
+      await interaction.editReply(`Event #${created.id} posted in <#${created.channelId}> for ${discordTime(startsAt, 'F')}${created.endsAt ? `, ending ${discordTime(created.endsAt, 'F')}` : ''}.`);
       return;
     }
 
@@ -62,7 +69,9 @@ export const event: Command = {
       const lines = events.map((e) => {
         const going = ctx.store.getRsvps(e.id).going.length;
         const link = e.channelId && e.messageId ? ` · [post](https://discord.com/channels/${guildId}/${e.channelId}/${e.messageId})` : '';
-        return `**#${e.id} ${e.title}** — ${discordTime(e.startsAt, 'f')} (${discordTime(e.startsAt)}) · ${going} going${link}`;
+        const running = e.endsAt !== null && e.startsAt <= Date.now();
+        const when = running ? `🟢 live, ends ${discordTime(e.endsAt!)}` : `${discordTime(e.startsAt, 'f')} (${discordTime(e.startsAt)})${e.endsAt ? ` → ${discordTime(e.endsAt, 't')}` : ''}`;
+        return `**#${e.id} ${e.title}** — ${when} · ${going} going${link}`;
       });
       await interaction.reply({
         embeds: [

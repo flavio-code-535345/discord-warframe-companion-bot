@@ -229,11 +229,15 @@ export interface ClanEvent {
   title: string;
   description: string | null;
   startsAt: number;
+  /** When the event ends, or null for an event with no set end. */
+  endsAt: number | null;
   createdBy: string;
   channelId: string | null;
   messageId: string | null;
   reminded: boolean;
   cancelled: boolean;
+  /** True once the bot has re-rendered the event's post as ended. */
+  ended: boolean;
 }
 
 export interface LfgPost {
@@ -580,6 +584,10 @@ const MIGRATIONS: string[] = [
   CREATE INDEX corrections_status ON corrections (guild_id, status, created_at);
   CREATE INDEX corrections_key ON corrections (guild_id, key);
   `,
+  `
+  ALTER TABLE events ADD COLUMN ends_at INTEGER;
+  ALTER TABLE events ADD COLUMN ended INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -633,11 +641,13 @@ function toEvent(r: Row): ClanEvent {
     title: String(r.title),
     description: str(r.description),
     startsAt: Number(r.starts_at),
+    endsAt: r.ends_at === null || r.ends_at === undefined ? null : Number(r.ends_at),
     createdBy: String(r.created_by),
     channelId: str(r.channel_id),
     messageId: str(r.message_id),
     reminded: Boolean(r.reminded),
     cancelled: Boolean(r.cancelled),
+    ended: Boolean(r.ended),
   };
 }
 
@@ -779,10 +789,10 @@ export class Store {
 
   // --- events ---
 
-  createEvent(e: Pick<ClanEvent, 'guildId' | 'title' | 'description' | 'startsAt' | 'createdBy'>): ClanEvent {
+  createEvent(e: Pick<ClanEvent, 'guildId' | 'title' | 'description' | 'startsAt' | 'createdBy'> & { endsAt?: number | null }): ClanEvent {
     const res = this.db
-      .prepare('INSERT INTO events (guild_id, title, description, starts_at, created_by) VALUES (?, ?, ?, ?, ?)')
-      .run(e.guildId, e.title, e.description, e.startsAt, e.createdBy);
+      .prepare('INSERT INTO events (guild_id, title, description, starts_at, ends_at, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(e.guildId, e.title, e.description, e.startsAt, e.endsAt ?? null, e.createdBy);
     return this.getEvent(Number(res.lastInsertRowid))!;
   }
 
@@ -803,12 +813,22 @@ export class Store {
     this.db.prepare('UPDATE events SET reminded = 1 WHERE id = ?').run(id);
   }
 
-  /** Active (not cancelled) events that start after `since`, soonest first. */
+  /** Active (not cancelled) events that start after `since` or are still running (they have an end time that has not passed), soonest first. */
   upcomingEvents(guildId: string, since = Date.now()): ClanEvent[] {
     const rows = this.db
-      .prepare('SELECT * FROM events WHERE guild_id = ? AND cancelled = 0 AND starts_at >= ? ORDER BY starts_at')
-      .all(guildId, since) as Row[];
+      .prepare('SELECT * FROM events WHERE guild_id = ? AND cancelled = 0 AND (starts_at >= ? OR (ends_at IS NOT NULL AND ends_at > ?)) ORDER BY starts_at')
+      .all(guildId, since, since) as Row[];
     return rows.map(toEvent);
+  }
+
+  /** Events with an end time that has passed and whose post has not been updated to "ended" yet. */
+  eventsDueToEnd(now: number): ClanEvent[] {
+    const rows = this.db.prepare('SELECT * FROM events WHERE cancelled = 0 AND ended = 0 AND ends_at IS NOT NULL AND ends_at <= ?').all(now) as Row[];
+    return rows.map(toEvent);
+  }
+
+  markEventEnded(id: number): void {
+    this.db.prepare('UPDATE events SET ended = 1 WHERE id = ?').run(id);
   }
 
   /** Events starting within the next `windowMs` that have not had their reminder sent yet. */

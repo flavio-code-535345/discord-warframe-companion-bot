@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { PLATFORMS } from '../discord/commands/clan.js';
 import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../services/clan.js';
-import { parseWhen } from '../time.js';
+import { parseEnd, parseWhen } from '../time.js';
 import { searchDrops } from '../warframe/drops.js';
 import { lookupItem, summarizeLookup } from '../warframe/items.js';
 import { readWikiPage, searchWiki } from '../warframe/wiki.js';
@@ -242,6 +242,7 @@ export function createMcpServer(ctx: AppContext): McpServer {
           title: e.title,
           description: e.description,
           startsAt: new Date(e.startsAt).toISOString(),
+          endsAt: e.endsAt ? new Date(e.endsAt).toISOString() : null,
           rsvps: { going: r.going, maybe: r.maybe, declined: r.declined },
           link: e.channelId && e.messageId ? `https://discord.com/channels/${guildId}/${e.channelId}/${e.messageId}` : null,
         };
@@ -258,16 +259,19 @@ export function createMcpServer(ctx: AppContext): McpServer {
       inputSchema: {
         title: z.string().min(1).max(200),
         starts_at: z.string().describe('ISO-8601 time with zone (e.g. "2026-11-02T20:00:00Z") or relative like "2h", "1d 4h"'),
+        ends_at: z.string().optional().describe('Optional end: a length after the start ("2h", "90m") or a time like starts_at ("2026-11-02T22:00:00Z"). At most 30 days long.'),
         description: z.string().max(2000).optional(),
         channel_id: snowflake.optional().describe('Defaults to the configured announcements channel'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    tool(async ({ title, starts_at, description, channel_id }) => {
+    tool(async ({ title, starts_at, ends_at, description, channel_id }) => {
       const startsAt = parseWhen(starts_at);
       if (startsAt === null) throw new UserError(`Could not parse starts_at "${starts_at}".`);
-      const event = await createClanEvent(ctx, { title, description, startsAt, createdBy: client.user!.id, channelId: channel_id });
-      return { id: event.id, title: event.title, startsAt: new Date(event.startsAt).toISOString(), link: `https://discord.com/channels/${guildId}/${event.channelId}/${event.messageId}` };
+      const endsAt = ends_at ? parseEnd(ends_at, startsAt) : null;
+      if (ends_at && endsAt === null) throw new UserError(`Could not parse ends_at "${ends_at}".`);
+      const event = await createClanEvent(ctx, { title, description, startsAt, endsAt, createdBy: client.user!.id, channelId: channel_id });
+      return { id: event.id, title: event.title, startsAt: new Date(event.startsAt).toISOString(), endsAt: event.endsAt ? new Date(event.endsAt).toISOString() : null, link: `https://discord.com/channels/${guildId}/${event.channelId}/${event.messageId}` };
     }),
   );
 

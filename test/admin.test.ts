@@ -436,3 +436,15 @@ test('the Messages page lists only the bots own messages in a channel and edits 
     testChannels.delete('700000000000000001');
   }
 });
+
+test('the Events page offers an optional end time and shows it for a timed event', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const start = Date.now() + 3_600_000;
+  store.createEvent({ guildId: GUILD, title: 'Timed weekend', description: null, startsAt: start, endsAt: start + 7_200_000, createdBy: 'u1' });
+  const page = await (await get('/admin/events', cookie)).text();
+  assert.match(page, /name="ends"/);
+  assert.match(page, /Timed weekend/);
+  assert.match(page, / → /, 'the table shows start to end');
+  const bad = await post('/admin/events', { title: 'x', when: '2099-01-01T20:00', ends: 'soonish', _csrf: 'csrf-token' }, cookie);
+  assert.match(decodeURIComponent((bad.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Could not read the end time/);
+});

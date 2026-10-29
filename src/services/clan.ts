@@ -10,7 +10,7 @@ import type { AppContext } from '../context.js';
 import type { ClanEvent, GuildSettings, LfgPost } from '../db.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
-import { discordTime } from '../time.js';
+import { MAX_EVENT_LENGTH_MS, discordTime } from '../time.js';
 
 /**
  * Clan operations shared by slash commands and MCP tools. Anything that posts to Discord
@@ -68,21 +68,36 @@ export async function resolveAnnouncementChannel(ctx: AppContext, channelId?: st
 
 const RSVP_LABELS = { going: '✅ Going', maybe: '🤔 Maybe', declined: "❌ Can't make it" } as const;
 
+/** Whether an event is over: past its end time, or (with no end time) more than an hour after it started. */
+export function isOver(event: Pick<ClanEvent, 'startsAt' | 'endsAt'>, now = Date.now()): boolean {
+  return event.endsAt !== null ? event.endsAt <= now : event.startsAt < now - 3_600_000;
+}
+
+/** The "When" line: the start, and the end when there is one ("Ends ..." while it runs, "Ended" afterwards). */
+export function whenText(event: Pick<ClanEvent, 'startsAt' | 'endsAt'>, now = Date.now()): string {
+  const start = `${discordTime(event.startsAt, 'F')} (${discordTime(event.startsAt)})`;
+  if (event.endsAt === null) return start;
+  const end = `${discordTime(event.endsAt, 'F')}`;
+  if (event.endsAt <= now) return `${start}\nEnded ${end}`;
+  if (event.startsAt <= now) return `🟢 **Happening now**\n${start}\nEnds ${discordTime(event.endsAt)} (${end})`;
+  return `${start}\nEnds ${end} (${discordTime(event.endsAt)})`;
+}
+
 export function renderEvent(ctx: AppContext, event: ClanEvent): Pick<MessageCreateOptions, 'embeds' | 'components'> {
   const rsvps = ctx.store.getRsvps(event.id);
   const list = (ids: string[]) => (ids.length ? ids.map((id) => `<@${id}>`).join(', ').slice(0, 1000) : '—');
   const embed = new EmbedBuilder()
-    .setColor(event.cancelled ? 0x6b7280 : COLORS.brand)
-    .setTitle(`${event.cancelled ? '🚫 CANCELLED: ' : '📅 '}${event.title}`)
+    .setColor(event.cancelled || isOver(event) ? 0x6b7280 : COLORS.brand)
+    .setTitle(`${event.cancelled ? '🚫 CANCELLED: ' : event.endsAt !== null && isOver(event) ? '🏁 ENDED: ' : '📅 '}${event.title}`)
     .setDescription(event.description || null)
     .addFields(
-      { name: 'When', value: `${discordTime(event.startsAt, 'F')} (${discordTime(event.startsAt)})` },
+      { name: 'When', value: whenText(event) },
       { name: `${RSVP_LABELS.going} (${rsvps.going.length})`, value: list(rsvps.going), inline: true },
       { name: `${RSVP_LABELS.maybe} (${rsvps.maybe.length})`, value: list(rsvps.maybe), inline: true },
       { name: `${RSVP_LABELS.declined} (${rsvps.declined.length})`, value: list(rsvps.declined), inline: true },
     )
     .setFooter({ text: `${ctx.config.CLAN_NAME} · event #${event.id}`, iconURL: brandIcon(ctx) });
-  if (event.cancelled || event.startsAt < Date.now() - 3_600_000) return { embeds: [embed], components: [] };
+  if (event.cancelled || isOver(event)) return { embeds: [embed], components: [] };
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`rsvp:${event.id}:going`).setLabel('Going').setEmoji('✅').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`rsvp:${event.id}:maybe`).setLabel('Maybe').setEmoji('🤔').setStyle(ButtonStyle.Secondary),
@@ -95,6 +110,8 @@ export interface CreateEventInput {
   title: string;
   description?: string | null;
   startsAt: number;
+  /** Optional end time; must be after the start and at most MAX_EVENT_LENGTH_MS later. */
+  endsAt?: number | null;
   createdBy: string;
   channelId?: string | null;
 }
@@ -105,12 +122,18 @@ const MAX_EVENT_AHEAD_MS = 2 * 365 * 86_400_000;
 export async function createClanEvent(ctx: AppContext, input: CreateEventInput): Promise<ClanEvent> {
   if (!Number.isFinite(input.startsAt) || input.startsAt <= Date.now()) throw new UserError('The event start time must be in the future.');
   if (input.startsAt > Date.now() + MAX_EVENT_AHEAD_MS) throw new UserError('The event start time is more than two years away. Check the date.');
+  const endsAt = input.endsAt ?? null;
+  if (endsAt !== null) {
+    if (!Number.isFinite(endsAt) || endsAt <= input.startsAt) throw new UserError('The event must end after it starts.');
+    if (endsAt - input.startsAt > MAX_EVENT_LENGTH_MS) throw new UserError('An event can last at most 30 days. Check the end time.');
+  }
   const channel = await resolveAnnouncementChannel(ctx, input.channelId);
   const event = ctx.store.createEvent({
     guildId: ctx.config.DISCORD_GUILD_ID,
     title: input.title.slice(0, 200),
     description: input.description?.slice(0, 2000) ?? null,
     startsAt: input.startsAt,
+    endsAt,
     createdBy: input.createdBy,
   });
   const message = await channel.send(renderEvent(ctx, event));
