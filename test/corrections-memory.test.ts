@@ -12,6 +12,7 @@ import { MEMORY_TTL_MS, forget, isFollowUp, memoryKey, recall, remember, transcr
 import { smartAnswer } from '../src/answers/smart.js';
 import { Store } from '../src/db.js';
 import { handleCorrectionReply } from '../src/discord/corrections.js';
+import { addRatingReactions, handleRatingReaction } from '../src/discord/ratings.js';
 
 const config = {
   BOT_NAME: 'Cephalon Ordis',
@@ -298,5 +299,61 @@ describe('replying to Ordis in Discord', () => {
     const { message, calls } = fake({ manage: true, reactFails: true });
     await handleCorrectionReply(message, ctxOf(s), logged(s), 'It is bought from Steel Path Honors.');
     assert.match(calls.reply[0]!, /Noted/);
+  });
+});
+
+describe('rating answers with reactions', () => {
+  const setup = () => {
+    const store = new Store(':memory:');
+    const id = store.addAiLog('g', { at: Date.now(), userId: '2', userName: 'Asker', channelId: 'c', via: 'chat', question: 'How do I unlock Venus?', intent: 'wiki', source: 'local', model: 'g', found: true, ms: 1, answer: 'Do the quest.', messageId: 'm1' });
+    return { store, id, ctx: { config, store } as never };
+  };
+  const reaction = (emoji: string, over: { messageId?: string; guildId?: string; manage?: boolean } = {}) =>
+    ({
+      emoji: { name: emoji },
+      message: {
+        id: over.messageId ?? 'm1',
+        guildId: over.guildId ?? 'g',
+        guild: { members: { fetch: async () => ({ permissions: { has: (p: bigint) => over.manage === true && p === PermissionFlagsBits.ManageGuild } }) } },
+      },
+    }) as never;
+  const user = (id: string, bot = false) => ({ id, bot }) as never;
+
+  it('puts the check and the cross under an answer, and shrugs when it may not', async () => {
+    const seen: string[] = [];
+    await addRatingReactions({ react: async (e: string) => void seen.push(e) } as unknown as Message);
+    assert.deepEqual(seen, ['✅', '❌']);
+    await addRatingReactions({ react: async () => Promise.reject(new Error('Missing Permissions')) } as unknown as Message);
+  });
+
+  it('lets staff rate an answer by reacting, and clears the rating when they take it back', async () => {
+    const { store, id, ctx } = setup();
+    await handleRatingReaction(reaction('✅', { manage: true }), user('5'), ctx, true);
+    assert.equal(store.getAiLog('g', id)!.rating, 'right');
+    await handleRatingReaction(reaction('❌', { manage: true }), user('5'), ctx, true);
+    assert.equal(store.getAiLog('g', id)!.rating, 'wrong', 'the latest click wins');
+    await handleRatingReaction(reaction('✅', { manage: true }), user('5'), ctx, false);
+    assert.equal(store.getAiLog('g', id)!.rating, 'wrong', 'removing a different reaction changes nothing');
+    await handleRatingReaction(reaction('❌', { manage: true }), user('5'), ctx, false);
+    assert.equal(store.getAiLog('g', id)!.rating, null);
+    // An operator needs no Discord permission.
+    await handleRatingReaction(reaction('✅'), user('1'), ctx, true);
+    assert.equal(store.getAiLog('g', id)!.rating, 'right');
+  });
+
+  it('ignores members, bots, other emoji, other messages and other servers', async () => {
+    const { store, id, ctx } = setup();
+    await handleRatingReaction(reaction('✅'), user('5'), ctx, true);
+    await handleRatingReaction(reaction('✅', { manage: true }), user('77', true), ctx, true);
+    await handleRatingReaction(reaction('👍', { manage: true }), user('5'), ctx, true);
+    await handleRatingReaction(reaction('✅', { manage: true, messageId: 'other' }), user('5'), ctx, true);
+    await handleRatingReaction(reaction('✅', { manage: true, guildId: 'elsewhere' }), user('5'), ctx, true);
+    assert.equal(store.getAiLog('g', id)!.rating, null);
+  });
+
+  it('feeds a rating given by reaction into the guidance for related questions', async () => {
+    const { store, ctx } = setup();
+    await handleRatingReaction(reaction('❌', { manage: true }), user('5'), ctx, true);
+    assert.match(guidanceFor(ctx, 'how do I unlock venus quickly'), /marked WRONG[\s\S]*Do the quest/);
   });
 });

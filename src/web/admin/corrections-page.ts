@@ -88,7 +88,7 @@ ${statCard('Waiting for approval', String(counts.pending), counts.pending ? 'sug
 ${statCard('Corrections in force', String(counts.approved), 'served word for word and given to the model')}
 ${statCard('Answers rated', `${ratings.right} ✅ · ${ratings.wrong} ❌`, 'feedback for the model', { small: true })}
 </div>
-<div class="card"><p class="muted flush"><strong>In Discord:</strong> reply to one of Ordis's answers with the right answer, no question mark at the end. Staff (operators, panel admins, Manage Server) are saved at once and get a ✅; everyone else's reply becomes a suggestion (📝) that you approve below. A reply that ends in <code>?</code> is a follow-up question instead.</p></div>
+<div class="card"><p class="muted flush"><strong>In Discord:</strong> reply to one of Ordis's answers with the right answer, no question mark at the end. Staff (operators, panel admins, Manage Server) are saved at once and get a ✅; everyone else's reply becomes a suggestion (📝) that you approve below. A reply that ends in <code>?</code> is a follow-up question instead. Under each answer Ordis also adds ✅ and ❌: staff clicking one rate the answer right or wrong, the same as the buttons further down.</p></div>
 
 <h2>Suggestions to approve</h2>
 ${pending.length ? pending.map((c) => pendingCard(p, c)).join('') : '<p class="muted">No suggestions waiting.</p>'}

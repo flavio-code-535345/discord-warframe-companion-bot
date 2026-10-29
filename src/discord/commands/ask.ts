@@ -6,6 +6,7 @@ import { smartAnswer } from '../../answers/smart.js';
 import { UserError } from '../../services/clan.js';
 import { limitMessage } from '../chat.js';
 import type { Command } from '../command.js';
+import { addRatingReactions } from '../ratings.js';
 import { startProgress } from '../progress.js';
 
 export const ask: Command = {
@@ -30,7 +31,8 @@ export const ask: Command = {
       });
       const answer = await smartAnswer(question, ctx, { id: interaction.user.id, name: interaction.user.displayName, key: memoryKey(interaction.channelId, interaction.user.id) }, progress.listener).finally(() => progress.stop());
       const sent = await interaction.editReply({ content: `${quote}\n${answer.content}`.slice(0, 2000), embeds: answer.embeds, allowedMentions: { parse: [] } });
-      logAnswer(ctx, { id: interaction.user.id, name: interaction.user.displayName, channelId: interaction.channelId, via: 'ask' }, question, answer, sent.id);
+      const logged = logAnswer(ctx, { id: interaction.user.id, name: interaction.user.displayName, channelId: interaction.channelId, via: 'ask' }, question, answer, sent.id);
+      if (logged !== null && interaction.inGuild() && answer.source !== 'correction' && answer.intent !== 'busy') void addRatingReactions(sent);
       return;
     }
 

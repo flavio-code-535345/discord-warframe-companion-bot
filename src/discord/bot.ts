@@ -20,6 +20,7 @@ import { handleRivenMessage } from '../rivens/channel.js';
 import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { handleChatMessage } from './chat.js';
+import { handleRatingReaction } from './ratings.js';
 import { handleVerifyModal } from './verification.js';
 import { postWelcome } from './welcome.js';
 import { syncIdentity } from './identity.js';
@@ -48,14 +49,16 @@ export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MES
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
   // text of messages that mention it and of DMs, which is all mention-based chat needs.
   // GuildVoiceStates is also unprivileged: squad voice upkeep needs to see who is in a channel.
-  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates];
+  // GuildMessageReactions (not privileged) lets staff rate Ordis's answers with the check and cross reactions under them.
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessageReactions];
   // GuildModeration (not privileged) delivers audit log entries: who changed which role, channel or member.
   intents.push(GatewayIntentBits.GuildModeration);
   // These two are privileged: they must also be switched on in the Developer Portal, or login fails.
   if (config.ENABLE_WELCOME || config.ENABLE_MEMBER_LOGGING) intents.push(GatewayIntentBits.GuildMembers);
   if (config.ENABLE_MESSAGE_CONTENT) intents.push(GatewayIntentBits.MessageContent);
   // DM channels aren't cached up front; the Channel partial lets their first message through.
-  return new Client({ intents, partials: [Partials.Channel, Partials.Message] });
+  // The Reaction partial delivers reactions on answers posted before the last restart.
+  return new Client({ intents, partials: [Partials.Channel, Partials.Message, Partials.Reaction] });
 }
 
 async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {
@@ -98,6 +101,9 @@ export function attachHandlers(ctx: AppContext): void {
       .then((handled) => (handled ? undefined : handleChatMessage(message, ctx)))
       .catch((err) => console.error('[discord] message handler failed:', err));
   });
+
+  client.on(Events.MessageReactionAdd, (reaction, user) => void handleRatingReaction(reaction, user, ctx, true).catch((err) => console.error('[ratings] reaction handler failed:', err)));
+  client.on(Events.MessageReactionRemove, (reaction, user) => void handleRatingReaction(reaction, user, ctx, false).catch((err) => console.error('[ratings] reaction handler failed:', err)));
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.guildId !== config.DISCORD_GUILD_ID) {

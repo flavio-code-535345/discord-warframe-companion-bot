@@ -9,6 +9,7 @@ import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { formatDuration } from '../time.js';
 import { handleCorrectionReply } from './corrections.js';
+import { addRatingReactions } from './ratings.js';
 import { startProgress } from './progress.js';
 
 const HISTORY_TURNS = 8;
@@ -95,7 +96,9 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
       await progress.discard();
       if (!answer.found && inChatChannel && !mentioned) return;
       const sent = await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
-      logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer, sent.id);
+      const logged = logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer, sent.id);
+      // The ✅ and ❌ under a logged answer are staff's quick rating (see ratings.ts); DMs, staff corrections and notices don't get them.
+      if (logged !== null && !isDM && answer.source !== 'correction' && answer.intent !== 'busy') void addRatingReactions(sent);
     } catch (err) {
       await progress.discard();
       console.error('[chat] answer failed:', err);
