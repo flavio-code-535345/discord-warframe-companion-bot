@@ -19,7 +19,7 @@ export interface Option {
 /** The sidebar: page key, label, and the group it sits under (the first group has no heading). */
 const NAV: { group: string | null; items: [string, string][] }[] = [
   { group: null, items: [['overview', 'Overview']] },
-  { group: 'Server', items: [['settings', 'Settings'], ['announce', 'Announce'], ['events', 'Events'], ['members', 'Members'], ['backups', 'Backups']] },
+  { group: 'Server', items: [['settings', 'Settings'], ['announce', 'Announce'], ['messages', 'Messages'], ['events', 'Events'], ['members', 'Members'], ['backups', 'Backups']] },
   { group: 'Ordis AI', items: [['ai', 'AI'], ['brain', 'Brain'], ['corrections', 'Corrections'], ['sstest', 'Screenshots'], ['rivens', 'Rivens']] },
   { group: 'System', items: [['config', 'Config'], ['admins', 'Admins']] },
 ];

@@ -21,6 +21,7 @@ import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
 import { syncChatTopic } from '../discord/chat-topic.js';
+import { editOwnMessage } from '../discord/messages.js';
 import { own } from '../own.js';
 import { UserError, assertChannelFree } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -533,6 +534,25 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       if (pin) await message.pin();
       log(`posted in #${channel.name}${pin ? ' (pinned)' : ''}`);
       return { messageId: message.id, link: message.url, pinned: Boolean(pin) };
+    }),
+  );
+
+  server.registerTool(
+    'edit_message',
+    {
+      title: 'Edit a bot message',
+      description:
+        'Replaces the text of a message the bot wrote earlier (a rules post, a role guide, a notice), keeping its embeds. Discord only lets the bot edit its own messages: find the message_id with read_messages (bot: true), and anything written by a person is refused. Visible to everyone in that channel: confirm the new text with the user first. Mentions never ping.',
+      inputSchema: { channel_id: snowflake, message_id: snowflake, content: z.string().min(1).max(2000) },
+      annotations: WRITE,
+    },
+    tool(async ({ channel_id, message_id, content }) => {
+      const { guild } = await guildFor(ctx);
+      const channel = await getChannel(guild, channel_id);
+      if (!channel.isTextBased()) throw new UserError(`#${channel.name} is not a text channel.`);
+      const message = await editOwnMessage(channel, message_id, content, ctx.client.user?.id ?? '');
+      log(`edited a bot message in #${channel.name}`);
+      return { messageId: message.id, link: message.url };
     }),
   );
 

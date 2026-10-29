@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import type { Client } from 'discord.js';
+import { ChannelType, type Client } from 'discord.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { brain, resetBrainState } from '../src/agent/brain.js';
@@ -16,6 +16,7 @@ const OWNER = '603293720061935626';
 let baseUrl = '';
 let close: () => void = () => {};
 let store: Store;
+const testChannels = new Map<string, unknown>();
 
 before(async () => {
   const config = loadConfig({
@@ -32,7 +33,7 @@ before(async () => {
     user: { id: 'bot' },
     users: { fetch: async (id: string) => ({ id, username: `user${id.slice(-3)}`, bot: false }) },
     channels: { cache: new Map() },
-    guilds: { fetch: async () => ({ id: GUILD, channels: { fetch: async () => new Map(), cache: new Map() }, roles: { fetch: async () => new Map(), cache: new Map() } }) },
+    guilds: { fetch: async () => ({ id: GUILD, channels: { fetch: async (id?: string) => (id ? testChannels.get(id) ?? null : testChannels), cache: testChannels }, roles: { fetch: async () => new Map(), cache: new Map() } }) },
   } as unknown as Client;
   const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client, ai: null };
   const server = startHttpServer(ctx);
@@ -401,4 +402,37 @@ test('the Corrections page approves suggestions, edits and deletes corrections, 
   assert.equal(store.getAiLog(GUILD, fresh)!.rating, 'wrong');
   assert.equal(store.listCorrections(GUILD, 'approved').some((c) => c.question === 'What is Nightwave?'), true);
   assert.equal((await post('/admin/corrections/rate', { id: String(fresh), rating: 'bogus', _csrf: 'csrf-token' }, cookie)).status, 302);
+});
+
+test('the Messages page lists only the bots own messages in a channel and edits their text', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const BOT = 'bot';
+  const edits: { id: string; content: string; allowedMentions: unknown }[] = [];
+  const mk = (id: string, authorId: string, content: string) => ({ id, author: { id: authorId }, content, url: `https://discord.com/channels/${GUILD}/700000000000000001/${id}`, pinned: false, embeds: [], createdTimestamp: 1_700_000_000_000, edit: async (o: { content: string; allowedMentions: unknown }) => { edits.push({ id, ...o }); return { ...mk(id, authorId, o.content) }; } });
+  const mine = mk('800000000000000001', BOT, '@Rat Baron · old text');
+  const theirs = mk('800000000000000002', '123', 'a member wrote this');
+  const messages = new Map([[mine.id, mine], [theirs.id, theirs]]);
+  testChannels.set('700000000000000001', {
+    id: '700000000000000001', name: 'roles', type: ChannelType.GuildText, rawPosition: 0, parent: null,
+    messages: { fetch: async (o: string | { limit: number }) => (typeof o === 'string' ? messages.get(o) ?? Promise.reject(new Error('Unknown Message')) : messages) },
+  });
+  try {
+    const page = await (await get('/admin/messages?channel=700000000000000001', cookie)).text();
+    assert.match(page, /<h1>Messages<\/h1>/);
+    assert.match(page, /@Rat Baron · old text/);
+    assert.doesNotMatch(page, /a member wrote this/, 'a message someone else wrote cannot be edited, so it is not offered');
+
+    assert.equal((await post('/admin/messages/edit', { channel: '700000000000000001', message: mine.id, content: 'x' }, cookie)).status, 403, 'needs the CSRF token');
+    const saved = await post('/admin/messages/edit', { channel: '700000000000000001', message: mine.id, content: '@Rat Baron · Knowledgeable mentors', _csrf: 'csrf-token' }, cookie);
+    assert.match(decodeURIComponent(saved.headers.get('location') ?? ''), /channel=700000000000000001/);
+    assert.deepEqual(edits, [{ id: mine.id, content: '@Rat Baron · Knowledgeable mentors', allowedMentions: { parse: [] } }]);
+
+    const refused = await post('/admin/messages/edit', { channel: '700000000000000001', message: theirs.id, content: 'hijack', _csrf: 'csrf-token' }, cookie);
+    assert.match(decodeURIComponent((refused.headers.get('location') ?? '').replace(/[+]/g, ' ')), /only edit messages he wrote/);
+    assert.equal(edits.length, 1);
+    const empty = await post('/admin/messages/edit', { channel: '700000000000000001', message: mine.id, content: '   ', _csrf: 'csrf-token' }, cookie);
+    assert.match(decodeURIComponent((empty.headers.get('location') ?? '').replace(/[+]/g, ' ')), /cannot be empty/);
+  } finally {
+    testChannels.delete('700000000000000001');
+  }
 });
