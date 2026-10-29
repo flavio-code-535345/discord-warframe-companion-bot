@@ -227,7 +227,10 @@ footer a{color:var(--accent-2)}
   main{padding:16px max(12px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
   .tiles{columns:1}
   .tile{padding:12px}
+  header>div:not(.pills){flex:1;min-width:0}
+  .sub{overflow-wrap:anywhere}
   .pills{margin-left:0;width:100%}
+  .pill{white-space:normal;max-width:100%}
   .v{white-space:normal}
   .r{align-items:flex-start}
 }`;
