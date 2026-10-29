@@ -82,7 +82,7 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
   }
 
   if (!question) {
-    await reply(`Yes, Operator? Ask Ordis anything about Warframe, for example "where does Neo N16 drop?" or "what is Baro selling?"`);
+    await reply(`Yes, Operator? Ask Ordis anything about Warframe, for example "where does Neo N16 drop?" or "what is Baro selling?" Follow-up questions work too.`);
     return;
   }
 
