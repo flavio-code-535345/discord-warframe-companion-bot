@@ -129,6 +129,27 @@ const AI = `
 .tpsnum{font-size:30px;font-weight:700;min-width:3.2ch;text-align:right;font-variant-numeric:tabular-nums}
 `;
 
+/** Phones and small tablets: touch-sized controls, 16px fields (iOS zooms into anything smaller), one-column layouts, notch-safe edges. */
+const MOBILE = `
+@media (max-width:860px){
+  input,select,textarea{font-size:16px;padding:11px 12px}
+  button,.button{min-height:44px;padding:10px 16px}
+  .check{min-height:44px}
+  .check input{width:20px;height:20px}
+  .actions>button,.actions>.button,.inline button{flex:1 1 auto}
+  .inline{width:100%}
+  .row{grid-template-columns:minmax(0,1fr)}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .card{padding:14px}
+  h1{font-size:21px}
+  .stat{font-size:22px}
+  pre{font-size:11.5px}
+  textarea.mono{min-height:240px}
+  .chatlog{max-height:60vh}
+}
+@media (max-width:420px){.grid{grid-template-columns:minmax(0,1fr)}}
+`;
+
 const ADMIN_SHELL = `
 .shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
 .side{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:22px 14px;border-right:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 40%)}
@@ -157,9 +178,10 @@ main{width:100%;max-width:1040px;margin:0 auto;padding:32px 32px 72px}
   .brandbar{padding-bottom:8px}
   .side nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
   .navgroup{display:none}
-  .navlink{white-space:nowrap}
-  .topbar{padding:10px 16px}
-  main{padding:22px 16px 56px}
+  .navlink{white-space:nowrap;padding:10px 14px;background:var(--surface);border:1px solid var(--line)}
+  .navlink.on{border-color:var(--line-2)}
+  .topbar{padding:10px 16px;justify-content:space-between;flex-wrap:wrap}
+  main{padding:22px max(16px,env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
   .msg.user{margin-left:0}
   table{font-size:13px}
   th,td{padding:8px 6px}
@@ -201,7 +223,14 @@ header h1{margin:0;font-size:20px}
 s{color:var(--muted)}
 footer{margin-top:6px;color:var(--faint);font-size:12px;text-align:center}
 footer a{color:var(--accent-2)}
-@media (max-width:560px){.pills{margin-left:0}}`;
+@media (max-width:560px){
+  main{padding:16px max(12px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+  .tiles{columns:1}
+  .tile{padding:12px}
+  .pills{margin-left:0;width:100%}
+  .v{white-space:normal}
+  .r{align-items:flex-start}
+}`;
 
-export const ADMIN_CSS = TOKENS + BASE + COMPONENTS + AI + ADMIN_SHELL;
-export const STATUS_CSS = TOKENS + BASE + COMPONENTS + STATUS_SHELL;
+export const ADMIN_CSS = TOKENS + BASE + COMPONENTS + MOBILE + AI + ADMIN_SHELL;
+export const STATUS_CSS = TOKENS + BASE + COMPONENTS + MOBILE + STATUS_SHELL;
