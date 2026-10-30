@@ -189,7 +189,7 @@ main{width:100%;max-width:1040px;margin:0 auto;padding:32px 32px 72px}
 
 const STATUS_SHELL = `
 body{font-size:14px;line-height:1.45}
-main{max-width:1320px;margin:0 auto;padding:22px 20px 34px}
+main{max-width:1760px;margin:0 auto;padding:22px 24px 34px}
 header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px}
 .logo{width:48px;height:48px;border-radius:12px;box-shadow:0 0 24px var(--glow)}
 header h1{margin:0;font-size:20px}
@@ -205,7 +205,9 @@ header h1{margin:0;font-size:20px}
 .sv{font-size:20px;line-height:1.2;overflow-wrap:anywhere}
 .ss{font-size:12.5px;color:var(--muted)}
 .ss .cd{color:var(--accent-2)}
-.group{margin-bottom:26px}
+.groups{column-gap:32px}
+@media (min-width:1180px){.groups{columns:2}}
+.group{margin-bottom:26px;break-inside:avoid}
 .group h3{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 10px;font-size:15px;letter-spacing:.02em}
 .group h3 span{font-size:12px;font-weight:400;color:var(--faint)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;align-items:start}
@@ -243,16 +245,32 @@ s{color:var(--muted)}
 footer{margin-top:6px;color:var(--faint);font-size:12px;text-align:center}
 footer a{color:var(--accent-2)}
 @media (max-width:560px){
-  main{padding:16px max(12px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
-  .grid{grid-template-columns:1fr}
+  body{font-size:13.5px}
+  main{padding:12px max(10px,env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+  header{gap:10px;margin-bottom:12px}
+  .logo{width:38px;height:38px}
+  header h1{font-size:18px}
+  .grid{grid-template-columns:1fr;gap:10px}
   .tile.wide{grid-column:auto}
-  .strip{grid-template-columns:1fr 1fr;gap:8px}
-  .sv{font-size:17px}
-  .tile{padding:12px}
+  .strip{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+  .stat{padding:9px 11px}
+  .sv{font-size:16px}
+  .ss{font-size:12px}
+  .group{margin-bottom:16px}
+  .group h3{margin-bottom:8px;font-size:14px}
+  .group h3 span{display:none}
+  .tile{padding:10px 12px 8px}
+  .tile h2{margin-bottom:4px}
+  .r{padding:4px 0}
   header>div:not(.pills){flex:1;min-width:0}
   .sub{overflow-wrap:anywhere}
-  .pills{margin-left:0;width:100%}
-  .pill{white-space:normal;max-width:100%}
+  .pills{margin-left:0;width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+  .pills::-webkit-scrollbar{display:none}
+  .pill{flex:none}
+  .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;padding:3px 11px}
+  .scroll{max-height:300px}
   .v{white-space:normal}
   .r{align-items:flex-start}
 }`;

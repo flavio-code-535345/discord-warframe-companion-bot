@@ -498,10 +498,12 @@ ${s.archive?.syncing ? '<meta http-equiv="refresh" content="15">' : ''}
 <div class="pills">${pills}</div>
 </header>
 ${strip ? `<div class="strip">${strip}</div>` : ''}
+<div class="groups">
 ${group('Open worlds', 'cycles and the Void Trader', cycles + baro)}
 ${group('The Void', 'fissures and Arbitration', fissures + arbitration)}
 ${group('Resets', 'daily, weekly and seasonal', sortie + archon + steel + archimedea + nightwave)}
 ${group('Events and trading', 'the clan, alerts, invasions and deals', clan + alerts + invasions + events + darvo + resurgence)}
+</div>
 <footer>World state from warframestat.us · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
 </main>
 <script nonce="${nonce}">${SCRIPT}</script>
