@@ -10,7 +10,7 @@ import type { AgentTool } from './tools.js';
  */
 
 const MAX_PASSAGES = 3;
-const MAX_PASSAGE_CHARS = 900;
+const MAX_PASSAGE_CHARS = 800;
 const PREFETCH_TIMEOUT_MS = 8_000;
 const MIN_QUESTION_CHARS = 8;
 

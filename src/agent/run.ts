@@ -78,6 +78,8 @@ export interface AgentDeps {
   guidance?: string;
 }
 
+/** An agent step reads the whole system prompt, the tool list and the tool results, which takes a CPU model far longer than a short chat answer, so the local model gets at least this long per request. */
+export const AGENT_LOCAL_MIN_TIMEOUT_SECONDS = 150;
 const MAX_CALLS_PER_STEP = 4;
 const TOTAL_BUDGET_MS = 4 * 60_000;
 const STATS_EVERY_MS = 250;
@@ -400,7 +402,7 @@ export async function runAgent(ctx: AppContext, question: string, who: { id: str
       url: config.LOCAL_AI_URL,
       key: config.LOCAL_AI_KEY || 'ollama',
       model: localModel,
-      timeoutMs: (config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000,
+      timeoutMs: Math.max(config.LOCAL_AI_TIMEOUT_SECONDS ?? 60, AGENT_LOCAL_MIN_TIMEOUT_SECONDS) * 1000,
       thinking: aiToggle('thinking') && caps.includes('thinking'),
       mode: s.toolMode === 'auto' ? (caps.includes('tools') ? 'native' : 'text') : s.toolMode,
     });
