@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chunkText, chunkWikitext, cleanWikitext } from '../src/wiki/clean.js';
+import { ApiBlockedError, ApiBusyError } from '../src/warframe/fetch.js';
 import { WikiCrawler } from '../src/wiki/crawler.js';
 import { MIN_READY_PAGES, WikiIndex } from '../src/wiki/index.js';
 import { queryTerms, titleCandidates } from '../src/wiki/terms.js';
@@ -294,4 +295,22 @@ test('a word members use finds the page that uses the wiki word for it', () => {
   index.putPage('Syndicate', 1, [{ section: 'Introduction', body: 'Syndicates are factions that reward standing with offerings, ranks and augments.' }]);
   index.replaceAliases(new Map([['Syndicate Reputation', 'Syndicate']]));
   assert.equal(index.subjectOf('how do i gather ostron syndicate reputation'), 'Ostron', 'a name of category words gives way to a specific one');
+});
+
+test('crawler waits for a busy request budget instead of giving up the refresh, but leaves a blocked host alone', async () => {
+  const wiki = fakeWiki({ Alpha: { revid: 1, text: BODY('Alpha') }, Beta: { revid: 1, text: BODY('Beta') } });
+  let busy = 2;
+  const busyOnce = async (url: string) => {
+    if (busy > 0 && !new URL(url).searchParams.get('generator')) {
+      busy--;
+      throw new ApiBusyError();
+    }
+    return wiki.fetcher(url);
+  };
+  const index = new WikiIndex(':memory:');
+  assert.deepEqual(await new WikiCrawler(index, busyOnce, 0, 0).refresh(), { total: 2, changed: 2, removed: 0 });
+  const blocked = async () => {
+    throw new ApiBlockedError('wiki.warframe.com', Date.now() + 60_000, 'HTTP 403');
+  };
+  await assert.rejects(new WikiCrawler(new WikiIndex(':memory:'), blocked, 0, 0).refresh(), /not being called/);
 });

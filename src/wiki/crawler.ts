@@ -6,7 +6,12 @@ const API = 'https://wiki.warframe.com/api.php';
 const LIST_PAGE_SIZE = 500;
 const CONTENT_BATCH = 40;
 const MAX_SOURCE_CHARS = 400_000;
-const REQUEST_GAP_MS = 1500;
+/** About 20 requests a minute with the answer time: inside the background half of the shared budget (30 a minute by default). */
+const REQUEST_GAP_MS = 2500;
+/** When the shared request budget is full anyway (members' lookups come first), the crawl waits this long and tries again… */
+const BUSY_WAIT_MS = 20_000;
+/** …but not forever: after this many waits in a row the refresh gives up until the next check. */
+const MAX_BUSY_WAITS = 60;
 const STARTUP_DELAY_MS = 90_000;
 const CHECK_INTERVAL_MS = 6 * 3_600_000;
 const REFRESH_AFTER_MS = 24 * 3_600_000;
@@ -37,7 +42,7 @@ const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
 
 /**
  * Keeps the local wiki index current. It lists every article with its latest revision (cheap), downloads only the
- * pages that changed, and removes deleted ones. It is slow on purpose (one request every 1.5s) to be a good citizen.
+ * pages that changed, and removes deleted ones. It is slow on purpose (one request every 2.5s) to be a good citizen.
  */
 export class WikiCrawler {
   private timer: NodeJS.Timeout | null = null;
@@ -49,6 +54,7 @@ export class WikiCrawler {
     // Background priority: the crawl may only use half of the request budget, so members' commands are never starved.
     private readonly fetcher: Fetcher = (url) => apiFetch(url, {}, { background: true }),
     private readonly gapMs = REQUEST_GAP_MS,
+    private readonly busyWaitMs = BUSY_WAIT_MS,
   ) {}
 
   start(): void {
@@ -81,7 +87,8 @@ export class WikiCrawler {
   private async call(params: Record<string, string>): Promise<ApiResponse> {
     const url = `${API}?${new URLSearchParams({ format: 'json', formatversion: '2', maxlag: '5', ...params })}`;
     let lastError: unknown;
-    for (let attempt = 0; attempt < 4; attempt++) {
+    let busy = 0;
+    for (let attempt = 0; attempt < 4; ) {
       try {
         await sleep(this.gapMs);
         const res = await this.fetcher(url);
@@ -92,9 +99,17 @@ export class WikiCrawler {
         return data;
       } catch (err) {
         // A blocked or rate-limited host is left alone: retrying here would only be noise.
-        if (err instanceof ApiBlockedError || err instanceof ApiBusyError) throw err;
+        if (err instanceof ApiBlockedError) throw err;
+        // A full request budget is not a failure: background work waits its turn. Giving up here aborted the whole refresh, so the
+        // daily refresh (and the full re-clean after a cleaning change) stopped finishing once the crawl outpaced the budget.
+        if (err instanceof ApiBusyError) {
+          if (++busy > MAX_BUSY_WAITS) throw err;
+          await sleep(this.busyWaitMs);
+          continue;
+        }
         lastError = err;
-        await sleep(this.gapMs * 4 * (attempt + 1));
+        attempt++;
+        await sleep(this.gapMs * 4 * attempt);
       }
     }
     throw lastError;
