@@ -39,12 +39,12 @@ const PRUNE_AFTER_MS = 45 * DAY;
 
 /** Words that mean the answer changes with time, prices or the clan: those questions are never cached. */
 const VOLATILE =
-  /\b(now|today|tonight|currently|right now|this week|latest|newest|recent|recently|update|updates|hotfix|patch|baro|fissures?|sortie|archon hunt|nightwave|invasions?|alerts?|events?|darvo|varzia|resurgence|prices?|worth|plat|platinum|market|selling|our|clan)\b/i;
+  /\b(now|today|tonight|currently|right now|this week|next week|next time|latest|newest|recent|recently|update|updates|hotfix|patch|baro|fissures?|sortie|archon hunt|nightwave|invasions?|alerts?|events?|darvo|varzia|resurgence|circuit|rotations?|incarnons?|genesis|prices?|worth|plat|platinum|market|selling|our|clan)\b/i;
 
 export const cacheable = (question: string): boolean => question.length >= 8 && question.length <= 200 && !VOLATILE.test(question);
 
-/** Intents that are exact live lookups, whatever the cache holds. */
-const LIVE_INTENTS = new Set(['price', 'world', 'fissures', 'bounties', 'clanEvents', 'help']);
+/** Intents that are exact live lookups, whatever the cache holds, and kinds of answer that are never worth saving. */
+const LIVE_INTENTS = new Set(['price', 'world', 'fissures', 'bounties', 'clanEvents', 'help', 'circuit', 'math', 'smalltalk']);
 export const cacheAllowedFor = (intentKind: string): boolean => !LIVE_INTENTS.has(intentKind);
 
 /** The saved answer for this question, when there is a verified one that is still fresh. */
@@ -70,7 +70,7 @@ export function pickCandidates(log: Pick<AiLogEntry, 'at' | 'question' | 'source
   const byKey = new Map<string, Candidate & { last: number }>();
   for (const e of log) {
     // Only questions a model (or a plain wiki excerpt) answered: exact lookups (prices, drops, world state) are not cacheable answers.
-    if (!e.found || e.intent === 'operator' || !['local', 'cloud', 'excerpt', 'cache'].includes(e.source) || !cacheable(e.question)) continue;
+    if (!e.found || e.intent === 'operator' || LIVE_INTENTS.has(e.intent ?? '') || !['local', 'cloud', 'excerpt', 'cache'].includes(e.source) || !cacheable(e.question)) continue;
     const key = normalizeQuestion(e.question);
     if (!key) continue;
     const cur = byKey.get(key) ?? { key, question: e.question.trim(), asks: 0, last: 0 };

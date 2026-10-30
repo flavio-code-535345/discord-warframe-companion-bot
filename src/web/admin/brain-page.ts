@@ -1,5 +1,6 @@
 import type { Request, RequestHandler, Response, Router } from 'express';
 import { DEFAULT_PROMPT, LIMITS, OPERATOR_NOTE, PERSONA_BANDS, brain, buildSystemPrompt, personaBand, resetBrain, updateBrain } from '../../agent/brain.js';
+import { LOCAL_CONTEXT_TOKENS, agentFits, agentPromptTokens } from '../../agent/answer.js';
 import { runAgent } from '../../agent/run.js';
 import { AGENT_TOOLS, TOOL_NAMES, enabledTools } from '../../agent/tools.js';
 import { type AgentRun, getRun, recentRuns } from '../../agent/traces.js';
@@ -88,8 +89,8 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
       return `<label class="check"><input type="checkbox" name="tool_${t.name}" value="1"${s.disabledTools.includes(t.name) ? '' : ' checked'}> <span><code>${e(t.name)}</code>${unavailable ? ' <span class="muted">(unavailable here: ' + (t.name === 'search_web' ? 'SEARXNG_URL or the Web search switch' : 'not set up') + ')</span>' : ''}<br><span class="muted">${e(t.description.slice(0, 150))}</span></span></label>`;
     }).join('');
 
-    const body = `${head('Brain', 'How Ordis reasons: the persona, the instructions, the tools it may call, and a live playground.')}
-<div class="card"><p class="muted flush">Who gets the agent: <strong>${e(s.agentFor)}</strong> · questions: <strong>${s.scope === 'all' ? 'all except help' : 'open-ended (wiki and builds)'}</strong> · ${modelLine} · tools on: ${enabledTools(ctx).length}/${TOOL_NAMES.length}</p></div>
+    const body = `${head('Brain', 'How Ordis reasons: the persona, the agent that digs further when the facts run out, its tools, and a live playground.')}
+<div class="card"><p class="muted flush">Questions are answered by the <strong>facts pipeline</strong>: the code finds the wiki page and the drop tables the question is about, the model only words those facts, and sentences with names or numbers the facts don't contain are removed before sending. The Circuit rotation and sums are computed without a model. The agent below is the fallback when the facts don't answer: <strong>${e(s.agentFor === 'off' ? 'nobody' : s.agentFor)}</strong> · ${modelLine} · tools on: ${enabledTools(ctx).length}/${TOOL_NAMES.length} · prompt and tools ≈ ${agentPromptTokens(ctx)} of the local model's ${LOCAL_CONTEXT_TOKENS} tokens${agentFits(ctx) ? '' : ` ${badge('too big', 'warn')} the local model would get it cut off, so the agent is skipped: shorten the prompt or switch tools off`}</p></div>
 
 <h2>Live chat</h2>
 <div class="card">
@@ -119,7 +120,7 @@ export function registerBrainRoutes({ router, ctx, pc, html, action, audit }: De
 <input type="range" name="memoryMessages" min="${LIMITS.memoryMessages.min}" max="${LIMITS.memoryMessages.max}" step="${LIMITS.memoryMessages.step}" value="${s.memoryMessages}" list="memticks">
 <datalist id="memticks">${[0, 10, 20, 30].map((v) => `<option value="${v}"></option>`).join('')}</datalist>
 <span class="muted">0 = every question stands alone · 10 = the last five questions and answers (default) · 30 = the last fifteen</span></label>
-<p class="muted flush">Ordis replays these messages to the model, so a follow-up like "and how do I get it?" is understood. Each person has their own conversation per channel (and in DMs); it is forgotten after 30 minutes without a message and when the bot restarts. A reply to one of his answers continues the conversation without needing a question mark. Follow-ups always go to the agent, whoever asks.</p>
+<p class="muted flush">Ordis replays these messages to the model, so a follow-up like "and how do I get it?" is understood. Each person has their own conversation per channel (and in DMs); it is forgotten after 30 minutes without a message and when the bot restarts. A reply to one of his answers continues the conversation without needing a question mark. A follow-up keeps the subject of the last answer, so the facts for "it" are looked up for the item asked about before.</p>
 </div>
 
 <h2>System prompt</h2>
@@ -140,8 +141,7 @@ ${number('maxChars', 'Answer limit (characters)', s.maxChars, LIMITS.maxChars, '
 ${number('toolResultChars', 'Tool result limit (characters)', s.toolResultChars, LIMITS.toolResultChars, 'More = better grounding, slower on a CPU.')}
 </div>
 <div class="row">
-<label>Who gets the agent${choose('agentFor', s.agentFor, [['off', 'Nobody (old behaviour)'], ['operators', 'Operators only'], ['everyone', 'Everyone']])}</label>
-<label>Which questions${choose('scope', s.scope, [['open', 'Open-ended only (wiki, builds)'], ['all', 'Everything except help']])}</label>
+<label>Agent when the facts don't answer${choose('agentFor', s.agentFor, [['off', 'Nobody'], ['operators', 'Operators only'], ['everyone', 'Everyone']])}</label>
 <label>Tool calling${choose('toolMode', s.toolMode, [['auto', 'Auto (native if the model supports it)'], ['native', 'Always native'], ['text', 'Always as text']])}</label>
 </div>
 <label class="check"><input type="checkbox" name="show_tools" value="1"${s.showTools ? ' checked' : ''}> Show which tools were used under each answer</label>

@@ -124,6 +124,19 @@ export function editCorrection(ctx: Pick<AppContext, 'config' | 'store'>, id: nu
   return t ? ctx.store.updateCorrection(ctx.config.DISCORD_GUILD_ID, id, { correction: t }) : false;
 }
 
+/** Approved corrections whose question overlaps with this one, most related first: trusted facts for the answer pipeline. */
+export function relatedCorrections(ctx: Pick<AppContext, 'config' | 'store'>, question: string, max = 3): Correction[] {
+  const words = keywords(question);
+  if (!words.size) return [];
+  return ctx.store
+    .listCorrections(ctx.config.DISCORD_GUILD_ID, 'approved', SCAN_LIMIT)
+    .map((c) => ({ c, s: relatedness(words, keywords(c.question)) }))
+    .filter((x) => x.s >= RELATED_AT)
+    .sort((a, b) => b.s - a.s || b.c.createdAt - a.c.createdAt)
+    .slice(0, max)
+    .map((x) => x.c);
+}
+
 /**
  * The guidance block for a question: approved corrections that overlap with it, plus related answers staff rated wrong (what
  * not to repeat) and right (good examples). Empty when nothing applies. Capped, so it cannot crowd the prompt.

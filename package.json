@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "tsx watch --env-file=.env src/index.ts",
-    "test": "tsx --test \"test/**/*.test.ts\""
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "eval": "tsx test/eval/answers.eval.ts"
   },
   "license": "MIT",
   "dependencies": {

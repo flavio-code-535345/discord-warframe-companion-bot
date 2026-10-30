@@ -61,7 +61,8 @@ export { titleCandidates };
 
 /** The longest phrase of the query that is itself a wiki page title (following redirects), if any. */
 async function exactTitle(query: string): Promise<string | null> {
-  const candidates = titleCandidates(query);
+  // MediaWiki takes at most 50 titles per request.
+  const candidates = titleCandidates(query).slice(0, 50);
   if (!candidates.length) return null;
   const data = await api<TitlesResponse>({ action: 'query', titles: candidates.join('|'), redirects: '1' });
   const q = data.query;
@@ -82,12 +83,12 @@ async function exactTitle(query: string): Promise<string | null> {
  * Wiki search for a question: a page whose title appears in the query comes first ("how do archon shards
  * work" → Archon Shard), then MediaWiki's full-text hits, which alone rank loosely matching pages too high.
  */
-export async function searchWiki(query: string, limit = 3): Promise<WikiResult[]> {
+export async function searchWiki(query: string, limit = 3, opts: { pageChunks?: number; pageChars?: number } = {}): Promise<WikiResult[]> {
   // The local copy of the whole wiki answers first: it is instant and returns the passage that matches the
   // question, not just the article's introduction. The live wiki covers a missing index and the gaps.
   const local = getWikiIndex();
   if (local?.ready()) {
-    const hits = local.search(query, limit);
+    const hits = local.search(query, limit, opts);
     // With an embedding model available, reorder by meaning (and let close matches the word search missed in); never fatal.
     const better = await rerankPassages(local, query, hits, limit).catch(() => null);
     if (better?.length) return better;

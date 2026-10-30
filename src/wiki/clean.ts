@@ -13,6 +13,15 @@ const DISPLAY_TEMPLATES = new Set([
   'd', 'm', 'wf', 'w', 'a', 'e', 'r', 'u', 'ep', 'currency',
 ]);
 
+/**
+ * Amount templates: the wiki writes costs and rewards as {{pc|120}} (an icon and a number). Dropped like other templates, they
+ * left "it will cost your account ." in the text, so they become "120 Platinum".
+ */
+const AMOUNT_TEMPLATES: Record<string, string> = { pc: 'Platinum', cc: 'Credits', kc: 'Kuva', sc: 'Standing', ec: 'Endo', dc: 'Ducats', ac: 'Aya', fc: 'Focus', nc: 'Nightwave Cred' };
+
+/** Bump when the cleaning changes: the crawler then cleans every stored page again instead of only the edited ones. */
+export const CLEAN_VERSION = 2;
+
 /** Interlanguage link prefixes (`[[de:Eidolon]]`), which are not article text. */
 const LANGUAGE_CODES = 'ar|bg|ca|cs|da|de|el|es|fi|fr|he|hu|id|it|ja|ko|nl|no|pl|pt|pt-br|ro|ru|sr|sv|th|tr|uk|vi|zh|zh-hans|zh-hant';
 
@@ -41,6 +50,12 @@ function stripTemplates(text: string): string {
     text = text.replace(innermost, (_, inner: string) => {
       const [rawName = '', ...args] = inner.split('|');
       const name = rawName.trim().toLowerCase();
+      const unit = Object.hasOwn(AMOUNT_TEMPLATES, name) ? AMOUNT_TEMPLATES[name] : undefined;
+      if (unit) {
+        const amount = args[0]?.trim();
+        return amount && !amount.includes('=') ? `${amount} ${unit}` : unit;
+      }
+      if (name === 'ver' && args[0]?.trim()) return `Update ${args[0].trim()}`;
       if (DISPLAY_TEMPLATES.has(name)) {
         const positional = args.map((a) => a.trim()).filter((a) => a && !/^[\w ]+=/.test(a));
         return positional.length ? positional[positional.length - 1]! : '';

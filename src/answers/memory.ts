@@ -23,6 +23,8 @@ const MAX_CONVERSATIONS = 500;
 interface Convo {
   turns: MemoryTurn[];
   at: number;
+  /** The wiki page the last answer was about, so a follow-up's "it" can be looked up without a model guessing. */
+  subject?: string | null;
 }
 
 const convos = new Map<string, Convo>();
@@ -44,14 +46,20 @@ export function recall(key: string, limit: number, now = Date.now()): MemoryTurn
   return c.turns.slice(-limit);
 }
 
-/** Adds one question and its answer. */
-export function remember(key: string, question: string, answer: string, now = Date.now()): void {
+/** The subject of this conversation's last answer that had one, or null. */
+export function recallSubject(key: string, now = Date.now()): string | null {
+  const c = convos.get(key);
+  return c && now - c.at <= MEMORY_TTL_MS ? (c.subject ?? null) : null;
+}
+
+/** Adds one question and its answer, and the page it was about (an answer without one keeps the earlier subject). */
+export function remember(key: string, question: string, answer: string, now = Date.now(), subject?: string | null): void {
   const c = convos.get(key);
   const fresh = !c || now - c.at > MEMORY_TTL_MS;
   const turns = fresh ? [] : c.turns;
   turns.push({ role: 'user', content: clip(question) }, { role: 'assistant', content: clip(answer) });
   convos.delete(key);
-  convos.set(key, { turns: turns.slice(-MEMORY_KEEP), at: now });
+  convos.set(key, { turns: turns.slice(-MEMORY_KEEP), at: now, subject: subject ?? (fresh ? null : (c.subject ?? null)) });
   // Insertion order is last-touched order, so the front of the map is the idle-longest conversation.
   for (const k of convos.keys()) {
     if (convos.size <= MAX_CONVERSATIONS) break;
@@ -69,8 +77,8 @@ export const conversationCount = (): number => convos.size;
 
 /**
  * Whether a message leans on what was said before: it points back with a pronoun or starts with a connector ("and", "what
- * about"), and is short. Such a message cannot be understood or looked up on its own, so it goes to the model together with
- * the conversation instead of to a lookup or a saved answer.
+ * about"), and is short. Such a message cannot be understood or looked up on its own: the facts are looked up for the subject of
+ * the conversation (recallSubject) and the model is told what it follows, instead of a lookup or a saved answer for the words alone.
  */
 export function isFollowUp(question: string): boolean {
   const q = question.trim().toLowerCase();

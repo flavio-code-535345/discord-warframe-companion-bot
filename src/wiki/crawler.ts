@@ -1,5 +1,5 @@
 import { ApiBlockedError, ApiBusyError, apiFetch } from '../warframe/fetch.js';
-import { chunkWikitext } from './clean.js';
+import { CLEAN_VERSION, chunkWikitext } from './clean.js';
 import type { WikiIndex } from './index.js';
 
 const API = 'https://wiki.warframe.com/api.php';
@@ -67,9 +67,14 @@ export class WikiCrawler {
     return this.running;
   }
 
+  /** True when the stored pages were cleaned by an older version of clean.ts, so all of them are downloaded again. */
+  private needsReclean(): boolean {
+    return this.index.stats().pages > 0 && this.index.getMeta('clean_version') !== String(CLEAN_VERSION);
+  }
+
   private async maybeRefresh(): Promise<void> {
     const last = Number(this.index.getMeta('refreshed_at') ?? 0);
-    if (Date.now() - last < REFRESH_AFTER_MS) return;
+    if (Date.now() - last < REFRESH_AFTER_MS && !this.needsReclean()) return;
     await this.refresh().catch((err) => console.error('[archive] refresh failed:', err));
   }
 
@@ -134,8 +139,9 @@ export class WikiCrawler {
 
       this.index.setMeta('total', String(remote.size));
       this.index.setMeta('syncing', '1');
-      const stale = [...remote].filter(([title, revid]) => local.get(title) !== revid).map(([title]) => title);
-      console.log(`[archive] ${remote.size} articles, ${stale.length} to download`);
+      const reclean = this.needsReclean();
+      const stale = [...remote].filter(([title, revid]) => reclean || local.get(title) !== revid).map(([title]) => title);
+      console.log(`[archive] ${remote.size} articles, ${stale.length} to download${reclean ? ' (cleaning every page again)' : ''}`);
       let done = 0;
       for (let i = 0; i < stale.length; i += CONTENT_BATCH) {
         const batch = stale.slice(i, i + CONTENT_BATCH);
@@ -159,6 +165,7 @@ export class WikiCrawler {
         }
       }
       this.index.replaceAliases(aliases);
+      this.index.setMeta('clean_version', String(CLEAN_VERSION));
       this.index.setMeta('refreshed_at', String(Date.now()));
       this.index.setMeta('syncing', '0');
       console.log(`[archive] index up to date: ${remote.size} pages (${done} updated, ${removed} removed) in ${Math.round((Date.now() - started) / 1000)}s`);

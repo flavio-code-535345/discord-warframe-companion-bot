@@ -199,23 +199,23 @@ describe('corrections', () => {
     const store = new Store(':memory:');
     const ctx = ctxOf(store);
     const key = memoryKey('c', '5');
-    addCorrection(ctx, { entry: null, question: Q, text: 'Steel Path Honors.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
+    addCorrection(ctx, { entry: null, question: Q, text: 'Steel Path Honors, for 15 Steel Essence.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
     await smartAnswer(Q, ctx, { id: '5', name: 'Rat', key });
-    assert.deepEqual(recall(key, 10).map((t) => t.content), [Q, 'Steel Path Honors.']);
+    assert.deepEqual(recall(key, 10).map((t) => t.content), [Q, 'Steel Path Honors, for 15 Steel Essence.']);
 
-    // The follow-up goes to the agent with the earlier messages, whoever asks, and is not answered from the pronoun alone.
+    // The follow-up is not answered from the pronoun alone: the facts are gathered for the previous question too, and the model is told what it follows.
     const bodies: { messages: { role: string; content: string }[] }[] = [];
     globalThis.fetch = (async (url: string, init: RequestInit) => {
-      if (String(url).endsWith('/api/show')) return new Response(JSON.stringify({ capabilities: [] }));
+      if (!String(url).endsWith('/chat/completions')) return new Response('{}', { status: 404 });
       bodies.push(JSON.parse(String(init.body)));
       return new Response(JSON.stringify({ choices: [{ message: { content: 'It costs 15 Steel Essence.' } }] }));
     }) as typeof fetch;
     const a = await smartAnswer('and how much does it cost?', ctx, { id: '5', name: 'Rat', key });
-    assert.equal(a.intent, 'agent');
+    assert.equal(a.intent, 'general');
     assert.equal(a.content, 'It costs 15 Steel Essence.');
-    const sent = bodies[0]!.messages;
-    assert.deepEqual(sent.slice(1, 3).map((m) => [m.role, m.content]), [['user', Q], ['assistant', 'Steel Path Honors.']]);
-    assert.match(sent[0]!.content, /Staff corrections/, 'the related correction is in the prompt');
+    const user = bodies[0]!.messages[1]!.content;
+    assert.match(user, /previous question: "How do I get Condition Overload\?"/);
+    assert.match(user, /Staff correction for "How do I get Condition Overload\?" \(trusted\)\nSteel Path Honors, for 15 Steel Essence\./, 'the related correction is a fact');
     assert.deepEqual(recall(key, 10).map((t) => t.content).slice(-2), ['and how much does it cost?', 'It costs 15 Steel Essence.']);
   });
 

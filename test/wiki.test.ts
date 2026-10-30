@@ -236,3 +236,62 @@ test('a "what is X" question always gets the introduction of the named page, eve
   const plain = index.search('how do I start the helminth', 3)[0]!;
   assert.doesNotMatch(plain.extract, /^The Helminth is a sentient/, 'only definition questions add it');
 });
+
+test('amount templates keep their number and unit instead of vanishing', () => {
+  const text = cleanWikitext("It will cost your account {{pc|200}}. Kuva Siphon awards {{kc|550-700}}, a bounty {{cc|50,000}} and {{Ec|15}}; changed in {{ver|32.2.4}}.");
+  assert.equal(text, 'It will cost your account 200 Platinum. Kuva Siphon awards 550-700 Kuva, a bounty 50,000 Credits and 15 Endo; changed in Update 32.2.4.');
+});
+
+test('crawler cleans every stored page again once after the cleaning changed, then only edited pages', async () => {
+  const wiki = fakeWiki({ Alpha: { revid: 1, text: BODY('Alpha') }, Beta: { revid: 1, text: BODY('Beta') } });
+  const index = new WikiIndex(':memory:');
+  const crawler = new WikiCrawler(index, wiki.fetcher, 0);
+  await crawler.refresh();
+  index.setMeta('clean_version', '1'); // as an index built by an older version would be
+  assert.deepEqual(await crawler.refresh(), { total: 2, changed: 2, removed: 0 }, 'same revisions, cleaned again');
+  assert.deepEqual(await crawler.refresh(), { total: 2, changed: 0, removed: 0 });
+});
+
+test('a page named the way members type it, or misspelt, is still the subject', () => {
+  const index = new WikiIndex(':memory:');
+  const put = (title: string, body: string) => index.putPage(title, 1, [{ section: 'Introduction', body }]);
+  put('The Icebind', 'The Icebind is a weekly endgame activity reached by speaking to Cephalon Melica on Yuvan Peak.');
+  put('Incarnon', 'Incarnon is a weapon mechanic that transforms weapons into Incarnon Form after enough headshots.');
+  put('Clan', 'A Clan is a group of players who share a Dojo, research and trading facilities.');
+  assert.equal(index.subjectOf('how can I access ice bind'), 'The Icebind');
+  assert.equal(index.subjectOf('when is the next incronon'), 'Incarnon');
+  assert.equal(index.search('how can I access ice bind')[0]?.title, 'The Icebind', 'search uses the same match');
+  assert.equal(index.subjectOf('this clanka dumb af'), null, 'short words are never guessed');
+  assert.equal(index.subjectOf('what is the best way'), null);
+});
+
+test('a long question still reaches its single words, punctuation aside, and redirects that are ordinary words are not guessed', () => {
+  const long = 'Whens the next time I can farm Strun incarnon? since its a weekly rotation?';
+  const candidates = titleCandidates(long);
+  assert.ok(candidates.includes('Strun Incarnon'), 'the question mark is not part of the name');
+  assert.ok(candidates.includes('Strun'), 'single words are not cut off by the longer runs');
+  const index = new WikiIndex(':memory:');
+  index.putPage('Strun', 1, [{ section: 'Introduction', body: 'The Strun is a Tenno shotgun with a large magazine and wide spread.' }]);
+  index.putPage('Upcoming Features', 1, [{ section: 'Introduction', body: 'This page is a record of future content teased by Digital Extremes.' }]);
+  for (const t of ['Alpha', 'Beta', 'Gamma']) index.putPage(t, 1, [{ section: 'Introduction', body: `${t} comes next in the list of things the next update brings.` }]);
+  index.replaceAliases(new Map([['Next', 'Upcoming Features']]));
+  assert.equal(index.subjectOf(long), 'Strun');
+});
+
+test('a word members use finds the page that uses the wiki word for it', () => {
+  const index = new WikiIndex(':memory:');
+  index.putPage('FAQ', 1, [{ section: 'General FAQ', body: 'Q: Can I change my in-game username? A: Yes, through the official Warframe website, for 200 Platinum.' }]);
+  index.putPage('Ostron', 1, [
+    { section: 'Introduction', body: 'The Ostrons are the inhabitants of the Cetus settlement near the Plains of Eidolon on Earth.' },
+    { section: 'Ranks', body: 'Rank titles of the Ostron syndicate from Neutral to Kin, each with its own wares.' },
+    { section: 'Standing Gain', body: 'Standing with Ostron is earned by completing Bounties for Konzu and trading fish to Fisher Hai-Luk.' },
+  ]);
+  assert.equal(index.search('how do I change my nickname')[0]?.title, 'FAQ');
+  const ostron = index.search('how do i gather ostron syndicate reputation', 1, { pageChunks: 2 })[0]!.extract;
+  assert.match(ostron, /^The Ostrons are/, 'the answer pipeline always gets the introduction');
+  assert.match(ostron, /Standing Gain/, 'and the section about reputation, which the wiki calls standing');
+  assert.doesNotMatch(ostron, /Rank titles/);
+  index.putPage('Syndicate', 1, [{ section: 'Introduction', body: 'Syndicates are factions that reward standing with offerings, ranks and augments.' }]);
+  index.replaceAliases(new Map([['Syndicate Reputation', 'Syndicate']]));
+  assert.equal(index.subjectOf('how do i gather ostron syndicate reputation'), 'Ostron', 'a name of category words gives way to a specific one');
+});

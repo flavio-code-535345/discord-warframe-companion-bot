@@ -12,21 +12,25 @@ serves an **MCP server** so AI assistants (Claude Code, Claude Desktop, …) can
 ### Ask Ordis
 
 Mention the bot (`@Cephalon Ordis where does Neo N16 drop?`), use `/ask`, or DM it (clan members only). Ordis
-works out what you're asking and answers from live data. No AI model or API key is involved, so it costs nothing:
+works out what you're asking, looks up the facts himself, and only then lets a language model (optional: a self-hosted
+Ollama, or a free cloud model) put them into words; a check removes any sentence with a name or number the facts don't
+contain. Nothing costs money:
 
 | You ask | Ordis answers with |
 | --- | --- |
 | "price of Arcane Energize", "how much is Wisp Prime set worth?" | warframe.market sellers and buyers |
-| "where does Neo N16 drop?", "how do I get Condition Overload?", "what drops Nitain?" | the relic card or the drop tables |
-| "Kuva Bramma stats", "what's in Axi A1?", "build for Wisp Prime" | the item or relic card (builds add Overframe and wiki links) |
+| "when can I get the Torid Incarnon?", "what's in the Steel Path Circuit this week?" | the exact week and date, counted from the wiki's rotation table and the live world state |
+| "where does Neo N16 drop?", "what's in Axi A1?", "Kuva Bramma stats" | the relic or item card |
+| "how do I get Wisp?", "best kuva farm?", "how do archon shards work?", "change my nickname?" | a short answer written from the wiki page and the drop tables, with the source linked |
+| "best stats for a Zarr riven?" | what the expensive Zarr rivens on warframe.market roll |
 | "when is Baro coming?", "is it night on Cetus?", "today's sortie", "Entrati bounties", "steel path axi fissures", "what is Varzia selling?" | the live world state |
 | "when is our next clan event?" | the clan's upcoming events |
-| anything else ("how do Archon Shards work?") | the best-matching wiki article |
-| "help" | examples of what to ask |
+| "what is 9 x 2", "help" | the sum; examples of what to ask |
 
-`/setup chat` names a channel where Ordis answers without a mention, slash command or DM: every message ending in `?`, plus
-plain lookups like "price of arcane energize" or "baro". Ordinary chatter is ignored, and so is anything Ordis can't answer
-(needs the Message Content intent: enable it in the Developer Portal first, then set `ENABLE_MESSAGE_CONTENT=true`).
+Follow-ups work ("and how do I get it?" remembers what you asked about), and a reply to a wrong answer corrects it.
+`/setup chat` names a channel where Ordis answers anything written there without a mention, slash command or DM; chatter
+gets a short line instead of a wiki lookup (needs the Message Content intent: enable it in the Developer Portal first, then
+set `ENABLE_MESSAGE_CONTENT=true`).
 
 ### Commands
 

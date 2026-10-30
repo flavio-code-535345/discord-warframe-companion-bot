@@ -10,9 +10,16 @@ const STOP_WORDS = new Set(
   ).split(' '),
 );
 
-/** Word runs of the query, longest first: "archon shards work" → "Archon Shards Work", "Archon Shards", … */
+/**
+ * Word runs of the query, longest first: "archon shards work" → "Archon Shards Work", "Archon Shards", … Punctuation around a
+ * word goes ("incarnon?" is "Incarnon"); the list is long enough that a long question still reaches its single words.
+ */
 export function titleCandidates(query: string, maxWords = 4): string[] {
-  const words = query.trim().split(/\s+/).filter(Boolean);
+  const words = query
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/^["'(\[]+|["')\],.!?;:]+$/g, ''))
+    .filter(Boolean);
   const out: string[] = [];
   for (let n = Math.min(maxWords, words.length); n >= 1; n--) {
     for (let i = 0; i + n <= words.length; i++) {
@@ -27,8 +34,48 @@ export function titleCandidates(query: string, maxWords = 4): string[] {
       if (n > 1 && !phrase.endsWith('s') && !out.includes(`${phrase}s`)) out.push(`${phrase}s`);
     }
   }
-  return out.slice(0, 60);
+  return out.slice(0, 240);
 }
+
+/** Words members use for what the wiki calls something else, for picking the section that answers: "reputation" is "standing". */
+const SYNONYMS: Record<string, string[]> = {
+  reputation: ['standing'],
+  rep: ['standing'],
+  mr: ['mastery'],
+  xp: ['affinity'],
+  exp: ['affinity'],
+  plat: ['platinum'],
+  sp: ['steel', 'path'],
+  dmg: ['damage'],
+  rotation: ['rotations'],
+  nickname: ['username', 'alias'],
+  ign: ['username', 'alias'],
+  combinations: ['combined', 'combine', 'secondary'],
+  combination: ['combined', 'combine', 'secondary'],
+  combos: ['combined', 'combine', 'secondary'],
+};
+
+/**
+ * Category words: a page named only with these ("Syndicate Reputation", "Status Effect") is less what a question is about than
+ * a specific name next to them ("Ostron", "Viral").
+ */
+const GENERIC = new Set(
+  (
+    'mod mods syndicate syndicates reputation standing rank ranks resource resources mission missions weapon weapons gun guns relic relics ' +
+    'arcane arcanes boss bosses quest quests enemy enemies damage status effect effects farm farming platinum clan guide item items reward rewards ' +
+    'ability abilities build builds stats primary secondary melee companion companions pet pets blueprint blueprints drop drops point points'
+  ).split(' '),
+);
+
+/** True when every word of a name is a category word. */
+export const isGenericName = (name: string): boolean => name.toLowerCase().split(/\s+/).every((w) => GENERIC.has(w) || isStopWord(w));
+
+export const synonymsOf = (term: string): string[] => (Object.hasOwn(SYNONYMS, term) ? SYNONYMS[term]! : []);
+
+/** The question's terms plus the wiki's words for them. */
+export const withSynonyms = (terms: string[]): string[] => [...new Set([...terms, ...terms.flatMap(synonymsOf)])];
+
+export const isStopWord = (word: string): boolean => STOP_WORDS.has(word.toLowerCase());
 
 /** The words of a question that carry meaning: lowercase, deduplicated, without filler. */
 export function queryTerms(question: string): string[] {

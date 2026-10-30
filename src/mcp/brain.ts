@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DEFAULT_PROMPT, LIMITS, brain, buildSystemPrompt, personaBand, resetBrain, updateBrain } from '../agent/brain.js';
 import { runAgent } from '../agent/run.js';
 import { AGENT_TOOLS, enabledTools } from '../agent/tools.js';
+import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import { READ_ONLY, tool } from './util.js';
 
@@ -77,6 +78,32 @@ export function registerBrainTools(server: McpServer, ctx: AppContext): void {
         mode: run.mode,
         seconds: Number((run.ms / 1000).toFixed(1)),
         steps: run.steps.map((st) => ({ n: st.n, ms: st.ms, reasoning: st.reasoning.slice(0, 800) || undefined, said: st.calls.length ? st.content.slice(0, 300) || undefined : undefined, calls: st.calls.map((c) => ({ tool: c.name, args: c.args, ms: c.ms, error: c.error, result: c.result.slice(0, 600) })) })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    'test_answer',
+    {
+      title: 'Ask Ordis like a member',
+      description:
+        "Runs one question through Ordis's normal answer path, as the chat channel would (exact lookups, the Circuit rotation, arithmetic, small talk, or the facts pipeline: wiki passages and drop tables gathered by code, worded by the model, unsupported sentences removed). Returns the answer and how it was made: kind of question, the facts the model saw, its own words and what the check removed. Nothing is posted or logged. Can take a minute on a CPU.",
+      inputSchema: { question: z.string().min(2).max(500), operator: z.boolean().optional().describe('Ask as one of the two operators') },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    tool(async ({ question, operator }) => {
+      const started = Date.now();
+      const a = await smartAnswer(question, ctx, { id: operator ? (ctx.config.OPERATOR_IDS[0] ?? 'mcp') : 'mcp', name: 'MCP' });
+      return {
+        answer: a.content,
+        kind: a.intent,
+        source: a.source,
+        model: a.model,
+        found: a.found,
+        seconds: Number(((Date.now() - started) / 1000).toFixed(1)),
+        subject: a.subject ?? null,
+        embeds: a.embeds.map((e) => e.data.title).filter(Boolean),
+        ...(a.trace ? { facts: a.trace.facts, written: a.trace.written, removed: a.trace.removed } : {}),
       };
     }),
   );
