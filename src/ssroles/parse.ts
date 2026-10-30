@@ -21,8 +21,11 @@ export interface ParsedCard {
   complete: boolean;
 }
 
-const LEGENDARY_BASE = 2_250_000;
-const LEGENDARY_STEP = 147_500;
+export const LEGENDARY_BASE = 2_250_000;
+export const LEGENDARY_STEP = 147_500;
+
+/** Mastery points needed in total for a rank (Legendary n = 30 + n). */
+export const pointsForRank = (mr: number): number => (mr <= 30 ? 2500 * mr * mr : LEGENDARY_BASE + LEGENDARY_STEP * (mr - 30));
 
 /** The rank a point total belongs to: MR n needs 2500 * n^2 points up to MR 30, then 147,500 per Legendary rank. */
 export function rankFromPoints(points: number): number {

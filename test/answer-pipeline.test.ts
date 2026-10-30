@@ -7,6 +7,7 @@ import { resetAiToggles } from '../src/ai/settings.js';
 import { groundAnswer } from '../src/answers/check.js';
 import { availability, circuitAnswer, circuitTopic, namedIn, nextReset, parseRotations, resetRotations, weekOf } from '../src/answers/circuit.js';
 import { resetLocalAi } from '../src/answers/compose.js';
+import { masteryAnswer } from '../src/answers/mastery.js';
 import { forget, memoryKey, recall, recallSubject, remember } from '../src/answers/memory.js';
 import { dropFact, elementsFact, factAnswer, factsUserPrompt, mathAnswer, relevantDrops } from '../src/answers/pipeline.js';
 import { smartAnswer, withoutName } from '../src/answers/smart.js';
@@ -224,6 +225,19 @@ describe('the Circuit rotation', () => {
     assert.match(a, /can't see this week's offerings/);
     assert.equal(await circuitAnswer('how do I get the Laetum incarnon', deps()), null, 'not a Circuit weapon: the wiki answers it');
     assert.equal(await circuitAnswer('how do I get torid', deps()), null);
+  });
+});
+
+describe('mastery rank thresholds', () => {
+  it('gives the whole MR and LR table, or one rank, from the formula', () => {
+    const table = masteryAnswer('Show me the full MR and LR bracket')!;
+    assert.match(table, /MR 1 2,500 · MR 2 10,000 · MR 3 22,500/);
+    assert.match(table, /MR 28 1,960,000 · MR 29 2,102,500 · MR 30 2,250,000/);
+    assert.match(table, /\*\*Legendary:\*\* LR 1 2,397,500 · LR 2 2,545,000/);
+    assert.match(masteryAnswer('how many points for MR 25')!, /\*\*MR 25\*\* needs \*\*1,562,500\*\*.*\(122,500 more than MR 24\)/);
+    assert.match(masteryAnswer('what is LR3')!, /\*\*LR 3\*\* needs \*\*2,692,500\*\*/);
+    for (const q of ['how do i get mastery points', 'What is the fastest way to gain mastery rank points?', 'list all mastery rank tests', 'mastery rank 14 weapons'])
+      assert.equal(masteryAnswer(q), null, q);
   });
 });
 

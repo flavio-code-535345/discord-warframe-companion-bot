@@ -32,6 +32,7 @@ import { QueueFullError } from '../queue.js';
 import { withAsker, withModelSlot } from './slot.js';
 import { brain } from '../agent/brain.js';
 import { circuitAnswer } from './circuit.js';
+import { masteryAnswer } from './mastery.js';
 import { findCorrection, guidanceFor } from './corrections.js';
 import { isFollowUp, recall, recallSubject, remember, transcript } from './memory.js';
 import { operatorAnswer, useOperatorMode } from './operator.js';
@@ -246,6 +247,8 @@ async function smartAnswerInner(raw: string, ctx: AppContext, asker?: Asker): Pr
   if (sum) return done({ content: sum, embeds: [], found: true }, 'math');
   const circuit = await circuitAnswer(previous ? `${previous} ${question}` : question).catch(() => null);
   if (circuit) return done({ content: circuit, embeds: [], found: true }, 'circuit');
+  const mastery = masteryAnswer(question);
+  if (mastery) return done({ content: mastery, embeds: [], found: true }, 'mastery');
 
   // Prices, relics, world state, fissures, bounties and the clan schedule stay plain lookups for everyone, operators included.
   if (!followUp && EXACT.has(intent.kind)) {
