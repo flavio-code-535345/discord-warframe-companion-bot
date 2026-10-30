@@ -34,6 +34,7 @@ export const QUESTIONS: EvalQuestion[] = [
   { id: 'steel-path-unlock', question: 'how to unlock Steel path', text: [/star chart|node/i] },
   { id: 'venus', question: 'how do i unlock venus?', text: [/junction/i] },
   { id: 'icebind', question: 'how can I access ice bind', text: [/melica/i] },
+  { id: 'icebind-rewards', question: 'What rewards can ice bind get me', text: [/crested frozen chest|kuva|archon shard/i] },
 
   // Mechanics and how-tos.
   { id: 'viral', question: 'How do I gain the viral status effect on my guns', text: [/cold/i, /toxin/i], mustNot: [/(equip|apply|use) (a |the )?\*{0,2}viral\*{0,2} mod/i] },

@@ -79,7 +79,9 @@ describe('understanding a question', () => {
   });
 
   it('knows chatter, links and reactions from questions and requests', () => {
-    for (const q of ['https://klipy.com/gifs/clanker-kylo-ren', '<@220147375786688512>', 'lol', '😂😂', '...']) assert.equal(noContent(q), true, q);
+    const sticker = '[Garfield Piss](https://media.discordapp.net/stickers/1280967546039963729.gif?size=160&name=Garfield+Piss&lossless=true)';
+    for (const q of ['https://klipy.com/gifs/clanker-kylo-ren', '<@220147375786688512>', 'lol', '😂😂', '...', sticker]) assert.equal(noContent(q), true, q);
+    assert.equal(questionLike('look https://x.example/a.gif?size=160'), false, "a link's ? is not a question");
     for (const q of ['cbt', 'this clanka dumb af', 'wisp prime']) assert.equal(noContent(q), false, q);
     for (const q of ['how do i get wisp', 'Give me all damage variations combinations', 'is baro here', 'wisp?']) assert.equal(questionLike(q), true, q);
     for (const q of ['this clanka dumb af', 'cbt', 'wisp prime']) assert.equal(questionLike(q), false, q);

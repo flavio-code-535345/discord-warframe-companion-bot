@@ -341,7 +341,7 @@ export class WikiIndex {
     return out;
   }
 
-  private bestChunks(chunks: { section: string; body: string }[], terms: string[], n: number, question = '', title = '') {
+  private bestChunks(chunks: { section: string; body: string }[], terms: string[], n: number, question = '', title = '', inPageOrder = true) {
     const acquisition = WANTS_ACQUISITION.test(question);
     const farming = WANTS_FARMING.test(question);
     const lore = WANTS_LORE.test(question);
@@ -363,8 +363,27 @@ export class WikiIndex {
       .map((c, i) => ({ c, i, s: score(c) }))
       .sort((a, b) => b.s - a.s || a.i - b.i)
       .slice(0, n)
-      .sort((a, b) => a.i - b.i)
+      .sort((a, b) => (inPageOrder ? a.i - b.i : 0))
       .map((x) => x.c);
+  }
+
+  /**
+   * Spends the rest of the page's room on the sections right after the chosen ones, best one first: a "Rewards" heading is
+   * followed by what the rewards are ("Crested Frozen Chests"), which the chunks keep apart. `best` is in score order.
+   */
+  private fillPage(source: { section: string; body: string }[], best: { section: string; body: string }[], keep: { section: string; body: string }[], maxChars: number) {
+    const chosen = new Set(keep);
+    const size = (c: { section: string; body: string }) => c.section.length + c.body.length + 8;
+    let used = keep.reduce((n, c) => n + size(c), 0);
+    for (const c of best) {
+      for (let i = source.indexOf(c) + 1; i < source.length && !chosen.has(source[i]!); i++) {
+        const next = source[i]!;
+        if (used + size(next) > maxChars || LORE_SECTION.test(next.section)) break;
+        chosen.add(next);
+        used += size(next);
+      }
+    }
+    return source.filter((c) => chosen.has(c));
   }
 
   private toPassage(title: string, chunks: { section: string; body: string }[], maxChars = MAX_EXTRACT): WikiPassage {
@@ -401,10 +420,12 @@ export class WikiIndex {
         // "What is X and how do I start it": the introduction says what X is, so it always comes first for a definition question,
         // and in the answer pipeline always (it says what something is made of: "Viral is Cold and Toxin"); the best sections fill the rest.
         const [intro, ...rest] = source;
-        const picked =
-          intro && (WANTS_DEFINITION.test(question) || opts.pageChunks)
-            ? [intro, ...this.bestChunks(rest, withSynonyms(terms), perPage - 1, question, title)]
-            : this.bestChunks(source, withSynonyms(terms), justTheName ? 1 : perPage, question, title);
+        const withIntro = Boolean(intro) && (WANTS_DEFINITION.test(question) || Boolean(opts.pageChunks));
+        const best = withIntro
+          ? this.bestChunks(rest, withSynonyms(terms), perPage - 1, question, title, false)
+          : this.bestChunks(source, withSynonyms(terms), justTheName ? 1 : perPage, question, title, false);
+        const keep = withIntro ? [intro!, ...best] : best;
+        const picked = opts.pageChars ? this.fillPage(source, best, keep, opts.pageChars) : source.filter((c) => keep.includes(c));
         const passage = this.toPassage(title, picked, opts.pageChars);
         if (match.disambiguation) trailing = passage;
         else out.push(passage);

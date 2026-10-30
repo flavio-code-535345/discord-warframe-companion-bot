@@ -33,14 +33,17 @@ const QUESTION_START = /^(what|whats|what's|how|why|when|where|who|which|whose|i
 
 /** Whether a message reads like a question or a request (as opposed to chatter, a reaction or a link). */
 export function questionLike(text: string): boolean {
-  const q = lower(text);
+  // A link's query string ("…gif?size=160") is not a question mark.
+  const q = lower(withoutLinks(text));
   return q.includes('?') || QUESTION_START.test(q);
 }
 
+/** The text without links; a Discord sticker or GIF arrives as "[Garfield Piss](https://media.discordapp.net/…)", name and all. */
+const withoutLinks = (text: string): string => text.replace(/\[[^\]]*\]\(https?:\/\/[^)\s]*\)/g, ' ').replace(/https?:\/\/\S+/g, ' ');
+
 /** Nothing to answer: a link, a mention, emoji or punctuation on their own, or a one-word reaction. */
 export function noContent(text: string): boolean {
-  const rest = text
-    .replace(/https?:\/\/\S+/g, ' ')
+  const rest = withoutLinks(text)
     .replace(/<a?:\w+:\d+>|<[@#][!&]?\d+>/g, ' ')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();

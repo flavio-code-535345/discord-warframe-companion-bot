@@ -314,3 +314,18 @@ test('crawler waits for a busy request budget instead of giving up the refresh, 
   };
   await assert.rejects(new WikiCrawler(new WikiIndex(':memory:'), blocked, 0, 0).refresh(), /not being called/);
 });
+
+test('the answer pipeline gets the sections after the best one when there is room ("Rewards" is followed by what the rewards are)', () => {
+  const index = new WikiIndex(':memory:');
+  index.putPage('The Icebind', 1, [
+    { section: 'Introduction', body: 'The Icebind is a weekly game mode reached by speaking to Cephalon Melica on Yuvan Peak.' },
+    { section: 'Side Objectives', body: 'Succeeding in a side objective rewards a Frozen Key to every player in the squad.' },
+    { section: 'Rewards', body: 'Rewards come from opening chests with the keys earned during the run.' },
+    { section: 'Crested Frozen Chests', body: 'A Crested Frozen Chest holds 7,500-100,000 Kuva and an Archon Shard.' },
+    { section: 'Lore', body: 'Melica studied the rewards of the old Orokin in the frozen ruins.' },
+  ]);
+  const text = index.search('what rewards can the icebind give', 1, { pageChunks: 2, pageChars: 2600 })[0]!.extract;
+  assert.match(text, /\*\*Rewards\*\*[\s\S]*\*\*Crested Frozen Chests\*\*\n.*100,000 Kuva/);
+  assert.doesNotMatch(text, /Lore/, 'never story sections');
+  assert.doesNotMatch(index.search('what rewards can the icebind give', 1)[0]!.extract, /Crested/, 'other callers keep their short passages');
+});
