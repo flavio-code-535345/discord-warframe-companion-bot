@@ -390,7 +390,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
   // The headline numbers above the tiles: what changes next, at a glance.
   const stat = (label: string, value: string, sub: string) => `<div class="stat"><span class="sl">${label}</span><b class="sv">${value}</b><span class="ss">${sub}</span></div>`;
   const nextCycle = s.cycles
-    ?.filter((c) => c.endsAt)
+    ?.filter((c) => c.endsAt && Date.parse(c.endsAt) > Date.now())
     .reduce<CycleStatus | null>((soonest, c) => (!soonest || Date.parse(c.endsAt!) < Date.parse(soonest.endsAt!) ? c : soonest), null);
   const strip = [
     nextCycle ? stat('Next change', `${nextCycle.icon} ${e(nextCycle.name)}`, `${e(nextCycle.state)} ends ${countdown(nextCycle.endsAt)}`) : '',

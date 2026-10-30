@@ -199,7 +199,7 @@ header h1{margin:0;font-size:20px}
 .pill b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
 .off .dot{background:var(--bad);box-shadow:0 0 8px var(--bad)}
-.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:26px}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:26px}
 .stat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--r);border:1px solid var(--line-2);background:linear-gradient(160deg,var(--surface),rgba(59,154,199,.08))}
 .sl{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
 .sv{font-size:20px;line-height:1.2;overflow-wrap:anywhere}
@@ -216,9 +216,9 @@ header h1{margin:0;font-size:20px}
 .chip:hover{color:var(--text)}
 .chip.on{background:rgba(59,154,199,.18);border-color:var(--accent);color:var(--text)}
 .scroll{max-height:380px;overflow:auto}
-.fx td{padding:5px 6px 5px 0;text-align:left;border-top:1px solid var(--line);vertical-align:top}
-.fx td.t{color:var(--muted);white-space:nowrap}
-.fx td.v{text-align:right;white-space:nowrap}
+.tile .fx td{padding:5px 6px 5px 0;text-align:left;border-top:1px solid var(--line);vertical-align:top}
+.tile .fx td.t{color:var(--muted);white-space:nowrap}
+.tile .fx td.v{text-align:right;white-space:nowrap;padding-right:0}
 tr[hidden]{display:none}
 .tile h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 6px;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
 .tile h2 .cd,.tile h2 .x{text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
