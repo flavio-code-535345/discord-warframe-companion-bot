@@ -3,6 +3,7 @@ import type { AppContext } from '../context.js';
 import type { RsvpStatus } from '../db.js';
 import { closeSquad, setSquadVoiceAccess } from '../lfg/voice.js';
 import { UserError, renderEvent, renderLfg } from '../services/clan.js';
+import { handleAlertsButton } from './alerts-panel.js';
 import { handleBackupButton } from './commands/backup.js';
 import { handlePurgeButton } from './commands/moderation.js';
 import { handleVerifyButton } from './verification.js';
@@ -20,6 +21,10 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
   }
   if (kind === 'backup') {
     await handleBackupButton(interaction, ctx, rawId ?? '', action ?? '');
+    return;
+  }
+  if (kind === 'alerts') {
+    await handleAlertsButton(interaction, ctx, rawId ?? '');
     return;
   }
   if (kind === 'verify') {

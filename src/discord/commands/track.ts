@@ -44,6 +44,19 @@ export const track: Command = {
         ),
     )
     .addSubcommand((s) => s.setName('baro').setDescription("Baro Ki'Teer arriving at a relay"))
+    .addSubcommand((s) =>
+      s
+        .setName('arbitration')
+        .setDescription('A new Arbitration starting (every hour), optionally only one mission type')
+        .addStringOption((o) => o.setName('type').setDescription('Mission type, e.g. Defense or Survival (empty = every arbitration)').setAutocomplete(true)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('sortie')
+        .setDescription('The daily sortie, optionally only when it has a certain mission')
+        .addStringOption((o) => o.setName('mission').setDescription('Mission type, e.g. Spy (empty = every sortie)').setAutocomplete(true)),
+    )
+    .addSubcommand((s) => s.setName('archon').setDescription('The weekly Archon Hunt resetting'))
     .addSubcommand((s) => s.setName('list').setDescription('Your trackers'))
     .addSubcommand((s) =>
       s
@@ -96,6 +109,12 @@ export const track: Command = {
     } else if (sub === 'cycle') {
       const [cycle, state] = interaction.options.getString('which', true).split(':') as [string, string];
       spec = { kind: 'cycle', cycle, state };
+    } else if (sub === 'arbitration') {
+      spec = { kind: 'arbitration', type: interaction.options.getString('type')?.trim() || undefined };
+    } else if (sub === 'sortie') {
+      spec = { kind: 'sortie', mission: interaction.options.getString('mission')?.trim() || undefined };
+    } else if (sub === 'archon') {
+      spec = { kind: 'archon' };
     } else {
       spec = { kind: 'baro' };
     }

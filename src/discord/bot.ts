@@ -7,11 +7,13 @@ import {
   MessageFlags,
   Partials,
   type ButtonInteraction,
+  type StringSelectMenuInteraction,
   type ModalSubmitInteraction,
 } from 'discord.js';
 import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
+import { handleAlertsSelect } from './alerts-panel.js';
 import { handleButton } from './buttons.js';
 import { handleVoiceStateUpdate } from '../lfg/autovc.js';
 import { handleHoneypotMessage } from '../moderation/honeypot.js';
@@ -62,7 +64,7 @@ export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MES
   return new Client({ intents, partials: [Partials.Channel, Partials.Message, Partials.Reaction] });
 }
 
-async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {
+async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {
   const message = err instanceof UserError ? err.message : 'Something went wrong. The error has been logged.';
   if (!(err instanceof UserError)) console.error(`[discord] interaction ${interaction.id} failed:`, err);
   const payload = { content: `⚠️ ${message}`, flags: MessageFlags.Ephemeral } as const;
@@ -139,6 +141,15 @@ export function attachHandlers(ctx: AppContext): void {
     if (interaction.isButton()) {
       try {
         await handleButton(interaction, ctx);
+      } catch (err) {
+        await replyError(interaction, err);
+      }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('alerts:')) {
+      try {
+        await handleAlertsSelect(interaction, ctx);
       } catch (err) {
         await replyError(interaction, err);
       }

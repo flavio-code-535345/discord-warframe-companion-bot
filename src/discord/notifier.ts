@@ -4,6 +4,7 @@ import { getSendableChannel, refreshEventMessage } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
 import { NOTABLE_REWARD, type WorldState, alertName, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
+import { alertsComponents } from './alerts-panel.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
 import { summaryEmbed, summaryHash } from './summary.js';
@@ -76,8 +77,8 @@ const SUMMARY_MIN_EDIT_MS = 2 * 60_000;
 export interface SummaryChannel {
   id: string;
   guildId: string;
-  send(payload: { content?: string; embeds?: EmbedBuilder[]; allowedMentions: { parse?: []; roles?: string[] } }): Promise<{ id: string }>;
-  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[] }): Promise<unknown>; delete(messageId: string): Promise<unknown>; fetch(messageId: string): Promise<unknown> };
+  send(payload: { content?: string; embeds?: EmbedBuilder[]; components?: ReturnType<typeof alertsComponents>; allowedMentions: { parse?: []; roles?: string[] } }): Promise<{ id: string }>;
+  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[]; components?: ReturnType<typeof alertsComponents> }): Promise<unknown>; delete(messageId: string): Promise<unknown>; fetch(messageId: string): Promise<unknown> };
 }
 
 /** An unchanged summary is not edited, so every so often it is checked that the message is still there (someone may have deleted it). */
@@ -118,7 +119,8 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
   const key = `alerts_summary:${channel.id}`;
   const link = (id: string) => `https://discord.com/channels/${channel.guildId}/${channel.id}/${id}`;
   const embed = summaryEmbed(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
-  const hash = summaryHash(embed);
+  // The suffix versions the buttons under the message, so a message saved without them is edited once to get them.
+  const hash = `${summaryHash(embed)}:c1`;
   const saved = readRecord(store.getMeta(key));
   // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
   const gone = (err: unknown) => {
@@ -138,14 +140,14 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
   embed.setTimestamp(now);
   if (saved && !missing) {
     try {
-      await channel.messages.edit(saved.messageId, { embeds: [embed] });
+      await channel.messages.edit(saved.messageId, { embeds: [embed], components: alertsComponents() });
       store.setMeta(key, JSON.stringify({ messageId: saved.messageId, hash, at: now, checked: now }));
       return link(saved.messageId);
     } catch (err) {
       gone(err);
     }
   }
-  const sent = await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  const sent = await channel.send({ embeds: [embed], components: alertsComponents(), allowedMentions: { parse: [] } });
   store.setMeta(key, JSON.stringify({ messageId: sent.id, hash, at: now, checked: now }));
   return link(sent.id);
 }

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { EmbedBuilder } from 'discord.js';
 import { discordTime, toMs } from '../time.js';
 import { projectCycles } from '../warframe/cycles.js';
-import { NOTABLE_REWARD, type WorldState, alertName, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
+import { NOTABLE_REWARD, type WorldState, activeArbitration, alertName, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
 import { COLORS, clampLines } from './embeds.js';
 
 /**
@@ -14,18 +14,6 @@ import { COLORS, clampLines } from './embeds.js';
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
 const FIELD_LIMIT = 1000;
-
-/** The `arbitration` entry of the warframestat.us world state. */
-interface Arbitration {
-  node?: string;
-  type?: string;
-  enemy?: string;
-  archwing?: boolean;
-  sharkwing?: boolean;
-  expired?: boolean;
-  activation?: Parameters<typeof toMs>[0];
-  expiry?: Parameters<typeof toMs>[0];
-}
 
 export interface SummaryOptions {
   botName: string;
@@ -67,7 +55,7 @@ export function summaryEmbed(ws: WorldState, opts: SummaryOptions, now = Date.no
       open.some((f) => f.isHard) ? `🔱 ${open.filter((f) => f.isHard).length} Steel Path` : '',
       open.some((f) => f.isStorm) ? `🌀 ${open.filter((f) => f.isStorm).length} Void Storm${open.filter((f) => f.isStorm).length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
-    return `${counts.map(([t, n]) => `**${t}** ${n}`).join(' · ')}${extra.length ? `\n${extra.join(' · ')}` : ''}\n-# Details: /wf fissures`;
+    return `${counts.map(([t, n]) => `**${t}** ${n}`).join(' · ')}${extra.length ? `\n${extra.join(' · ')}` : ''}\n-# 🔱 Steel Path = hard mode · 🌀 Void Storm = Railjack fissure · tap **Fissures** below for the full list`;
   });
 
   section(fields, `⚔️ Daily sortie${ws.sortie?.boss ? ` — ${ws.sortie.boss}` : ''}`, () => {
@@ -85,11 +73,10 @@ export function summaryEmbed(ws: WorldState, opts: SummaryOptions, now = Date.no
   });
 
   section(fields, '⚖️ Arbitration', () => {
-    // The parser's types do not know this feed field. warframestat.us sends a placeholder (activation 1970, expired) when none is running.
-    const a = (ws as { arbitration?: Arbitration }).arbitration;
-    if (!a || a.expired || !a.node || toMs(a.activation) <= 0 || toMs(a.activation) > now || !live(a.expiry)) return null;
+    const a = activeArbitration(ws, now);
+    if (!a) return null;
     const flags = [a.archwing ? 'Archwing' : '', a.sharkwing ? 'Sharkwing' : ''].filter(Boolean);
-    return `**${a.type ?? 'Unknown'}** — ${a.node}${a.enemy ? ` · ${a.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}\nEnds ${discordTime(a.expiry)}`;
+    return `**${a.type ?? 'Unknown'}** — ${a.node}${a.enemy ? ` · ${a.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}\nEnds ${discordTime(a.expiry)}\n-# Endless mission that changes every hour and drops Vitus Essence`;
   });
 
   section(fields, "👑 Baro Ki'Teer", () => {
@@ -102,16 +89,17 @@ export function summaryEmbed(ws: WorldState, opts: SummaryOptions, now = Date.no
   section(fields, '🔱 Steel Path honors', () => {
     const sp = ws.steelPath;
     if (!sp?.currentReward || !live(sp.expiry)) return null;
-    return `${sp.currentReward.name} — ${sp.currentReward.cost} Steel Essence\nRotates ${discordTime(sp.expiry)}`;
+    return `${sp.currentReward.name} — ${sp.currentReward.cost} Steel Essence\nRotates ${discordTime(sp.expiry)}\n-# This week's reward from Teshin`;
   });
 
   section(fields, '⚠️ Alerts', () => {
     const open = (ws.alerts ?? []).filter((a) => live(a.expiry));
     if (!open.length) return null;
-    return clampLines(
+    const lines = clampLines(
       open.map((a) => `**${alertName(a)}** — ${a.mission.node} · ${rewardText(a.mission.reward)} · ends ${discordTime(a.expiry)}`),
-      FIELD_LIMIT,
+      FIELD_LIMIT - 90,
     );
+    return `${lines}\n-# Time-limited missions; only worthwhile rewards ping the alerts role`;
   });
 
   section(fields, '🎯 Invasions worth running', () => {
@@ -131,7 +119,7 @@ export function summaryEmbed(ws: WorldState, opts: SummaryOptions, now = Date.no
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)
     .setTitle('🌌 Warframe right now')
-    .setDescription(`Updated by ${opts.botName} for ${opts.clanName}. This message is edited as things change.`)
+    .setDescription(`Live overview for ${opts.clanName}, edited as things change.\n**Tap a button** for details, or **pick something in the menu** to get a DM from ${opts.botName} when it shows up.`)
     .setFooter({ text: stale ?? `${opts.botName} · ${opts.clanName}`, iconURL: opts.iconURL });
   if (fields.length) embed.addFields(fields);
   else embed.setDescription('Nothing to show right now: the world state has no data.');

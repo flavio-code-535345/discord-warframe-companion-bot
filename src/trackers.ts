@@ -1,6 +1,6 @@
 import { own } from './own.js';
 import { type TimeInput, toMs } from './time.js';
-import { type WorldState, isBaroHere, resurgenceItemName, rewardText } from './warframe/worldstate.js';
+import { type WorldState, activeArbitration, isBaroHere, resurgenceItemName, rewardText } from './warframe/worldstate.js';
 import { projectCycles } from './warframe/cycles.js';
 
 /**
@@ -11,7 +11,10 @@ export type TrackerSpec =
   | { kind: 'reward'; keyword: string }
   | { kind: 'fissure'; tier?: string; mission?: string; steelPath?: boolean; storm?: boolean }
   | { kind: 'cycle'; cycle: string; state: string }
-  | { kind: 'baro' };
+  | { kind: 'baro' }
+  | { kind: 'arbitration'; type?: string }
+  | { kind: 'sortie'; mission?: string }
+  | { kind: 'archon' };
 
 export const MAX_TRACKERS_PER_USER = 15;
 
@@ -54,6 +57,8 @@ export interface Trackable {
   expiry?: TimeInput;
   fissure?: { tier: string; mission: string; steelPath: boolean; storm: boolean };
   cycle?: { cycle: string; state: string };
+  arbitration?: { type: string };
+  sortie?: { missions: string[] };
 }
 
 export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[] {
@@ -94,6 +99,43 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
     out.push({ key, kind: 'baro', title: "Baro Ki'Teer has arrived", detail: `At ${ws.voidTrader.location} with ${items.length} items`, expiry: ws.voidTrader.expiry });
     out.push({ key: `${key}:items`, kind: 'reward', title: "Baro Ki'Teer's inventory", rewards: items, detail: `At ${ws.voidTrader.location}`, expiry: ws.voidTrader.expiry });
   }
+
+  const arb = activeArbitration(ws, now);
+  if (arb) {
+    const flags = [arb.archwing ? 'Archwing' : '', arb.sharkwing ? 'Sharkwing' : ''].filter(Boolean);
+    const type = arb.type ?? 'Unknown';
+    out.push({
+      key: `arbitration:${toMs(arb.activation)}`,
+      kind: 'arbitration',
+      title: `Arbitration: ${type}`,
+      detail: `${arb.node}${arb.enemy ? ` · ${arb.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}`,
+      expiry: arb.expiry,
+      arbitration: { type },
+    });
+  }
+  if (ws.sortie && live(ws.sortie.expiry)) {
+    const variants = ws.sortie.variants ?? [];
+    out.push({
+      key: `sortie:${ws.sortie.id}`,
+      kind: 'sortie',
+      title: `Daily sortie${ws.sortie.boss ? `: ${ws.sortie.boss}` : ''}`,
+      detail: variants.map((v) => `${v.missionType} (${v.node})`).join(' · '),
+      expiry: ws.sortie.expiry,
+      sortie: { missions: variants.map((v) => v.missionType) },
+    });
+  }
+  if (ws.archonHunt && live(ws.archonHunt.expiry)) {
+    out.push({
+      key: `archon:${ws.archonHunt.id}`,
+      kind: 'archon',
+      title: `Archon Hunt${ws.archonHunt.boss ? `: ${ws.archonHunt.boss}` : ''}`,
+      detail: (ws.archonHunt.missions ?? []).map((m) => `${m.type} (${m.node})`).join(' · '),
+      expiry: ws.archonHunt.expiry,
+    });
+  }
+  // The Duviri Circuit's Warframe choices change weekly: a reward tracker such as "Mesa" matches them like any other reward.
+  const circuit = (ws.duviriCycle as { choices?: { category?: string; choices?: string[] }[] } | undefined)?.choices?.find((c) => c.category === 'normal')?.choices;
+  if (circuit?.length) out.push({ key: `circuit:${circuit.join(',')}`, kind: 'reward', title: 'Duviri Circuit (Warframes)', rewards: circuit, detail: "This week's Circuit choices" });
 
   for (const f of ws.fissures ?? []) {
     if (!live(f.expiry)) continue;
@@ -151,6 +193,12 @@ export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
       return t.cycle && t.cycle.cycle === spec.cycle && t.cycle.state === spec.state ? [] : null;
     case 'baro':
       return [];
+    case 'arbitration':
+      return spec.type && t.arbitration?.type.toLowerCase() !== spec.type.toLowerCase() ? null : [];
+    case 'sortie':
+      return spec.mission && !t.sortie?.missions.some((m) => normMission(m) === normMission(spec.mission!)) ? null : [];
+    case 'archon':
+      return [];
   }
 }
 
@@ -167,6 +215,12 @@ export function describeTracker(spec: TrackerSpec): string {
       return CYCLE_CHOICES.find((c) => c.cycle === spec.cycle && c.state === spec.state)?.label ?? `${spec.cycle} ${spec.state}`;
     case 'baro':
       return "Baro Ki'Teer arrives";
+    case 'arbitration':
+      return `Arbitration${spec.type ? ` (${spec.type})` : ' (any)'}`;
+    case 'sortie':
+      return spec.mission ? `Daily sortie with ${spec.mission}` : 'Daily sortie (every reset)';
+    case 'archon':
+      return 'Weekly Archon Hunt';
   }
 }
 

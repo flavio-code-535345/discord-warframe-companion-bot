@@ -339,6 +339,29 @@ export function rewardText(r: RewardLike | undefined | null): string {
   return parts.join(', ') || '—';
 }
 
+/** The `arbitration` entry of the warframestat.us world state (the parser's types do not know this field). */
+export interface Arbitration {
+  node?: string;
+  type?: string;
+  enemy?: string;
+  archwing?: boolean;
+  sharkwing?: boolean;
+  expired?: boolean;
+  activation?: Parameters<typeof toMs>[0];
+  expiry?: Parameters<typeof toMs>[0];
+}
+
+/**
+ * The arbitration that is running now, or null. When none runs the feed sends a placeholder (activation 1970, expired, node SolNode000),
+ * so that, one that has ended and one that has not started are all null.
+ */
+export function activeArbitration(ws: WorldState, now = Date.now()): (Arbitration & { node: string; activation: NonNullable<Arbitration['activation']>; expiry: NonNullable<Arbitration['expiry']> }) | null {
+  const a = (ws as { arbitration?: Arbitration }).arbitration;
+  if (!a || a.expired || !a.node || a.node === 'SolNode000' || !a.activation || !a.expiry) return null;
+  if (toMs(a.activation) <= 0 || toMs(a.activation) > now || toMs(a.expiry) <= now) return null;
+  return a as ReturnType<typeof activeArbitration>;
+}
+
 /** True while Baro Ki'Teer is at a relay (the worldstate keeps an entry even while he is away). */
 export function isBaroHere(ws: WorldState, now = Date.now()): boolean {
   const t = ws.voidTrader;

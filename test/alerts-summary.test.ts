@@ -44,7 +44,7 @@ describe('the arbitration in the summary', () => {
   const field = (a: unknown) => fieldsOf(summaryEmbed(world({ arbitration: a }), opts, now))['⚖️ Arbitration'];
 
   it('shows the running arbitration with its mission, enemy and end', () => {
-    assert.match(field(arbitration())!, /^\*\*Defense\*\* — Hydron \(Sedna\) · Grineer\nEnds <t:\d+:R>$/);
+    assert.match(field(arbitration())!, /^\*\*Defense\*\* — Hydron \(Sedna\) · Grineer\nEnds <t:\d+:R>\n-# Endless mission/);
     assert.match(field(arbitration({ type: 'Interception', archwing: true }))!, /Grineer · Archwing\n/);
   });
 
