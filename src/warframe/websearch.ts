@@ -43,10 +43,27 @@ export interface WebResult extends WikiResult {
 
 export const withWarframe = (q: string): string => (/warframe/i.test(q) ? q : `warframe ${q}`);
 
-export async function webSearch(baseUrl: string | undefined, query: string, limit = 3, fetcher: Fetcher = fetch): Promise<WebResult[]> {
-  if (!baseUrl || !query.trim() || !aiToggle('websearch')) return [];
+export interface WebSearchOptions {
+  /** Any website counts and the query is sent as written (the agent's search_web). Default: Warframe sources only, "warframe" added to the query. */
+  open?: boolean;
+}
+
+/** An http(s) link; with `open`, any site, otherwise only the Warframe hosts. */
+const usable = (url: string, open: boolean): boolean => {
+  if (!open) return allowedUrl(url) && okForHost(url);
   try {
-    const params = new URLSearchParams({ q: withWarframe(query.trim().slice(0, 200)), format: 'json', language: 'en', categories: 'general,news', safesearch: '0' });
+    return ['https:', 'http:'].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+};
+
+export async function webSearch(baseUrl: string | undefined, query: string, limit = 3, fetcher: Fetcher = fetch, opts: WebSearchOptions = {}): Promise<WebResult[]> {
+  if (!baseUrl || !query.trim() || !aiToggle('websearch')) return [];
+  const open = opts.open === true;
+  try {
+    const q = query.trim().slice(0, 200);
+    const params = new URLSearchParams({ q: open ? q : withWarframe(q), format: 'json', language: 'en', categories: 'general,news', safesearch: '0' });
     const res = await fetcher(`${baseUrl.replace(/\/+$/, '')}/search?${params}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(6_000) });
     if (!res.ok) {
       console.warn(`[websearch] SearXNG answered HTTP ${res.status} (is the json format enabled in its settings?)`);
@@ -56,7 +73,7 @@ export async function webSearch(baseUrl: string | undefined, query: string, limi
     const seen = new Set<string>();
     const out: WebResult[] = [];
     for (const r of data.results ?? []) {
-      if (!r.url || !r.title || !allowedUrl(r.url) || !okForHost(r.url) || seen.has(r.url)) continue;
+      if (!r.url || !r.title || !usable(r.url, open) || seen.has(r.url)) continue;
       seen.add(r.url);
       out.push({ title: r.title.slice(0, 120), url: r.url, extract: (r.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 600), published: r.publishedDate ?? null });
       if (out.length >= limit) break;

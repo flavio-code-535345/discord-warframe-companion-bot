@@ -42,6 +42,11 @@ const TOOL_STATUS: Record<string, string> = {
   get_fissures: '🌀 Checking the fissures',
   search_web: '🌐 Searching the web',
   get_clan_info: '🐀 Checking clan info',
+  read_web_page: '📰 Reading a web page',
+  calculate: '🧮 Doing the maths',
+  get_time: '🕐 Checking the time',
+  grade_riven: '🎲 Grading the riven',
+  riven_top_rolls: '🎲 Checking what sells',
 };
 
 export const toolStatus = (tool: string): string => own(TOOL_STATUS, tool) ?? `🔧 Using ${tool}`;

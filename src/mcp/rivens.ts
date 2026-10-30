@@ -7,6 +7,40 @@ import { getRivenWeapons } from '../rivens/market.js';
 import { gradeFor, rivenStatus, topFor } from '../rivens/service.js';
 import { READ_ONLY, tool } from './util.js';
 
+/** A riven grade as plain JSON: shared by the MCP `grade_riven` tool and the agent's tool of the same name. */
+export function rivenGradeSummary(r: Awaited<ReturnType<typeof gradeFor>>): object {
+  const name = (slug: string) => r.names[slug] ?? slug;
+  if (!r.grade) return { weapon: r.weapon.name, grade: null, listings: r.listings, note: 'Too few listings on warframe.market to compare with.' };
+  const g = r.grade;
+  return {
+    weapon: r.weapon.name,
+    grade: g.letter,
+    stats: g.stats.map((s) => ({ stat: name(s.slug), shareOfExpensiveRivens: Number(s.share.toFixed(2)), rank: s.rank, rollPercentile: s.percentile === null ? null : Number(s.percentile.toFixed(2)) })),
+    curse: g.negative ? { stat: name(g.negative.slug), shareOfExpensiveRivens: Number(g.negative.share.toFixed(2)), rank: g.negative.rank } : null,
+    expensiveRivensWithExactBonuses: g.exact,
+    // source 'market': asked warframe.market for exactly these bonuses (complete = that is everything for sale); 'top': only the weapon's priciest stored listings, so prices lean high.
+    comparableListings: g.comparable,
+    marketChecked: g.marketChecked,
+    comparedWith: { ...g.bracket, highPriceLine: r.minPrice },
+    dataReadAt: r.fetchedAt ? new Date(r.fetchedAt).toISOString() : null,
+    stale: r.stale,
+  };
+}
+
+/** What sells for a weapon as plain JSON: shared by the MCP `riven_top_rolls` tool and the agent's tool of the same name. */
+export function rivenTopSummary(r: Awaited<ReturnType<typeof topFor>>): object {
+  const name = (slug: string) => r.names[slug] ?? slug;
+  if (!r.top) return { weapon: r.weapon.name, listings: r.listings, note: 'Too few listings on warframe.market to compare with.' };
+  return {
+    weapon: r.weapon.name,
+    comparedWith: { ...r.top.bracket, highPriceLine: r.minPrice },
+    bonusStats: r.top.stats.map((s) => ({ stat: name(s.slug), share: Number(s.share.toFixed(2)) })),
+    curses: r.top.negatives.map((s) => ({ stat: name(s.slug), share: Number(s.share.toFixed(2)) })),
+    combinations: r.top.combos.map((c) => ({ stats: c.slugs.map(name), listings: c.count, medianPrice: c.median })),
+    dataReadAt: r.fetchedAt ? new Date(r.fetchedAt).toISOString() : null,
+  };
+}
+
 /**
  * Riven analyzer over MCP (same data as /riven): grade a roll by how common it is among the expensive listings on warframe.market,
  * see what sells for a weapon, and check how much the slow background read has gathered.
@@ -25,25 +59,7 @@ export function registerRivenTools(server: McpServer, ctx: AppContext): void {
       },
       annotations: READ_ONLY,
     },
-    tool(async ({ weapon, bonuses, curse }) => {
-      const r = await gradeFor(ctx, { weapon, positives: bonuses, negative: curse });
-      const name = (slug: string) => r.names[slug] ?? slug;
-      if (!r.grade) return { weapon: r.weapon.name, grade: null, listings: r.listings, note: 'Too few listings on warframe.market to compare with.' };
-      const g = r.grade;
-      return {
-        weapon: r.weapon.name,
-        grade: g.letter,
-        stats: g.stats.map((s) => ({ stat: name(s.slug), shareOfExpensiveRivens: Number(s.share.toFixed(2)), rank: s.rank, rollPercentile: s.percentile === null ? null : Number(s.percentile.toFixed(2)) })),
-        curse: g.negative ? { stat: name(g.negative.slug), shareOfExpensiveRivens: Number(g.negative.share.toFixed(2)), rank: g.negative.rank } : null,
-        expensiveRivensWithExactBonuses: g.exact,
-        // source 'market': asked warframe.market for exactly these bonuses (complete = that is everything for sale); 'top': only the weapon's priciest stored listings, so prices lean high.
-        comparableListings: g.comparable,
-        marketChecked: g.marketChecked,
-        comparedWith: { ...g.bracket, highPriceLine: r.minPrice },
-        dataReadAt: r.fetchedAt ? new Date(r.fetchedAt).toISOString() : null,
-        stale: r.stale,
-      };
-    }),
+    tool(async ({ weapon, bonuses, curse }) => rivenGradeSummary(await gradeFor(ctx, { weapon, positives: bonuses, negative: curse }))),
   );
 
   server.registerTool(
@@ -54,19 +70,7 @@ export function registerRivenTools(server: McpServer, ctx: AppContext): void {
       inputSchema: { weapon: z.string().min(2).max(80) },
       annotations: READ_ONLY,
     },
-    tool(async ({ weapon }) => {
-      const r = await topFor(ctx, weapon);
-      const name = (slug: string) => r.names[slug] ?? slug;
-      if (!r.top) return { weapon: r.weapon.name, listings: r.listings, note: 'Too few listings on warframe.market to compare with.' };
-      return {
-        weapon: r.weapon.name,
-        comparedWith: { ...r.top.bracket, highPriceLine: r.minPrice },
-        bonusStats: r.top.stats.map((s) => ({ stat: name(s.slug), share: Number(s.share.toFixed(2)) })),
-        curses: r.top.negatives.map((s) => ({ stat: name(s.slug), share: Number(s.share.toFixed(2)) })),
-        combinations: r.top.combos.map((c) => ({ stats: c.slugs.map(name), listings: c.count, medianPrice: c.median })),
-        dataReadAt: r.fetchedAt ? new Date(r.fetchedAt).toISOString() : null,
-      };
-    }),
+    tool(async ({ weapon }) => rivenTopSummary(await topFor(ctx, weapon))),
   );
 
   server.registerTool(
