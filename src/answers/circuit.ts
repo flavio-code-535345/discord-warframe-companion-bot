@@ -150,7 +150,9 @@ const letter = (week: number) => String.fromCharCode(65 + week);
 const list = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? ''));
 
 /** A "this week / next week / what's on offer" question, which needs no name. */
-const LISTING = /\b(this|next|current|coming)\s+week\b|\bwhat('s| is| are)?\b[^?]*\b(in|on offer|available|offered)\b|\brotation\b|\bright now\b|\bcurrently\b/i;
+const LISTING = /\b(this|next|current|coming)\s+week\b|\bwhat('s| is| are)?\b[^?]*\b(in|on offer|available|offered)\b|\brotation\b|\bright now\b|\bcurrently\b|\bschedule\b|\ball (the )?(incarnons?|adapters?|weeks|warframes)\b/i;
+/** "The full schedule", "all incarnons", "every week": the whole rotation rather than this week and next. */
+const FULL = /\bschedule\b|\b(full|whole|entire|complete)\b[^?]*\b(rotation|list|weeks)\b|\bevery week\b|\ball (the )?(incarnons?|adapters?|weeks|warframes|weapons)\b/i;
 
 export interface CircuitDeps {
   now?: number;
@@ -192,6 +194,17 @@ export async function circuitAnswer(question: string, deps: CircuitDeps = {}): P
       ? 'Run The Circuit with the Steel Path on: you pick two of the week\'s five adapters as the tier 5 and 10 rewards.'
       : 'Run the normal Circuit: you pick one of the week\'s three Warframes, its parts come from the tier rewards.';
   const source = `-# ${table.length}-week rotation from the wiki's The Circuit page${current >= 0 ? `; this week is week ${current + 1} (${letter(current)})` : ''}.`;
+
+  // "The full schedule": every week of the rotation, from this one on, each with the Monday it starts.
+  if (!name && FULL.test(question)) {
+    const rows = table.map((_, k) => {
+      const w = current >= 0 ? (current + k) % table.length : k;
+      const when = current < 0 ? '' : k === 0 ? ' · **this week**' : ` · from ${discordTime(reset + (k - 1) * WEEK_MS, 'D')}`;
+      return `**Week ${w + 1} (${letter(w)})**${when}: ${list(table[w]!)}`;
+    });
+    const note = current < 0 ? " (I can't see this week's offerings right now, so the weeks are listed without dates)" : '';
+    return `The ${circuitName} rotation, Operator${note}:\n${rows.join('\n')}\nAfter week ${table.length} it starts again at week 1. ${how}\n${source}`;
+  }
 
   if (current < 0) {
     const week = name ? table.findIndex((names) => names.includes(name)) : -1;

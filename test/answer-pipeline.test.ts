@@ -204,6 +204,19 @@ describe('the Circuit rotation', () => {
     assert.match((await circuitAnswer('when is rhino in the circuit', deps()))!, /\*\*Rhino\*\* is next in the Circuit in \*\*6 weeks\*\*/);
   });
 
+  it('gives the full schedule from this week on, every week with its start date', async () => {
+    const a = (await circuitAnswer('What is the full schedule for all incarnons', deps()))!;
+    const weeks = [...a.matchAll(/\*\*Week (\d) \(([A-I])\)\*\*/g)].map((m) => Number(m[1]));
+    assert.deepEqual(weeks, [9, 1, 2, 3, 4, 5, 6, 7, 8], 'all nine, starting with this week');
+    assert.match(a, /\*\*Week 9 \(I\)\*\* · \*\*this week\*\*: Vectis/);
+    assert.match(a, /\*\*Week 1 \(A\)\*\* · from <t:1793577600:D>: Braton/);
+    assert.match(a, /\*\*Week 5 \(E\)\*\* · from <t:1795996800:D>: Torid/);
+    const blind = (await circuitAnswer('full incarnon rotation', { ...deps(), world: async () => Promise.reject(new Error('off')) }))!;
+    assert.match(blind, /listed without dates/);
+    assert.match(blind, /\*\*Week 1 \(A\)\*\*: Braton/);
+    assert.equal(await circuitAnswer('what does the full incarnon form do', deps()), null, 'not a schedule question');
+  });
+
   it('says so instead of guessing when it cannot see this week, and leaves other questions alone', async () => {
     const blind = { ...deps(), world: async () => Promise.reject(new Error('off')) };
     const a = (await circuitAnswer('When can I get Torid incarnon next?', blind))!;
