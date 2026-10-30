@@ -48,7 +48,7 @@ export function startHttpServer(ctx: AppContext): Server {
       const nonce = randomBytes(16).toString('base64');
       res
         .set({
-          'Content-Security-Policy': `default-src 'none'; img-src 'self'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+          'Content-Security-Policy': `default-src 'none'; img-src 'self'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
           'Cache-Control': 'no-store',
           'X-Content-Type-Options': 'nosniff',
         })

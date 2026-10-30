@@ -7,7 +7,9 @@ import {
   FISSURE_TIERS,
   NOTABLE_REWARD,
   type WorldState,
+  activeArbitration,
   archimedeaName,
+  foldAlerts,
   getWorldState,
   worldStateInfo,
   SOURCE_LAG_MS,
@@ -37,6 +39,11 @@ export interface WorldTiles {
   archimedea: { name: string; endsAt: string | null; missions: string[] }[];
   nightwave: { season: number; endsAt: string | null; challenges: { title: string; kind: string; reputation: number }[] } | null;
   resurgence: { endsAt: string | null; items: string[] } | null;
+  arbitration: { type: string; node: string; enemy: string; flags: string[]; endsAt: string | null } | null;
+  /** Alerts for display: an event's repeated resource missions are one group. */
+  alerts: { name: string; count: number; where: string[]; reward: string; endsAt: string | null }[];
+  /** Every open fissure (at most 100), for the page's filters. */
+  fissureList: { tier: string; mission: string; node: string; enemy: string; steelPath: boolean; storm: boolean; endsAt: string | null }[];
 }
 
 export interface StatusData {
@@ -188,6 +195,19 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
       const v = ws.vaultTrader;
       return v?.inventory?.length && live(v.expiry) ? { endsAt: iso(v.expiry), items: v.inventory.map((i) => resurgenceItemName(i.item)) } : null;
     }, null),
+    arbitration: part(() => {
+      const a = activeArbitration(ws, now);
+      return a ? { type: a.type ?? 'Unknown', node: a.node, enemy: a.enemy ?? '', flags: [a.archwing ? 'Archwing' : '', a.sharkwing ? 'Sharkwing' : ''].filter(Boolean), endsAt: iso(a.expiry) } : null;
+    }, null),
+    alerts: part(() => foldAlerts((ws.alerts ?? []).filter((a) => live(a.expiry))).map((g) => ({ name: g.name, count: g.count, where: g.where, reward: g.reward, endsAt: iso(g.endsAt) })), []),
+    fissureList: part(() => {
+      const order = (tier: string) => (FISSURE_TIERS as readonly string[]).indexOf(tier) + 1 || 99;
+      return (ws.fissures ?? [])
+        .filter((f) => live(f.expiry))
+        .sort((a, b) => order(a.tier) - order(b.tier) || toMs(a.expiry) - toMs(b.expiry))
+        .slice(0, 100)
+        .map((f) => ({ tier: f.tier, mission: f.missionType ?? '', node: f.node ?? '', enemy: f.enemy ?? '', steelPath: !!f.isHard, storm: !!f.isStorm, endsAt: iso(f.expiry) }));
+    }, []),
   };
 }
 
@@ -287,10 +307,17 @@ const countdown = (isoTime: string | null) =>
 const SCRIPT = `
 const fmt=ms=>{const d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5),m=Math.floor(ms%36e5/6e4),s=Math.floor(ms%6e4/1e3);return d?d+'d '+h+'h':h?h+'h '+m+'m':m?m+'m '+s+'s':s+'s'};
 const local=new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-document.querySelectorAll('time[data-local]').forEach(t=>{t.textContent=local.format(new Date(t.dateTime))});
-const loaded=Date.now();let reloadAt=loaded+300000;
-function tick(){const now=Date.now();document.querySelectorAll('[data-until]').forEach(el=>{const left=Date.parse(el.dataset.until)-now;el.textContent=left>0?'in '+fmt(left):'now';if(left<=0)reloadAt=Math.min(reloadAt,Math.max(loaded+30000,now+5000))});if(now>=reloadAt)location.reload()}
-tick();setInterval(tick,1000);
+let kind='all',tier='all',last=Date.now(),busy=false;
+try{const s=JSON.parse(sessionStorage.getItem('fissures')||'{}');kind=s.kind||'all';tier=s.tier||'all'}catch(e){}
+function localize(){document.querySelectorAll('time[data-local]').forEach(t=>{t.textContent=local.format(new Date(t.dateTime))})}
+function filt(){
+document.querySelectorAll('.chip').forEach(c=>{const on=c.dataset.kind!==undefined?c.dataset.kind===kind:c.dataset.tier===tier;c.classList.toggle('on',on)});
+let n=0;document.querySelectorAll('tr[data-tier]').forEach(r=>{const show=(kind==='all'||r.dataset.kind===kind)&&(tier==='all'||r.dataset.tier===tier);r.hidden=!show;if(show)n++});
+const c=document.querySelector('[data-fcount]');if(c)c.textContent=n+' shown'}
+document.addEventListener('click',e=>{const c=e.target.closest&&e.target.closest('.chip');if(!c)return;if(c.dataset.kind!==undefined)kind=c.dataset.kind;else tier=c.dataset.tier;try{sessionStorage.setItem('fissures',JSON.stringify({kind:kind,tier:tier}))}catch(x){}filt()});
+async function refresh(){if(busy)return;busy=true;try{const r=await fetch('/',{cache:'no-store'});if(r.ok){const m=new DOMParser().parseFromString(await r.text(),'text/html').querySelector('main');if(m){document.querySelector('main').innerHTML=m.innerHTML;localize();filt()}}}catch(e){}last=Date.now();busy=false}
+function tick(){const now=Date.now();let over=false;document.querySelectorAll('[data-until]').forEach(el=>{const left=Date.parse(el.dataset.until)-now;el.textContent=left>0?'in '+fmt(left):'now';if(left<=0)over=true});if(over&&now-last>15000)refresh()}
+localize();filt();tick();setInterval(tick,1000);setInterval(refresh,60000);
 `;
 
 export function renderStatusPage(s: StatusData, nonce: string): string {
@@ -327,17 +354,53 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
     s.cycles ? s.cycles.map((c) => row(`${c.icon} ${e(c.name)} <b>${e(c.state)}</b>`, countdown(c.endsAt), c.note ? e(c.note) : '')).join('') : unavailable,
   );
 
+  const fissureTotal = w ? w.fissures.reduce((n, f) => n + f.normal + f.steelPath + f.storm, 0) : 0;
+  const chip = (attr: string, value: string, label: string) => `<button type="button" class="chip" data-${attr}="${e(value)}">${e(label)}</button>`;
   const fissures = tile(
     'Void fissures',
-    w ? `<span class="x">${w.fissures.reduce((n, f) => n + f.normal + f.steelPath + f.storm, 0)} active</span>` : '',
+    w ? `<span class="x">${fissureTotal} active · <span data-fcount>${w.fissureList.length} shown</span></span>` : '',
     !w
       ? unavailable
-      : w.fissures.length
-        ? `<table><tr><th>Tier</th><th>Normal</th><th>Steel Path</th><th>Storm</th></tr>${w.fissures
-            .map((f) => `<tr><td>${e(f.tier)}</td>${[f.normal, f.steelPath, f.storm].map((n) => `<td class="${n ? '' : 'z'}">${n}</td>`).join('')}</tr>`)
-            .join('')}</table>`
+      : w.fissureList.length
+        ? `<div class="chips">${[chip('kind', 'all', 'All'), chip('kind', 'normal', 'Normal'), chip('kind', 'sp', '🔱 Steel Path'), chip('kind', 'storm', '🌀 Storm')].join('')}</div>
+<div class="chips">${[chip('tier', 'all', 'Every tier'), ...w.fissures.map((f) => chip('tier', f.tier, `${f.tier} ${f.normal + f.steelPath + f.storm}`))].join('')}</div>
+<div class="scroll"><table class="fx"><tbody>${w.fissureList
+            .map((f) => {
+              const k = f.storm ? 'storm' : f.steelPath ? 'sp' : 'normal';
+              return `<tr data-tier="${e(f.tier)}" data-kind="${k}"><td class="t">${e(f.tier)}</td><td>${e(f.mission)}<span class="n">${e(f.node)}${f.enemy ? ` · ${e(f.enemy)}` : ''}${f.steelPath ? ' · 🔱 Steel Path' : ''}${f.storm ? ' · 🌀 Storm' : ''}</span></td><td class="v">${countdown(f.endsAt)}</td></tr>`;
+            })
+            .join('')}</tbody></table></div>`
         : none('No fissures right now.'),
+  ).replace('class="tile"', 'class="tile wide"');
+
+  const arbitration = tile(
+    'Arbitration',
+    w?.arbitration ? countdown(w.arbitration.endsAt) : '',
+    !w
+      ? unavailable
+      : w.arbitration
+        ? `<div class="lead">${e(w.arbitration.type)} — ${e(w.arbitration.node)}</div>${w.arbitration.enemy ? row('Enemy', e(w.arbitration.enemy)) : ''}${w.arbitration.flags.length ? row('Mode', e(w.arbitration.flags.join(', '))) : ''}<p class="n">Endless, changes every hour, drops Vitus Essence.</p>`
+        : none('None running right now. /track arbitration pings you when the next one starts.'),
   );
+
+  const alerts = w?.alerts.length
+    ? tile('Alerts', `<span class="x">${w.alerts.length}</span>`, w.alerts.map((a) => row(`<b>${e(a.name)}</b>`, countdown(a.endsAt), `${e(a.where.join('; '))} · ${e(a.reward)}`)).join(''))
+    : '';
+
+  // The headline numbers above the tiles: what changes next, at a glance.
+  const stat = (label: string, value: string, sub: string) => `<div class="stat"><span class="sl">${label}</span><b class="sv">${value}</b><span class="ss">${sub}</span></div>`;
+  const nextCycle = s.cycles
+    ?.filter((c) => c.endsAt)
+    .reduce<CycleStatus | null>((soonest, c) => (!soonest || Date.parse(c.endsAt!) < Date.parse(soonest.endsAt!) ? c : soonest), null);
+  const strip = [
+    nextCycle ? stat('Next change', `${nextCycle.icon} ${e(nextCycle.name)}`, `${e(nextCycle.state)} ends ${countdown(nextCycle.endsAt)}`) : '',
+    w?.baro ? stat("Baro Ki'Teer", w.baro.here ? 'Here now' : 'Arriving', `${e(w.baro.location)} · ${countdown(w.baro.at)}`) : '',
+    w ? stat('Arbitration', w.arbitration ? e(w.arbitration.type) : 'None', w.arbitration ? `${e(w.arbitration.node)} · ends ${countdown(w.arbitration.endsAt)}` : 'between missions') : '',
+    w?.sortie ? stat('Sortie', e(w.sortie.boss), `resets ${countdown(w.sortie.endsAt)}`) : '',
+    w ? stat('Fissures', String(fissureTotal), `${w.fissures.reduce((n, f) => n + f.steelPath, 0)} Steel Path · ${w.fissures.reduce((n, f) => n + f.storm, 0)} Storm`) : '',
+  ].join('');
+
+  const group = (title: string, hint: string, tiles: string) => (tiles.trim() ? `<section class="group"><h3>${title}<span>${hint}</span></h3><div class="grid">${tiles}</div></section>` : '');
 
   const sortie = !w
     ? tile('Sortie', '', unavailable)
@@ -434,9 +497,11 @@ ${s.archive?.syncing ? '<meta http-equiv="refresh" content="15">' : ''}
 <div><h1>${e(s.botName)}</h1><div class="sub">Companion of ${e(s.clanName)}${s.server && s.server.name !== s.clanName ? ` · ${e(s.server.name)}` : ''}</div></div>
 <div class="pills">${pills}</div>
 </header>
-<div class="tiles">
-${clan}${cycles}${fissures}${sortie}${archon}${baro}${steel}${darvo}${invasions}${events}${nightwave}${archimedea}${resurgence}
-</div>
+${strip ? `<div class="strip">${strip}</div>` : ''}
+${group('Open worlds', 'cycles and the Void Trader', cycles + baro)}
+${group('The Void', 'fissures and Arbitration', fissures + arbitration)}
+${group('Resets', 'daily, weekly and seasonal', sortie + archon + steel + archimedea + nightwave)}
+${group('Events and trading', 'the clan, alerts, invasions and deals', clan + alerts + invasions + events + darvo + resurgence)}
 <footer>World state from warframestat.us · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
 </main>
 <script nonce="${nonce}">${SCRIPT}</script>

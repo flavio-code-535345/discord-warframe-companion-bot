@@ -1,7 +1,7 @@
 // Only the parser's types are used: the world state comes already parsed from warframestat.us, as JSON.
 import type WorldStateParser from 'warframe-worldstate-parser';
 import { readFile, writeFile } from 'node:fs/promises';
-import { toMs } from '../time.js';
+import { type TimeInput, toMs } from '../time.js';
 import { UserError } from '../services/clan.js';
 import { ApiBlockedError, api, apiFetch } from './fetch.js';
 
@@ -303,6 +303,39 @@ export function alertName(a: { mission: { description?: string | null; type?: st
   const title = a.mission.description?.trim();
   if (title && !/^event alert title$/i.test(title)) return title;
   return a.mission.type ? `Event mission (${a.mission.type})` : 'Event mission';
+}
+
+export interface AlertGroup {
+  name: string;
+  count: number;
+  /** One place for a single alert; "Type at Node" for each of a folded group. */
+  where: string[];
+  reward: string;
+  /** The soonest end of the group. */
+  endsAt: TimeInput;
+}
+
+/**
+ * Alerts for display. An event's endless resource missions all carry the same reward, so they are folded into one group;
+ * real alerts stay one each.
+ */
+export function foldAlerts(alerts: WorldState['alerts']): AlertGroup[] {
+  const groups: AlertGroup[] = [];
+  const events = new Map<string, WorldState['alerts']>();
+  for (const a of alerts ?? []) {
+    const reward = rewardText(a.mission.reward);
+    if (alertName(a).startsWith('Event mission')) events.set(reward, [...(events.get(reward) ?? []), a]);
+    else groups.push({ name: alertName(a), count: 1, where: [a.mission.node], reward, endsAt: a.expiry });
+  }
+  for (const [reward, list] of events) {
+    const first = list.reduce((soonest, a) => (toMs(a.expiry) < toMs(soonest.expiry) ? a : soonest));
+    groups.push(
+      list.length === 1
+        ? { name: alertName(first), count: 1, where: [first.mission.node], reward, endsAt: first.expiry }
+        : { name: `${list.length} event missions`, count: list.length, where: list.map((a) => `${a.mission.type ?? 'Mission'} at ${a.mission.node}`), reward, endsAt: first.expiry },
+    );
+  }
+  return groups;
 }
 
 export interface FissureFilter {

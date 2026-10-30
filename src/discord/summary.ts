@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { EmbedBuilder } from 'discord.js';
 import { discordTime, toMs } from '../time.js';
 import { projectCycles } from '../warframe/cycles.js';
-import { NOTABLE_REWARD, type WorldState, activeArbitration, alertName, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
+import { NOTABLE_REWARD, type WorldState, activeArbitration, foldAlerts, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
 import { COLORS, clampLines } from './embeds.js';
 
 /**
@@ -50,27 +50,7 @@ function section(fields: Field[], name: string, build: () => string | null, inli
 
 /** Alerts as lines; an event's endless resource missions share one reward, so they are folded into a single line. */
 function alertLines(alerts: NonNullable<WorldState['alerts']>): string[] {
-  const lines: string[] = [];
-  const events = new Map<string, typeof alerts>();
-  for (const a of alerts) {
-    if (alertName(a).startsWith('Event mission')) {
-      const reward = rewardText(a.mission.reward);
-      events.set(reward, [...(events.get(reward) ?? []), a]);
-    } else {
-      lines.push(`**${alertName(a)}** — ${a.mission.node} · ${rewardText(a.mission.reward)} · ends ${discordTime(a.expiry)}`);
-    }
-  }
-  for (const [reward, group] of events) {
-    if (group.length === 1) {
-      const a = group[0]!;
-      lines.push(`**${alertName(a)}** — ${a.mission.node} · ${reward} · ends ${discordTime(a.expiry)}`);
-      continue;
-    }
-    const where = group.map((a) => `${a.mission.type ?? 'Mission'} at ${a.mission.node}`).join('; ');
-    const next = group.reduce((soonest, a) => (toMs(a.expiry) < toMs(soonest.expiry) ? a : soonest));
-    lines.push(`**${group.length} event missions** — ${where} · ${reward} · first ends ${discordTime(next.expiry)}`);
-  }
-  return lines;
+  return foldAlerts(alerts).map((g) => `**${g.name}** — ${g.where.join('; ')} · ${g.reward} · ${g.count > 1 ? 'first ends' : 'ends'} ${discordTime(g.endsAt)}`);
 }
 
 export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.now()): EmbedBuilder[] {

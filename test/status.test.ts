@@ -94,3 +94,35 @@ test('world tiles come from the worldstate and tolerate missing sections', async
   const html = renderStatusPage(s, 'n');
   for (const text of ['Sortie', 'Alad V', 'Void fissures', "Darvo's deal", 'Invasions', '★']) assert.ok(html.includes(text), text);
 });
+
+test('the page has a headline strip, grouped sections, fissure filters, the arbitration and folded event missions', async () => {
+  const later = new Date(Date.now() + 3_600_000);
+  const event = (id: string, type: string, node: string) => ({ id, expiry: later, mission: { description: 'Event Alert Title', type, node, faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }] } } });
+  const ws = {
+    ...fakeWorldState(),
+    arbitration: { node: 'Hydron (Sedna)', type: 'Survival', enemy: 'Grineer', archwing: false, sharkwing: false, expired: false, activation: new Date(Date.now() - 60_000), expiry: later },
+    sortie: { boss: 'Alad V', faction: 'Corpus', expiry: later, variants: [] },
+    fissures: [
+      { tier: 'Axi', missionType: 'Survival', node: 'Mot (Void)', isHard: true, isStorm: false, expiry: later },
+      { tier: 'Lith', missionType: 'Capture', node: 'Cluster (Veil)', isHard: false, isStorm: true, expiry: later },
+    ],
+    alerts: [event('e1', 'Survival', 'Naeglar (Eris)'), event('e2', 'Defense', 'Saxis (Eris)')],
+  } as unknown as WorldState;
+  const s = await buildStatus(ctx(), async () => ws);
+  assert.equal(s.world?.arbitration?.type, 'Survival');
+  assert.equal(s.world?.alerts.length, 1);
+  assert.equal(s.world?.alerts[0]?.count, 2);
+  assert.deepEqual(s.world?.fissureList.map((f) => [f.tier, f.steelPath, f.storm]), [['Lith', false, true], ['Axi', true, false]]);
+  const html = renderStatusPage(s, 'n');
+  for (const text of ['class="strip"', 'Open worlds', 'The Void', 'Resets', 'Events and trading', 'data-kind="sp"', 'data-tier="Axi"', 'Arbitration', 'Hydron (Sedna)', '2 event missions']) assert.ok(html.includes(text), text);
+  assert.ok(html.includes("connect-src") === false, 'the CSP is set by the server, not the page');
+});
+
+test('the page still renders without a world state', async () => {
+  const s = await buildStatus(ctx(), async () => {
+    throw new Error('down');
+  });
+  const html = renderStatusPage(s, 'n');
+  assert.ok(!html.includes('class="strip"') || html.includes('Next change') === false);
+  assert.ok(html.includes('World state unavailable'));
+});
