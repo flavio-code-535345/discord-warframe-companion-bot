@@ -221,6 +221,3 @@ export async function readProfileCardVia(
   throw new UserError("I couldn't read that screenshot right now. Try again in a minute, or ask a moderator.");
 }
 
-export async function readProfileCard(config: VisionConfig, submission: ImageData, fetcher: Fetcher = fetch, dailyLimit = 100, now = Date.now()): Promise<CardReading> {
-  return (await readProfileCardVia(config, submission, fetcher, dailyLimit, now)).reading;
-}

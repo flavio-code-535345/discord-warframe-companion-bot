@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { type Pixels, MATCH_THRESHOLD, findEmblem, fingerprint, similarity } from '../src/ssroles/emblem.js';
-import { type OcrLine, parseCard, parsePoints, pointsForRank, rankFromPoints } from '../src/ssroles/parse.js';
+import { type OcrLine, parseCard, parsePoints, rankFromPoints } from '../src/ssroles/parse.js';
 
 const line = (text: string, y0: number, confidence = 95, x0 = 100, x1 = 500): OcrLine => ({ text, x0, y0, x1, y1: y0 + 20, confidence });
 
@@ -22,7 +22,6 @@ const CARD: OcrLine[] = [
 ];
 
 test('rank follows the mastery point curve, Legendary ranks every 147,500', () => {
-  assert.equal(pointsForRank(28), 1_960_000);
   assert.equal(rankFromPoints(1_960_000), 28);
   assert.equal(rankFromPoints(1_959_999), 27);
   assert.equal(rankFromPoints(2_250_000), 30);
