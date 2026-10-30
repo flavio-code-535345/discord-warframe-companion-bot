@@ -254,6 +254,7 @@ footer a{color:var(--accent-2)}
   .tile.wide{grid-column:auto}
   .strip{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
   .stat{padding:9px 11px}
+  .stat:last-child:nth-child(odd){grid-column:1/-1}
   .sv{font-size:16px}
   .ss{font-size:12px}
   .group{margin-bottom:16px}
