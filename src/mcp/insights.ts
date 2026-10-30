@@ -1,3 +1,4 @@
+import { embedStatus } from '../wiki/embed.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { chooseModel, setToggle } from '../ai/control.js';
@@ -133,6 +134,8 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           switches: Object.fromEntries(TOGGLE_KEYS.map((k) => [k, aiToggle(k)])),
         },
         wikiIndex: wiki && { pages: wiki.pages, chunks: wiki.chunks, refreshedAt: iso(wiki.refreshedAt) },
+        // Meaning-based reranking of wiki results: whether it is on, paused after a failure (model missing or Ollama down) and how often it ran.
+        wikiEmbeddings: embedStatus(),
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
         features: {
           statusReports: Boolean(s.statusChannelId),

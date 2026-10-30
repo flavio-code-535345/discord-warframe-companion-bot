@@ -51,6 +51,8 @@ export const EnvSchema = z.object({
   LOCAL_AI_MODEL: z.string().optional(),
   LOCAL_AI_KEY: z.string().optional(),
   LOCAL_AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
+  /** Embedding model in the same Ollama (`/ai install tag:nomic-embed-text`) that reranks wiki search results by meaning. Without the model, or without LOCAL_AI_URL, the plain full-text results are used. */
+  EMBED_MODEL: z.string().max(120).default('nomic-embed-text'),
   /** Lets the MCP patch the bot's compiled code live (overlay in the data volume). Remote code execution for whoever holds MCP_AUTH_TOKEN: off by default. */
   ALLOW_CODE_EDIT: bool.default(false),
   /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */

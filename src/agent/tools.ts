@@ -72,7 +72,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: 'search_drops',
-    description: 'Where an item, mod, resource, blueprint or relic drops, with drop chances in percent, from the official drop tables.',
+    description: 'Where an item, mod, resource, blueprint or relic drops, with drop chances in percent, from the official drop tables. Use the exact item name ("Ash Prime Systems Blueprint", "Lith A1"). Covers drops only: quest rewards, vendors and crafting are on the wiki.',
     parameters: { type: 'object', properties: { item: { type: 'string' } }, required: ['item'] },
     run: async (args) => searchDrops(string(args, 'item', 2), 6, 4),
   },
@@ -88,13 +88,14 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: 'search_wiki',
-    description: 'Search the Warframe wiki (a full local copy). Returns the best pages with their text and URLs. Use short keyword queries.',
+    description:
+      'Search the Warframe wiki (a full local copy) for mechanics, how-tos, activities, lore and acquisition. Returns the 3 best pages with the passage that matches, and their URLs. Query with 1-4 keywords such as "Archon Shard" or "Helminth cyst", not a sentence. If the passage is thin, follow up with read_wiki_page.',
     parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     run: async (args) => searchWiki(string(args, 'query', 2), 3),
   },
   {
     name: 'read_wiki_page',
-    description: 'Read a Warframe wiki article as plain text (the first ~8,000 characters), by exact page title as returned by search_wiki.',
+    description: 'Read a whole Warframe wiki article as plain text (the first ~8,000 characters), by exact page title as returned by search_wiki. Use it when a search passage is cut off or lacks the detail asked for (numbers, steps, requirements).',
     parameters: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
     run: async (args) => {
       const title = string(args, 'title');

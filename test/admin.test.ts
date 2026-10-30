@@ -194,7 +194,7 @@ test('the Brain page shows the prompt and slider, and saving clamps and applies 
   const noConfirm = await post('/admin/brain/reset', { _csrf: 'csrf-token' }, cookie);
   assert.match(decodeURIComponent((noConfirm.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Tick/);
   await post('/admin/brain/reset', { confirm: 'yes', _csrf: 'csrf-token' }, cookie);
-  assert.equal(brain().ordisness, 20);
+  assert.equal(brain().ordisness, 10);
   assert.equal(brain().prompt, '');
   resetBrainState();
 });

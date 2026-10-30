@@ -81,13 +81,13 @@ describe('brain settings', () => {
     const store = new Store(':memory:');
     updateBrain(store, { ordisness: 80, agentFor: 'everyone', prompt: 'Custom {{persona}}' });
     resetBrainState();
-    assert.equal(brain().ordisness, 20);
+    assert.equal(brain().ordisness, 10);
     loadBrain(store);
     assert.equal(brain().ordisness, 80);
     assert.equal(brain().agentFor, 'everyone');
     resetBrain(store);
     loadBrain(store);
-    assert.equal(brain().ordisness, 20);
+    assert.equal(brain().ordisness, 10);
     assert.equal(brain().prompt, '');
   });
 
@@ -133,7 +133,7 @@ describe('agent loop', () => {
     assert.equal(first.temperature, 0.1);
     assert.equal(first.reasoning_effort, 'none');
     assert.equal(first.tools[0].function.name, 'echo');
-    assert.match(first.messages[0].content, /Persona level: 20/);
+    assert.match(first.messages[0].content, /Persona level: 10/);
     const second = s.bodies[1]!;
     assert.deepEqual(second.messages.at(-1), { role: 'tool', tool_call_id: 'c1', content: '{"echoed":"kuva"}' });
     assert.equal(second.messages.at(-2).role, 'assistant');

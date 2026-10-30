@@ -12,6 +12,7 @@ import { AnswerRefresher } from './answers/cache.js';
 import { RivenCrawler } from './rivens/crawler.js';
 import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
+import { bindEmbedder } from './wiki/embed.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
 import { OrdisBrain } from './ai/ordis.js';
 import { onRestart } from './selfupdate.js';
@@ -90,6 +91,8 @@ const rivenCrawler = new RivenCrawler(ctx);
 // The wiki index lives in its own file: it is big, rebuildable, and must not bloat the main database or backups.
 const wikiIndex = config.WIKI_INDEX ? new WikiIndex(join(config.DATA_DIR, 'wiki.db')) : null;
 setWikiIndex(wikiIndex);
+// The shared config object, so a model changed on the Config page applies at once.
+bindEmbedder(config);
 const wikiCrawler = wikiIndex ? new WikiCrawler(wikiIndex) : null;
 client.once('clientReady', () => {
   notifier.start();

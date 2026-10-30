@@ -53,6 +53,8 @@ export const SETTINGS: SettingDef[] = [
   { key: 'LOCAL_AI_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Default local model', help: 'Used unless a model was chosen on the AI page or with /ai model.' },
   { key: 'LOCAL_AI_TIMEOUT_SECONDS', group: 'Local AI (Ollama)', kind: 'int', label: 'Local model timeout (seconds)', help: 'How long one request to the local model may wait (5 to 300).' },
 
+  { key: 'EMBED_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Embedding model', help: 'A small model in the same Ollama that reranks wiki search results by meaning (install it with /ai install tag:nomic-embed-text). Empty = off.' },
+
   { key: 'FREE_AI_URL', group: 'Free cloud AI', kind: 'text', label: 'Endpoint URL', help: 'Any OpenAI-compatible API. The key stays in the environment (FREE_AI_KEY).' },
   { key: 'FREE_AI_MODEL', group: 'Free cloud AI', kind: 'text', label: 'Model', help: 'The main cloud model.' },
   { key: 'FREE_AI_FALLBACK_MODEL', group: 'Free cloud AI', kind: 'text', label: 'Backup model', help: 'Tried when the main one is busy.' },

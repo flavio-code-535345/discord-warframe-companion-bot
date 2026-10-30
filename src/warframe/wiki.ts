@@ -1,3 +1,4 @@
+import { rerankPassages } from '../wiki/embed.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { titleCandidates } from '../wiki/terms.js';
 import { apiJson } from './fetch.js';
@@ -87,6 +88,9 @@ export async function searchWiki(query: string, limit = 3): Promise<WikiResult[]
   const local = getWikiIndex();
   if (local?.ready()) {
     const hits = local.search(query, limit);
+    // With an embedding model available, reorder by meaning (and let close matches the word search missed in); never fatal.
+    const better = await rerankPassages(local, query, hits, limit).catch(() => null);
+    if (better?.length) return better;
     if (hits.length) return hits;
   }
   const [title, data] = await Promise.all([
