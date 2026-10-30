@@ -31,6 +31,8 @@ const WANTS_FLUFF = /\b(devstream|dev stream|quote|quotes|says|said|dialogue|voi
 /** "how do I get/unlock/farm …" questions prefer sections that explain acquisition. */
 const WANTS_ACQUISITION = /\b(get|getting|obtain|acquire|unlock|farm|farming|find|where|source|craft|start|begin|access)\b/i;
 const ACQUISITION_SECTION = /obtain|acqui|unlock|farm|source|location|requirement|spawn|start|how to|crafting|getting|access/i;
+/** "What is / who is / explain / tell me about X": the page's introduction is part of the answer. */
+const WANTS_DEFINITION = /\b(what('s| is| are| was)|who('s| is| are)|explain|tell me about|describe|define)\b/i;
 const MAX_SUBPAGES = 6;
 /** Kept passage vectors (about 3 KB each); the oldest are dropped past this. */
 const MAX_VECTORS = 30_000;
@@ -294,7 +296,11 @@ export class WikiIndex {
       if (source.length) {
         // "What is a Helminth?" only names the page, so the introduction alone answers it; other questions get more.
         const justTheName = terms.every((t) => mentions(title.toLowerCase(), t));
-        const passage = this.toPassage(title, this.bestChunks(source, terms, justTheName ? 1 : PER_PAGE_CHUNKS, question, title));
+        let picked = this.bestChunks(source, terms, justTheName ? 1 : PER_PAGE_CHUNKS, question, title);
+        // "What is X and how do I start it": the introduction says what X is, so it always comes first for a definition question.
+        const intro = source[0];
+        if (intro && WANTS_DEFINITION.test(question) && !picked.includes(intro)) picked = [intro, ...picked].slice(0, Math.max(PER_PAGE_CHUNKS, 1));
+        const passage = this.toPassage(title, picked);
         if (match.disambiguation) trailing = passage;
         else out.push(passage);
         seen.add(title.toLowerCase());

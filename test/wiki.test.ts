@@ -222,3 +222,17 @@ test('crawler refuses a truncated listing instead of wiping the index', async ()
   await assert.rejects(new WikiCrawler(index, tiny.fetcher, 0).refresh(), /incomplete/);
   assert.equal(index.stats().pages, 60);
 });
+
+test('a "what is X" question always gets the introduction of the named page, even when other sections match better', () => {
+  const index = new WikiIndex(':memory:');
+  index.putPage('Helminth', 1, [
+    { section: 'Introduction', body: 'The Helminth is a sentient Infested system in the Orbiter that lets you subsume abilities from other Warframes.' },
+    { section: 'Helminth Cyst', body: 'Nidus can sit on the chair, which starts a cyst that grows for days; start the process by feeding it.' },
+    { section: 'Secretions', body: 'Feed the Helminth resources to start the process of converting them into secretions.' },
+  ]);
+  const hit = index.search('what is the helminth and how do I start it', 3)[0]!;
+  assert.equal(hit.title, 'Helminth');
+  assert.match(hit.extract, /^The Helminth is a sentient Infested system/, 'the introduction comes first');
+  const plain = index.search('how do I start the helminth', 3)[0]!;
+  assert.doesNotMatch(plain.extract, /^The Helminth is a sentient/, 'only definition questions add it');
+});
