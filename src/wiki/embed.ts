@@ -42,8 +42,15 @@ const MAX_DOC_CHARS = 1200;
 export const MIN_POOL_SIMILARITY = 0.5;
 const POOL_PAGES = 12;
 /** The full-text order counts a little less than the meaning, but enough that a page whose title is named in the question stays near the top. */
-const LEXICAL_WEIGHT = 0.45;
-const EXTRA_PRIOR = 0.25;
+const LEXICAL_WEIGHT = 0.4;
+const EXTRA_PRIOR = 0.2;
+
+/** Whether every word of the page title (letters only, 3+ characters) appears in the question, plural or singular ("Endo" in "more endo"). */
+export function named(title: string, question: string): boolean {
+  const q = question.toLowerCase();
+  const words = title.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3);
+  return words.length > 0 && words.every((w) => q.includes(w) || (w.endsWith('s') && q.includes(w.slice(0, -1))));
+}
 
 const base = (url: string): string => url.replace(/\/+$/, '').replace(/\/v1$/, '');
 
@@ -117,8 +124,9 @@ export async function rerankPassages(index: WikiIndex, question: string, results
   const span = Math.max(...similarity) - lo || 1;
   const scored = candidates
     .map((c, i) => {
-      // Full-text position (the best result 1, the last of them about 0.5; extra pages 0.25) blended with how close the passage is in meaning.
-      const lexical = c.extra ? EXTRA_PRIOR : 1 - (0.5 * i) / Math.max(1, results.length - 1);
+      // Full-text position blended with how close the passage is in meaning. A page named in the question counts fully; the others
+      // get a smaller bonus that fades down the full-text order (a loose word match must not outrank a better answer).
+      const lexical = c.extra ? EXTRA_PRIOR : named(c.p.title, question) ? 1 : 0.5 - (0.25 * i) / Math.max(1, results.length - 1);
       return { c, i, score: LEXICAL_WEIGHT * lexical + (1 - LEXICAL_WEIGHT) * ((similarity[i]! - lo) / span) };
     })
     .filter((x) => !x.c.extra || similarity[x.i]! >= MIN_POOL_SIMILARITY)

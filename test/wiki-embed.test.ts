@@ -71,3 +71,24 @@ describe('wiki reranking by meaning', () => {
     assert.equal(cosine([0, 0], [1, 1]), 0);
   });
 });
+
+describe('which results the full-text order still protects', () => {
+  it('knows when a page title is named in the question', async () => {
+    const { named } = await import('../src/wiki/embed.js');
+    assert.equal(named('Endo', 'where do I get more endo'), true);
+    assert.equal(named('Archon Shard', 'how do archon shards work'), true);
+    assert.equal(named('Komorex', 'how do i level up my weapons'), false);
+    assert.equal(named('Mods 1.0', 'which mods are best'), true, 'digits are ignored');
+  });
+
+  it('lets a clearly closer passage beat a loose full-text match, but not a page named in the question', async () => {
+    const index = new WikiIndex(':memory:');
+    bindEmbedder({ LOCAL_AI_URL: 'http://ollama:11434/v1', EMBED_MODEL: 'tiny-embed' });
+    const { fetcher } = fakeOllama();
+    // "alpha" is what the question is about: the first full-text result is about gamma only.
+    const loose = await rerankPassages(index, 'tell me about alpha', [passage('Gamma page', 'gamma gamma'), passage('Alpha page', 'alpha alpha alpha')], 2, fetcher);
+    assert.deepEqual(loose?.map((p) => p.title), ['Alpha page', 'Gamma page']);
+    const keepsNamed = await rerankPassages(index, 'tell me about gamma', [passage('Gamma', 'gamma gamma'), passage('Alpha page', 'alpha alpha alpha')], 2, fetcher);
+    assert.equal(keepsNamed?.[0]?.title, 'Gamma');
+  });
+});
