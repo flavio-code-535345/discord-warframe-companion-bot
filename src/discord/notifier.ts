@@ -7,7 +7,7 @@ import { NOTABLE_REWARD, type WorldState, alertName, getWorldState, isBaroHere, 
 import { alertsComponents } from './alerts-panel.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
-import { summaryEmbed, summaryHash } from './summary.js';
+import { summaryEmbeds, summaryHash } from './summary.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
 /** How often the notifier wakes up (event reminders). The worldstate itself is fetched at most every WORLDSTATE_POLL_SECONDS. */
@@ -118,9 +118,9 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
   const now = opts.now ?? Date.now();
   const key = `alerts_summary:${channel.id}`;
   const link = (id: string) => `https://discord.com/channels/${channel.guildId}/${channel.id}/${id}`;
-  const embed = summaryEmbed(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
-  // The suffix versions the buttons under the message, so a message saved without them is edited once to get them.
-  const hash = `${summaryHash(embed)}:c1`;
+  const embeds = summaryEmbeds(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
+  // The suffix versions the layout and buttons of the message, so a message saved with an older one is edited once to get the new.
+  const hash = `${summaryHash(embeds)}:c2`;
   const saved = readRecord(store.getMeta(key));
   // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
   const gone = (err: unknown) => {
@@ -137,17 +137,17 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
     }
   }
   if (saved && !missing && (saved.hash === hash || (!opts.force && now - saved.at < SUMMARY_MIN_EDIT_MS))) return link(saved.messageId);
-  embed.setTimestamp(now);
+  embeds[embeds.length - 1]!.setTimestamp(now);
   if (saved && !missing) {
     try {
-      await channel.messages.edit(saved.messageId, { embeds: [embed], components: alertsComponents() });
+      await channel.messages.edit(saved.messageId, { embeds, components: alertsComponents() });
       store.setMeta(key, JSON.stringify({ messageId: saved.messageId, hash, at: now, checked: now }));
       return link(saved.messageId);
     } catch (err) {
       gone(err);
     }
   }
-  const sent = await channel.send({ embeds: [embed], components: alertsComponents(), allowedMentions: { parse: [] } });
+  const sent = await channel.send({ embeds, components: alertsComponents(), allowedMentions: { parse: [] } });
   store.setMeta(key, JSON.stringify({ messageId: sent.id, hash, at: now, checked: now }));
   return link(sent.id);
 }

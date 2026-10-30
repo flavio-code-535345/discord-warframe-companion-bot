@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { EmbedBuilder } from 'discord.js';
 import { Store } from '../src/db.js';
 import { Notifier, type SummaryChannel, expireNote, newItemsText, postNote, updateSummaryMessage } from '../src/discord/notifier.js';
-import { summaryEmbed, summaryHash } from '../src/discord/summary.js';
+import { summaryEmbeds, summaryHash } from '../src/discord/summary.js';
 import { type WorldState, alertName } from '../src/warframe/worldstate.js';
 
 const MIN = 60_000;
@@ -37,11 +37,11 @@ const world = (over: Record<string, unknown> = {}): WorldState =>
     ...over,
   }) as unknown as WorldState;
 
-const fieldsOf = (e: EmbedBuilder) => Object.fromEntries((e.toJSON().fields ?? []).map((f) => [f.name, f.value]));
+const fieldsOf = (es: EmbedBuilder[]) => Object.fromEntries(es.flatMap((e) => e.toJSON().fields ?? []).map((f) => [f.name, f.value]));
 
 describe('the arbitration in the summary', () => {
   const arbitration = (over: Record<string, unknown> = {}) => ({ node: 'Hydron (Sedna)', type: 'Defense', enemy: 'Grineer', archwing: false, sharkwing: false, expired: false, activation: at(-10), expiry: at(50), ...over });
-  const field = (a: unknown) => fieldsOf(summaryEmbed(world({ arbitration: a }), opts, now))['⚖️ Arbitration'];
+  const field = (a: unknown) => fieldsOf(summaryEmbeds(world({ arbitration: a }), opts, now))['⚖️ Arbitration'];
 
   it('shows the running arbitration with its mission, enemy and end', () => {
     assert.match(field(arbitration())!, /^\*\*Defense\*\* — Hydron \(Sedna\) · Grineer\nEnds <t:\d+:R>\n-# Endless mission/);
@@ -57,10 +57,10 @@ describe('the arbitration in the summary', () => {
 });
 
 describe('the summary message', () => {
-  it('says everything in one embed: cycles, fissures by tier, sortie, archon hunt, Baro, steel path, alerts and notable invasions', () => {
-    const fields = fieldsOf(summaryEmbed(world(), opts, now));
+  it('says everything: cycles, fissures by tier, sortie, archon hunt, Baro, steel path, alerts and notable invasions', () => {
+    const fields = fieldsOf(summaryEmbeds(world(), opts, now));
     const names = Object.keys(fields);
-    assert.deepEqual(names, ['🌍 Cycles', '🌀 Void fissures', '⚔️ Daily sortie — Vor', '🗡️ Archon Hunt — Archon Amar', "👑 Baro Ki'Teer", '🔱 Steel Path honors', '⚠️ Alerts', '🎯 Invasions worth running']);
+    assert.deepEqual(names, ['🌍 Cycles', "👑 Baro Ki'Teer", '🌀 Void fissures', '⚔️ Daily sortie — Vor', '🗡️ Archon Hunt — Archon Amar', '🔱 Steel Path honors', '⚠️ Alerts', '🎯 Invasions worth running']);
     assert.match(fields['🌍 Cycles']!, /Cetus\*\* ☀️ day.*\n.*Orb Vallis\*\* 🔥 warm.*\n.*Cambion Drift\*\* Fass.*\n.*Zariman\*\* Grineer.*\n.*Duviri\*\* Joy/);
     assert.match(fields['🌀 Void fissures']!, /^\*\*Lith\*\* 2 · \*\*Neo\*\* 1\n🔱 1 Steel Path · 🌀 1 Void Storm\n/, 'the expired Axi fissure is not counted');
     assert.match(fields['⚔️ Daily sortie — Vor']!, /Capture — Pluto · Eximus Stronghold\nResets <t:/);
@@ -73,29 +73,50 @@ describe('the summary message', () => {
 
   it('leaves out what is over or missing, and Baro when he is away says when he arrives', () => {
     const fields = fieldsOf(
-      summaryEmbed(world({ sortie: { id: 's', expiry: at(-1), variants: [] }, archonHunt: undefined, steelPath: undefined, alerts: [], invasions: [], voidTrader: { id: 'b', activation: at(600), expiry: at(2000), location: 'Larunda Relay', inventory: [] } }), opts, now),
+      summaryEmbeds(world({ sortie: { id: 's', expiry: at(-1), variants: [] }, archonHunt: undefined, steelPath: undefined, alerts: [], invasions: [], voidTrader: { id: 'b', activation: at(600), expiry: at(2000), location: 'Larunda Relay', inventory: [] } }), opts, now),
     );
-    assert.deepEqual(Object.keys(fields), ['🌍 Cycles', '🌀 Void fissures', "👑 Baro Ki'Teer"]);
+    assert.deepEqual(Object.keys(fields), ['🌍 Cycles', "👑 Baro Ki'Teer", '🌀 Void fissures']);
     assert.match(fields["👑 Baro Ki'Teer"]!, /Arrives at \*\*Larunda Relay\*\* <t:/);
   });
 
   it('survives one malformed section instead of losing the whole message', () => {
-    const fields = fieldsOf(summaryEmbed(world({ archonHunt: { id: 'a', expiry: at(10), missions: 5 } }), opts, now));
+    const fields = fieldsOf(summaryEmbeds(world({ archonHunt: { id: 'a', expiry: at(10), missions: 5 } }), opts, now));
     assert.ok(fields['⚔️ Daily sortie — Vor']);
     assert.equal(Object.keys(fields).some((n) => n.includes('Archon')), false);
   });
 
   it('has a stable fingerprint, so it is only edited when something changed', () => {
-    const a = summaryHash(summaryEmbed(world(), opts, now));
-    assert.equal(summaryHash(summaryEmbed(world(), opts, now + 10_000)), a);
-    assert.notEqual(summaryHash(summaryEmbed(world({ fissures: [] }), opts, now)), a);
+    const a = summaryHash(summaryEmbeds(world(), opts, now));
+    assert.equal(summaryHash(summaryEmbeds(world(), opts, now + 10_000)), a);
+    assert.notEqual(summaryHash(summaryEmbeds(world({ fissures: [] }), opts, now)), a);
   });
 
   it('stays within Discord limits with a lot going on', () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ id: `a${i}`, expiry: at(30), mission: { description: `Alert number ${i}`, type: 'Capture', node: 'Eris (Eris)', faction: 'Infested', reward: { items: ['Orokin Catalyst Blueprint'] } } }));
-    const json = summaryEmbed(world({ alerts: many }), opts, now).toJSON();
-    for (const f of json.fields ?? []) assert.ok(f.value.length <= 1024);
+    const json = summaryEmbeds(world({ alerts: many }), opts, now).map((e) => e.toJSON());
+    for (const f of json.flatMap((e) => e.fields ?? [])) assert.ok(f.value.length <= 1024);
     assert.ok(JSON.stringify(json).length < 6000);
+  });
+
+  it('is split into coloured cards, with the title first and the footer last, and short sections side by side', () => {
+    const embeds = summaryEmbeds(world(), opts, now).map((e) => e.toJSON());
+    assert.equal(embeds.length, 4);
+    assert.equal(new Set(embeds.map((e) => e.color)).size, 4);
+    assert.equal(embeds[0]!.title, '🌌 Warframe right now');
+    assert.ok(embeds.slice(1).every((e) => !e.title));
+    assert.ok(embeds.slice(0, -1).every((e) => !e.footer));
+    assert.match(embeds.at(-1)!.footer!.text, /Ordis/);
+    const inline = Object.fromEntries(embeds.flatMap((e) => e.fields ?? []).map((f) => [f.name, !!f.inline]));
+    assert.equal(inline['🌍 Cycles'], true);
+    assert.equal(inline['🌀 Void fissures'], false);
+  });
+
+  it('folds an event\'s repeated resource missions into one line', () => {
+    const event = (id: string, type: string, node: string) => ({ id, expiry: at(30), mission: { description: 'Event Alert Title', type, node, faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }] } } });
+    const fields = fieldsOf(summaryEmbeds(world({ alerts: [event('e1', 'Survival', 'Naeglar (Eris)'), event('e2', 'Mobile Defense', 'Saxis (Eris)'), event('e3', 'Extermination', 'Xini (Eris)')] }), opts, now));
+    const alerts = fields['⚠️ Alerts']!;
+    assert.match(alerts, /\*\*3 event missions\*\* — Survival \(Naeglar \(Eris\)\), Mobile Defense/);
+    assert.equal(alerts.match(/Road To Tau/g)!.length, 1);
   });
 });
 
@@ -215,7 +236,7 @@ describe('the notifier', () => {
     await notifier.postWorldStateAlerts(base());
     assert.equal(sent.length, 1, 'the first run only posts the summary (what is already live is not announced as new)');
     assert.equal(sent[0]!.content, undefined);
-    assert.equal(sent[0]!.embeds!.length, 1);
+    assert.ok(sent[0]!.embeds!.length >= 1);
 
     await notifier.postWorldStateAlerts(base());
     assert.equal(sent.length, 1, 'nothing new: nothing sent');
@@ -248,7 +269,7 @@ describe('the notifier', () => {
     await notifier.postWorldStateAlerts(base([event('e1')]));
     await notifier.postWorldStateAlerts(base([event('e1'), event('e2')]));
     assert.ok(sent.every((s) => s.content === undefined), 'no "New" message for them');
-    const summary = JSON.stringify(sent[0]!.embeds![0]!.toJSON());
+    const summary = JSON.stringify(sent[0]!.embeds!.map((e) => e.toJSON()));
     assert.match(summary, /Event mission \(Survival\)/);
     assert.doesNotMatch(summary, /Event Alert Title/);
   });
