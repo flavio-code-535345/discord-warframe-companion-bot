@@ -1,3 +1,4 @@
+import { detectIntent } from '../answers/intent.js';
 import { withTimeout } from '../timeout.js';
 import { searchWiki, type WikiResult } from '../warframe/wiki.js';
 import { brain } from './brain.js';
@@ -9,6 +10,8 @@ import type { AgentTool } from './tools.js';
  * question searched as written finds the right page. The model can still search again; these passages are only a head start.
  */
 
+/** Questions that live data answers: prices, world state, fissures, bounties and the clan's events (drops are static data, so the wiki still helps there). */
+const LIVE_INTENTS = new Set(['price', 'world', 'fissures', 'bounties', 'clanEvents']);
 const MAX_PASSAGES = 3;
 const MAX_PASSAGE_CHARS = 800;
 const PREFETCH_TIMEOUT_MS = 8_000;
@@ -28,6 +31,8 @@ export async function wikiPrefetch(question: string, tools: AgentTool[], opts: {
   if (!brain().retrieveFirst || opts.followUp || !tools.some((t) => t.name === 'search_wiki')) return null;
   const q = question.trim();
   if (q.length < MIN_QUESTION_CHARS) return null;
+  // A live question ("when does Baro arrive") is answered by a live-data tool; general wiki passages about Baro would only tempt the model to answer from them.
+  if (LIVE_INTENTS.has(detectIntent(q).kind)) return null;
   try {
     const found = await withTimeout((opts.search ?? searchWiki)(q.slice(0, 200), MAX_PASSAGES), PREFETCH_TIMEOUT_MS, () => new Error('wiki search timed out'));
     const hits = found.filter((p) => p.extract.trim()).slice(0, MAX_PASSAGES);

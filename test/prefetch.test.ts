@@ -35,3 +35,14 @@ describe('retrieval first', () => {
     assert.equal(await wikiPrefetch('how do i get more endo', [wikiTool], { search: async () => { throw new Error('down'); } }), null);
   });
 });
+
+describe('retrieval first leaves live questions to the live-data tools', () => {
+  it('skips the wiki head start for prices, world state and fissures, but not for how-tos or where-to-get questions', async () => {
+    const search = async () => [hit('Baro Ki\'Teer', 'general page text')];
+    for (const live of ['when does baro arrive and where', 'what are the fissures right now', 'how much is a wisp prime set']) {
+      assert.equal(await wikiPrefetch(live, [wikiTool], { search }), null, live);
+    }
+    assert.notEqual(await wikiPrefetch('how do i get more endo', [wikiTool], { search }), null);
+    assert.notEqual(await wikiPrefetch('where does arcane energize drop', [wikiTool], { search }), null);
+  });
+});
