@@ -66,7 +66,7 @@ function alertLines(alerts: NonNullable<WorldState['alerts']>): string[] {
       lines.push(`**${alertName(a)}** — ${a.mission.node} · ${reward} · ends ${discordTime(a.expiry)}`);
       continue;
     }
-    const where = group.map((a) => `${a.mission.type ?? 'Mission'} (${a.mission.node})`).join(', ');
+    const where = group.map((a) => `${a.mission.type ?? 'Mission'} at ${a.mission.node}`).join('; ');
     const next = group.reduce((soonest, a) => (toMs(a.expiry) < toMs(soonest.expiry) ? a : soonest));
     lines.push(`**${group.length} event missions** — ${where} · ${reward} · first ends ${discordTime(next.expiry)}`);
   }

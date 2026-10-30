@@ -115,7 +115,7 @@ describe('the summary message', () => {
     const event = (id: string, type: string, node: string) => ({ id, expiry: at(30), mission: { description: 'Event Alert Title', type, node, faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }] } } });
     const fields = fieldsOf(summaryEmbeds(world({ alerts: [event('e1', 'Survival', 'Naeglar (Eris)'), event('e2', 'Mobile Defense', 'Saxis (Eris)'), event('e3', 'Extermination', 'Xini (Eris)')] }), opts, now));
     const alerts = fields['⚠️ Alerts']!;
-    assert.match(alerts, /\*\*3 event missions\*\* — Survival \(Naeglar \(Eris\)\), Mobile Defense/);
+    assert.match(alerts, /\*\*3 event missions\*\* — Survival at Naeglar \(Eris\); Mobile Defense at Saxis/);
     assert.equal(alerts.match(/Road To Tau/g)!.length, 1);
   });
 });
