@@ -43,6 +43,7 @@ export function registerBrainTools(server: McpServer, ctx: AppContext): void {
         scope: z.enum(['open', 'all']).optional(),
         toolMode: z.enum(['auto', 'native', 'text']).optional(),
         showTools: z.boolean().optional(),
+        retrieveFirst: z.boolean().optional().describe("Search the wiki with the member's own words before the model runs and give it the passages"),
         disabledTools: z.array(z.string()).optional().describe('Tool names the agent may not use'),
         reset: z.boolean().optional(),
       },

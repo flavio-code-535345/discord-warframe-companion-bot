@@ -145,6 +145,7 @@ ${number('toolResultChars', 'Tool result limit (characters)', s.toolResultChars,
 <label>Tool calling${choose('toolMode', s.toolMode, [['auto', 'Auto (native if the model supports it)'], ['native', 'Always native'], ['text', 'Always as text']])}</label>
 </div>
 <label class="check"><input type="checkbox" name="show_tools" value="1"${s.showTools ? ' checked' : ''}> Show which tools were used under each answer</label>
+<label class="check"><input type="checkbox" name="retrieve_first" value="1"${s.retrieveFirst ? ' checked' : ''}> Search the wiki first with the member's own words and give the model the passages (helps small models)</label>
 </div>
 
 <h2>Tools it may use</h2>
@@ -188,6 +189,7 @@ ${runs.length ? `<div class="card"><table><tr><th>When</th><th>Who</th><th>Quest
         scope: b.scope,
         toolMode: b.toolMode,
         showTools: b.show_tools === '1',
+        retrieveFirst: b.retrieve_first === '1',
         disabledTools: TOOL_NAMES.filter((n) => b[`tool_${n}`] !== '1'),
       });
       await audit(session, 'Changed the agent brain', [

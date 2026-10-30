@@ -3,6 +3,7 @@ import { aiToggle } from '../ai/settings.js';
 import { LOCAL_COOLDOWN_MS, allow, localAvailable, markLocalDown } from '../answers/compose.js';
 import type { AppContext } from '../context.js';
 import { OPERATOR_NOTE, brain, buildSystemPrompt } from './brain.js';
+import { wikiPrefetch } from './prefetch.js';
 import { type AgentTool, enabledTools, runTool } from './tools.js';
 import { type AgentRun, type StepTrace, newRun } from './traces.js';
 
@@ -377,7 +378,9 @@ export async function runAgent(ctx: AppContext, question: string, who: { id: str
   emit({ t: 'start', id: run.id });
   const started = Date.now();
   const deadline = started + TOTAL_BUDGET_MS;
-  const user = `[${new Date(now).toISOString().slice(0, 16)} UTC · ${who.name}]\n${question}`;
+  const head = await wikiPrefetch(question, tools, { followUp: Boolean(deps.history?.length) });
+  if (head) run.prefetched = head.titles;
+  const user = `[${new Date(now).toISOString().slice(0, 16)} UTC · ${who.name}]\n${question}${head?.text ?? ''}`;
   const errors: string[] = [];
   const io = { emit, signal: deps.signal, stream: deps.stream ?? Boolean(deps.onEvent) };
   const finish = (): AgentRun => {

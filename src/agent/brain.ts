@@ -33,6 +33,8 @@ export interface BrainSettings {
   /** auto: the model's own tool calling when it supports it, else tool calls written as text. */
   toolMode: ToolMode;
   showTools: boolean;
+  /** Search the wiki with the member's own words before the model runs and hand it the passages, so a small model does not have to pick the keywords. */
+  retrieveFirst: boolean;
   disabledTools: string[];
 }
 
@@ -77,6 +79,7 @@ export const DEFAULT_BRAIN: BrainSettings = {
   scope: 'open',
   toolMode: 'auto',
   showTools: false,
+  retrieveFirst: true,
   disabledTools: [],
 };
 
@@ -118,6 +121,7 @@ export function normalizeBrain(raw: unknown, base: BrainSettings = DEFAULT_BRAIN
     scope: oneOf(r.scope, ['open', 'all'], base.scope),
     toolMode: oneOf(r.toolMode, ['auto', 'native', 'text'], base.toolMode),
     showTools: typeof r.showTools === 'boolean' ? r.showTools : base.showTools,
+    retrieveFirst: typeof r.retrieveFirst === 'boolean' ? r.retrieveFirst : base.retrieveFirst,
     disabledTools: Array.isArray(r.disabledTools) ? [...new Set(r.disabledTools.filter((t): t is string => typeof t === 'string' && /^[a-z_]{1,40}$/.test(t)))] : base.disabledTools,
   };
 }

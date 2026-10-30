@@ -48,6 +48,8 @@ export interface AgentRun {
   error: string | null;
   /** The system prompt this run used, so a result can be matched to the settings that produced it. */
   system: string;
+  /** Titles of the wiki pages searched for the question before the model ran (retrieval first), if any. */
+  prefetched?: string[];
 }
 
 const KEEP = 30;
