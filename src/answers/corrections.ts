@@ -1,6 +1,5 @@
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, Correction } from '../db.js';
-import { normalizeQuestion } from './cache.js';
 
 /**
  * Corrections: staff teach Ordis by answering it. A staff member (an operator, a panel admin or anyone with Manage Server)
@@ -9,13 +8,15 @@ import { normalizeQuestion } from './cache.js';
  * logged answers right or wrong there.
  *
  * What an approved correction does:
- *  - the same question (after normalizeQuestion) is answered with the correction word for word, before any model or saved
- *    answer is tried;
- *  - related questions get the correction (and the answers staff rated) as guidance in the model's prompt, as authoritative
- *    text that overrides its memory and the tools when it applies.
+ *  - the same question (after normalizeQuestion) is answered with the correction word for word, before anything else;
+ *  - related questions get the correction as a trusted fact (answer pipeline) or as guidance in the agent's prompt, together
+ *    with the answers staff rated.
  *
  * Pending suggestions are never shown to the model: only text a staff member wrote or approved reaches a prompt.
  */
+
+/** Lower-cased, punctuation-free question, so "How do I unlock Venus?" and "how do i unlock venus" are one question. */
+export const normalizeQuestion = (q: string): string => q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 
 const MAX_TEXT = 1500;
 const MAX_GUIDANCE_CHARS = 2400;
@@ -55,11 +56,9 @@ export function findCorrection(ctx: Pick<AppContext, 'config' | 'store'>, questi
   return ctx.store.listCorrections(ctx.config.DISCORD_GUILD_ID, 'approved', SCAN_LIMIT).find((c) => c.key === key) ?? null;
 }
 
-/** Everything that leaves "pending": drop a saved answer for that question (it may be what was wrong) and mark the logged answer wrong. */
+/** Everything that leaves "pending": the logged answer it corrects is marked wrong. */
 function applied(ctx: Pick<AppContext, 'config' | 'store'>, c: Correction, by: string): void {
-  const guildId = ctx.config.DISCORD_GUILD_ID;
-  ctx.store.deleteCacheRow(guildId, c.key);
-  if (c.logId !== null) ctx.store.rateAiLog(guildId, c.logId, 'wrong', by);
+  if (c.logId !== null) ctx.store.rateAiLog(ctx.config.DISCORD_GUILD_ID, c.logId, 'wrong', by);
 }
 
 export interface NewCorrection {

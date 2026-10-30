@@ -19,12 +19,11 @@ import {
   sortieEmbed,
   steelPathEmbed,
 } from '../discord/embeds.js';
-import { lookupEmbed, relicEmbed, showsDrops, wikiEmbed } from '../discord/lookup-embeds.js';
+import { lookupEmbed, relicEmbed, showsDrops } from '../discord/lookup-embeds.js';
 import { discordTime } from '../time.js';
 import { searchDrops } from '../warframe/drops.js';
 import { lookupItem } from '../warframe/items.js';
 import { priceCheck } from '../warframe/market.js';
-import { searchWiki } from '../warframe/wiki.js';
 import { getWikiIndex } from '../wiki/index.js';
 import type { AiSource } from '../db.js';
 import { agentAnswer, agentFits, useAgent } from '../agent/answer.js';
@@ -32,15 +31,14 @@ import { type StatusListener, withStatus } from './status.js';
 import { QueueFullError } from '../queue.js';
 import { withAsker, withModelSlot } from './slot.js';
 import { brain } from '../agent/brain.js';
-import { cacheAllowedFor, getCachedAnswer, noteCacheHit } from './cache.js';
 import { circuitAnswer } from './circuit.js';
 import { findCorrection, guidanceFor } from './corrections.js';
 import { isFollowUp, recall, recallSubject, remember, transcript } from './memory.js';
-import { isOperatorId, operatorAnswer, useOperatorMode } from './operator.js';
+import { operatorAnswer, useOperatorMode } from './operator.js';
 import { factAnswer, mathAnswer, smallTalkAnswer } from './pipeline.js';
 import { classifyAsk, mathExpression, noContent, questionLike, wantsResearch } from './understand.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
-import { type Intent, type WorldView, cleanQuestion, detectIntent } from './intent.js';
+import { type Intent, type WorldView, detectIntent } from './intent.js';
 
 /** Who is asking. `key` (memoryKey of channel and person) turns on conversation memory for the exchange. */
 export interface Asker {
@@ -248,17 +246,6 @@ async function smartAnswerInner(raw: string, ctx: AppContext, asker?: Asker): Pr
   if (sum) return done({ content: sum, embeds: [], found: true }, 'math');
   const circuit = await circuitAnswer(previous ? `${previous} ${question}` : question).catch(() => null);
   if (circuit) return done({ content: circuit, embeds: [], found: true }, 'circuit');
-
-  // A saved, verified answer to a repeat question (see answers/cache.ts): same answer every time, no model call. Operators always get a fresh one.
-  const operator = Boolean(asker && isOperatorId(ctx.config, asker.id));
-  if (!followUp && !operator && cacheAllowedFor(intent.kind)) {
-    const hit = getCachedAnswer(ctx, question);
-    if (hit) {
-      noteCacheHit(ctx, hit);
-      const sources = await searchWiki(cleanQuestion(question), 3).catch(() => []);
-      return done({ content: hit.answer, embeds: sources.length ? [wikiEmbed(question, sources, true)] : [], found: true, source: 'cache', model: hit.model });
-    }
-  }
 
   // Prices, relics, world state, fissures, bounties and the clan schedule stay plain lookups for everyone, operators included.
   if (!followUp && EXACT.has(intent.kind)) {

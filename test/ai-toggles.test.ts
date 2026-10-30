@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 import { chooseModel, setToggle, tuneModel } from '../src/ai/control.js';
 import { resetCapabilities, setChosenModel } from '../src/ai/ollama.js';
 import { TOGGLE_KEYS, aiToggle, loadAiToggles, resetAiToggles, setAiToggle } from '../src/ai/settings.js';
-import { composeAnswer, resetLocalAi } from '../src/answers/compose.js';
+import { composeWith, resetLocalAi } from '../src/answers/compose.js';
 import { logAnswer } from '../src/answers/log.js';
 import { useOperatorMode } from '../src/answers/operator.js';
 import { Store } from '../src/db.js';
@@ -16,7 +16,6 @@ afterEach(() => {
   setChosenModel(null);
 });
 
-const passages = [{ title: 'T', url: 'u', extract: 'e' }];
 const cfg = {
   FREE_AI_KEY: 'test-key-123',
   FREE_AI_URL: 'https://llm.example/v1',
@@ -33,7 +32,7 @@ describe('switches', () => {
     const store = new Store(':memory:');
     assert.deepEqual(
       TOGGLE_KEYS.map((k) => [k, aiToggle(k)]),
-      [['local', true], ['thinking', false], ['websearch', true], ['operators', true], ['cache', true], ['log', true]],
+      [['local', true], ['thinking', false], ['websearch', true], ['operators', true], ['log', true]],
     );
     setAiToggle(store, 'thinking', true);
     setAiToggle(store, 'websearch', false);
@@ -48,10 +47,10 @@ describe('switches', () => {
   it('local off sends everything to the cloud model', async () => {
     setAiToggle(new Store(':memory:'), 'local', false);
     const urls: string[] = [];
-    const out = await composeAnswer(cfg, 'q', passages, async (url) => {
+    const out = (await composeWith(cfg, 'system', 'q', async (url) => {
       urls.push(url);
       return chat('from cloud');
-    });
+    }))?.text;
     assert.equal(out, 'from cloud');
     assert.deepEqual(urls, ['https://llm.example/v1/chat/completions']);
   });
@@ -60,7 +59,7 @@ describe('switches', () => {
     setAiToggle(new Store(':memory:'), 'thinking', true);
     const seen: Record<string, unknown>[] = [];
     const run = (capabilities: string[]) =>
-      composeAnswer(cfg, 'q', passages, async (url, init) => {
+      composeWith(cfg, 'system', 'q', async (url, init) => {
         if (url.endsWith('/api/show')) return show(...capabilities);
         seen.push(JSON.parse(String(init.body)));
         return chat('ok');
@@ -79,7 +78,7 @@ describe('switches', () => {
   it('thinking off (the default) always sends none and asks nothing extra', async () => {
     const urls: string[] = [];
     let effort: unknown;
-    await composeAnswer(cfg, 'q', passages, async (url, init) => {
+    await composeWith(cfg, 'system', 'q', async (url, init) => {
       urls.push(url);
       effort = JSON.parse(String(init.body)).reasoning_effort;
       return chat('ok');

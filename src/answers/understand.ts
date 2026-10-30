@@ -51,6 +51,3 @@ export function noContent(text: string): boolean {
 export function wantsResearch(text: string): boolean {
   return /\b(check|search|look (it |that )?up|research|google|browse)\b[^?]*\b(reddit|online|web|internet|youtube|forums?|overframe)\b|\b(on|from|check) reddit\b|\bresearch online\b/i.test(text);
 }
-
-/** Pronouns and openers that point back at the previous question ("and how do I get it?"). */
-export const POINTS_BACK = /\b(it|its|it's|that|this|those|these|they|them|their|the same|one)\b|^(and|also|what about|how about|and what about)\b/i;

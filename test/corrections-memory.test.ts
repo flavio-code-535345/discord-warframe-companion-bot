@@ -5,7 +5,6 @@ import { brain, normalizeBrain, resetBrainState, updateBrain } from '../src/agen
 import { useAgent } from '../src/agent/answer.js';
 import { resetCapabilities } from '../src/ai/ollama.js';
 import { resetAiToggles } from '../src/ai/settings.js';
-import { normalizeQuestion } from '../src/answers/cache.js';
 import { resetLocalAi } from '../src/answers/compose.js';
 import { addCorrection, approveCorrection, findCorrection, guidanceFor, isStaff, rejectCorrection } from '../src/answers/corrections.js';
 import { MEMORY_TTL_MS, forget, isFollowUp, memoryKey, recall, remember, transcript } from '../src/answers/memory.js';
@@ -106,15 +105,13 @@ describe('corrections', () => {
     return store.getAiLog('g', id)!;
   };
 
-  it('saves a staff correction as approved at once, and drops the saved answer and marks the answer wrong', () => {
+  it('saves a staff correction as approved at once, and marks the answer wrong', () => {
     const store = new Store(':memory:');
     const ctx = ctxOf(store);
-    store.saveCachedAnswer('g', { key: normalizeQuestion(Q), question: Q, answer: 'old', model: null, tools: [], now: Date.now() });
     const e = entry(store);
     const r = addCorrection(ctx, { entry: e, text: 'It is a Steel Path Honors purchase.', authorId: '7', authorName: 'Boss', staff: true, source: 'staff_reply' })!;
     assert.equal(r.status, 'approved');
     assert.equal(findCorrection(ctx, 'how do i get condition overload')?.correction, 'It is a Steel Path Honors purchase.');
-    assert.equal(store.getCacheRow('g', normalizeQuestion(Q)), null, 'the saved answer for that question is gone');
     assert.equal(store.getAiLog('g', e.id)!.rating, 'wrong');
     assert.equal(store.getCorrection('g', r.id)!.badAnswer, 'It drops from Grineer.');
   });

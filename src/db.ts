@@ -43,8 +43,8 @@ export interface GuildSettings {
   rivenChannelId: string | null;
 }
 
-/** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, a direct lookup (prices, drops, world state...), or a saved, verified answer (the cache). */
-export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup' | 'cache' | 'correction';
+/** Where an answer came from: the local model, the free cloud model, the plain wiki excerpt, a direct lookup (prices, drops, world state...), or a staff correction. */
+export type AiSource = 'local' | 'cloud' | 'excerpt' | 'lookup' | 'correction';
 
 export interface AiLogEntry {
   id: number;
@@ -93,22 +93,6 @@ export interface Correction {
   logId: number | null;
   decidedBy: string | null;
   decidedAt: number | null;
-}
-
-/** A saved answer to a frequently asked question. `verifiedAt` is null for a row that only records failed refreshes (such a row is never served). */
-export interface CachedAnswer {
-  key: string;
-  question: string;
-  answer: string;
-  model: string | null;
-  tools: string[];
-  verifiedAt: number | null;
-  refreshedAt: number;
-  hits: number;
-  lastAskedAt: number | null;
-  fails: number;
-  lastError: string | null;
-  lastAttemptAt: number | null;
 }
 
 /** One member's XP. The level is derived from it (see leveling/xp.ts). */
@@ -588,36 +572,17 @@ const MIGRATIONS: string[] = [
   ALTER TABLE events ADD COLUMN ends_at INTEGER;
   ALTER TABLE events ADD COLUMN ended INTEGER NOT NULL DEFAULT 0;
   `,
+  // The answer cache is gone (the facts pipeline answers a repeat question the same way): its table, its switch and its settings.
+  `
+  DROP TABLE IF EXISTS answer_cache;
+  DELETE FROM bot_meta WHERE key IN ('answer_refresh_last', 'answer_refresh_day', 'ai_toggle_cache', 'cfg_ANSWER_REFRESH_ENABLED', 'cfg_ANSWER_REFRESH_MAX', 'cfg_ANSWER_REFRESH_HOUR_UTC');
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
 function toCrawlRow(r: Row): RivenCrawlRow {
   return { weapon: String(r.weapon), fetchedAt: r.fetched_at === null ? null : Number(r.fetched_at), attemptedAt: Number(r.attempted_at), listings: Number(r.listings), error: str(r.error) };
-}
-
-function toCached(r: Row): CachedAnswer {
-  let tools: string[] = [];
-  try {
-    const t: unknown = JSON.parse(String(r.tools));
-    if (Array.isArray(t)) tools = t.filter((x): x is string => typeof x === 'string');
-  } catch {
-    // Unreadable list: leave it empty.
-  }
-  return {
-    key: String(r.key),
-    question: String(r.question),
-    answer: String(r.answer),
-    model: str(r.model),
-    tools,
-    verifiedAt: r.verified_at === null ? null : Number(r.verified_at),
-    refreshedAt: Number(r.refreshed_at),
-    hits: Number(r.hits),
-    lastAskedAt: r.last_asked_at === null ? null : Number(r.last_asked_at),
-    fails: Number(r.fails),
-    lastError: str(r.last_error),
-    lastAttemptAt: r.last_attempt_at === null ? null : Number(r.last_attempt_at),
-  };
 }
 
 function toSticky(r: Row): Sticky {
@@ -1183,56 +1148,6 @@ export class Store {
   rivenTotals(): { weapons: number; listings: number } {
     const r = this.db.prepare('SELECT COUNT(DISTINCT weapon) AS w, COUNT(*) AS n FROM riven_listings').get() as Row;
     return { weapons: Number(r.w), listings: Number(r.n) };
-  }
-
-  // --- answer cache (see answers/cache.ts) ---
-
-  getCacheRow(guildId: string, key: string): CachedAnswer | null {
-    const r = this.db.prepare('SELECT * FROM answer_cache WHERE guild_id = ? AND key = ?').get(guildId, key) as Row | undefined;
-    return r ? toCached(r) : null;
-  }
-
-  listCacheRows(guildId: string): CachedAnswer[] {
-    return (this.db.prepare('SELECT * FROM answer_cache WHERE guild_id = ? ORDER BY hits DESC, refreshed_at DESC').all(guildId) as Row[]).map(toCached);
-  }
-
-  /** Saves a verified answer (replacing the previous one) and clears the failure count. */
-  saveCachedAnswer(guildId: string, e: { key: string; question: string; answer: string; model: string | null; tools: string[]; now: number }): void {
-    this.db
-      .prepare(
-        `INSERT INTO answer_cache (guild_id, key, question, answer, model, tools, verified_at, refreshed_at, fails, last_error, last_attempt_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
-         ON CONFLICT (guild_id, key) DO UPDATE SET question = excluded.question, answer = excluded.answer, model = excluded.model, tools = excluded.tools,
-           verified_at = excluded.verified_at, refreshed_at = excluded.refreshed_at, fails = 0, last_error = NULL, last_attempt_at = excluded.last_attempt_at`,
-      )
-      .run(guildId, e.key, e.question, e.answer, e.model, JSON.stringify(e.tools), e.now, e.now, e.now);
-  }
-
-  /** Notes a failed refresh. A saved answer stays untouched; a question with none gets a row with no answer (never served). */
-  recordCacheFailure(guildId: string, e: { key: string; question: string; reason: string; now: number }): void {
-    this.db
-      .prepare(
-        `INSERT INTO answer_cache (guild_id, key, question, fails, last_error, last_attempt_at) VALUES (?, ?, ?, 1, ?, ?)
-         ON CONFLICT (guild_id, key) DO UPDATE SET fails = fails + 1, last_error = excluded.last_error, last_attempt_at = excluded.last_attempt_at`,
-      )
-      .run(guildId, e.key, e.question, e.reason.slice(0, 300), e.now);
-  }
-
-  touchCacheHit(guildId: string, key: string, now: number): void {
-    this.db.prepare('UPDATE answer_cache SET hits = hits + 1, last_asked_at = ? WHERE guild_id = ? AND key = ?').run(now, guildId, key);
-  }
-
-  deleteCacheRow(guildId: string, key: string): boolean {
-    return Number(this.db.prepare('DELETE FROM answer_cache WHERE guild_id = ? AND key = ?').run(guildId, key).changes) > 0;
-  }
-
-  /** Drops answers nobody refreshed since `before`, and failure-only rows that old. */
-  pruneCache(guildId: string, before: number): number {
-    return Number(
-      this.db
-        .prepare('DELETE FROM answer_cache WHERE guild_id = ? AND ((verified_at IS NOT NULL AND refreshed_at < ?) OR (verified_at IS NULL AND COALESCE(last_attempt_at, 0) < ?))')
-        .run(guildId, before, before).changes,
-    );
   }
 
   countXpMembers(guildId: string): number {

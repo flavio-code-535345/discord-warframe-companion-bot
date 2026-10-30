@@ -75,10 +75,6 @@ export const EnvSchema = z.object({
     .string()
     .default('220147375786688512,603293720061935626')
     .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
-  /** Daily refresh of the saved answers to frequently asked questions (answers/cache.ts): on/off, how many questions per run, and the UTC hour it runs. */
-  ANSWER_REFRESH_ENABLED: bool.default(true),
-  ANSWER_REFRESH_MAX: z.coerce.number().int().min(1).max(30).default(8),
-  ANSWER_REFRESH_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(4),
   /** Third-party API etiquette (warframe/fetch.ts): the gap between requests to one host, a global cap, the pause after a 403, retries, and cache lifetimes. */
   API_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(10_000).default(500),
   API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(5).max(600).default(60),

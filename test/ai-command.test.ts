@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { composeAnswer, resetLocalAi } from '../src/answers/compose.js';
+import { composeWith, resetLocalAi } from '../src/answers/compose.js';
 import { currentPull, listInstalled, localModelOf, pullProgress, pullRunning, resetPull, setChosenModel, startPull, validModelTag } from '../src/ai/ollama.js';
 
 const ndjson = (...lines: object[]) =>
@@ -40,16 +40,16 @@ describe('chosen model', () => {
     resetLocalAi();
     setChosenModel('small');
     const models: string[] = [];
-    const out = await composeAnswer(
+    const out = await composeWith(
       { FREE_AI_URL: 'https://x/v1', FREE_AI_MODEL: 'm', FREE_AI_DAILY_LIMIT: 10, LOCAL_AI_URL: 'http://h:11434/v1', LOCAL_AI_MODEL: 'big' },
+      'system',
       'q',
-      [{ title: 'T', url: 'u', extract: 'e' }],
       async (_url, init) => {
         models.push(JSON.parse(String(init.body)).model);
         return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
       },
     );
-    assert.equal(out, 'ok');
+    assert.equal(out?.text, 'ok');
     assert.deepEqual(models, ['small']);
     setChosenModel(null);
     resetLocalAi();

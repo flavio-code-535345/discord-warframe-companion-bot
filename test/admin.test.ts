@@ -223,20 +223,11 @@ test('the Brain chat streams the run as JSON lines, and only the Brain page may 
   assert.match(lines.at(-1).message, /No model is available/);
 });
 
-test('the AI page lists saved answers and can forget one', async () => {
+test('the AI page has the switches and no answer cache any more', async () => {
   const { cookie } = sessionCookie(OWNER);
-  store.saveCachedAnswer(GUILD, { key: 'where do i get bite', question: 'Where do I get Bite?', answer: 'Bite drops from Feral Kubrow.', model: 'gemma', tools: [], now: Date.now() });
   const body = await (await get('/admin/ai', cookie)).text();
-  assert.match(body, /<h2>Answer cache<\/h2>/);
-  assert.match(body, /Bite drops from Feral Kubrow/);
-  assert.match(body, /Refresh now/);
-
-  assert.equal((await post('/admin/ai/cache/forget', { key: 'where do i get bite' }, cookie)).status, 403);
-  const res = await post('/admin/ai/cache/forget', { key: 'where do i get bite', _csrf: 'csrf-token' }, cookie);
-  assert.equal(res.status, 302);
-  assert.equal(store.getCacheRow(GUILD, 'where do i get bite'), null);
-  const again = await post('/admin/ai/cache/forget', { key: 'where do i get bite', _csrf: 'csrf-token' }, cookie);
-  assert.match(decodeURIComponent((again.headers.get('location') ?? '').replace(/[+]/g, ' ')), /already gone/);
+  assert.match(body, /<h2>Switches<\/h2>/);
+  assert.doesNotMatch(body, /Answer cache|Refresh now/);
 });
 
 test('the Config page edits settings that used to be environment variables, with limits for non-owners', async () => {

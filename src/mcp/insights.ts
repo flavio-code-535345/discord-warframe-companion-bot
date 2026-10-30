@@ -4,8 +4,8 @@ import { z } from 'zod';
 import { chooseModel, setToggle } from '../ai/control.js';
 import { localModelOf } from '../ai/ollama.js';
 import { TOGGLE_KEYS, TOGGLES, aiToggle } from '../ai/settings.js';
-import { normalizeQuestion } from '../answers/cache.js';
 import { localAvailable } from '../answers/compose.js';
+import { normalizeQuestion } from '../answers/corrections.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
 import { levelOf, xpForLevel } from '../leveling/xp.js';
@@ -22,11 +22,11 @@ import { READ_ONLY, snowflake, tool } from './util.js';
  * its models are healthy, and member levels (with a way to lift people to a level, e.g. when a level unlocks a permission).
  */
 
-const SOURCES = ['local', 'cloud', 'excerpt', 'lookup', 'cache'] as const satisfies readonly AiSource[];
+const SOURCES = ['local', 'cloud', 'excerpt', 'lookup', 'correction'] as const satisfies readonly AiSource[];
 const iso = (ms: number | null): string | null => (ms ? new Date(ms).toISOString() : null);
 
 /** Lower-cased, punctuation-free question, so "How do I unlock Venus?" and "how do i unlock venus" count as one. */
-export { normalizeQuestion } from '../answers/cache.js';
+export { normalizeQuestion } from '../answers/corrections.js';
 
 export interface AiLogSummary {
   count: number;
@@ -220,7 +220,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     'set_ai_switch',
     {
       title: 'AI switches',
-      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model), thinking (let a thinking-capable local model reason first), websearch (SearXNG results), operators (free-form instructions for the two owners), log (the question log), cache (saved, verified answers and their daily refresh).',
+      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model), thinking (let a thinking-capable local model reason first), websearch (SearXNG results), operators (build designs and last-resort free-form answers for the two owners), log (the question log).',
       inputSchema: { feature: z.enum(TOGGLE_KEYS as [string, ...string[]]), on: z.boolean() },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },

@@ -157,3 +157,33 @@ test('panel admins and sessions: removal signs the admin out, expired sessions a
   assert.equal(store.isPanelAdmin('a1'), false);
   assert.equal(store.getPanelSession('s1'), null);
 });
+
+test('the answer cache is dropped with its switch and settings, also from a database that had it', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = mkdtempSync(join(tmpdir(), 'ordis-db-'));
+  const file = join(dir, 'bot.db');
+  try {
+    new Store(file).close();
+    // As a database from before the removal: the table, its switch and a panel setting, one migration behind.
+    const raw = new DatabaseSync(file);
+    const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+    raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
+    raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b')");
+    raw.exec(`PRAGMA user_version = ${version - 1}`);
+    raw.close();
+
+    const store = new Store(file);
+    assert.equal(store.getMeta('ai_toggle_cache'), null);
+    assert.equal(store.getMeta('cfg_ANSWER_REFRESH_MAX'), null);
+    assert.equal(store.getMeta('local_ai_model'), 'gemma4:e4b', 'other settings stay');
+    store.close();
+    const check = new DatabaseSync(file);
+    assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'answer_cache'").get(), undefined);
+    check.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

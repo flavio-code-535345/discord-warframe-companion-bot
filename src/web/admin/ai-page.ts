@@ -2,7 +2,6 @@ import type { Request, RequestHandler, Response, Router } from 'express';
 import { aiOverview, chooseModel, installModel, setToggle, testModel, tuneModel } from '../../ai/control.js';
 import { gb } from '../../ai/ollama.js';
 import { TOGGLE_KEYS, isToggle } from '../../ai/settings.js';
-import { cacheOverview, refreshAnswers } from '../../answers/cache.js';
 import { sourceLabel } from '../../answers/log.js';
 import type { AppContext } from '../../context.js';
 import type { PanelSession } from '../../db.js';
@@ -86,55 +85,16 @@ ${
       : '<p class="muted">No questions logged yet.</p>';
     const summary = Object.entries(stats).map(([s, n]) => `${s} ${n}`).join(' · ');
 
-    const c = cacheOverview(ctx);
-    const age = (ms: number) => (ms ? `${Math.max(0, Math.round((Date.now() - ms) / 86_400_000))} d` : '—');
-    const cacheRows = c.rows.length
-      ? `<table><tr><th>Question</th><th>Saved answer</th><th>Age</th><th>Served</th><th></th></tr>${c.rows
-          .slice(0, 15)
-          .map(
-            (r) =>
-              `<tr><td>${e(clip(r.question, 60))}</td><td>${r.verifiedAt ? e(clip(r.answer.replace(/\s+/g, ' '), 110)) : `<span class="muted">none yet${r.lastError ? ` · ${e(clip(r.lastError, 70))}` : ''}</span>`}</td><td>${r.verifiedAt ? age(r.refreshedAt) : '—'}</td><td>${r.hits}${r.fails ? ` · ${r.fails} failed` : ''}</td><td><form class="inline" method="post" action="/admin/ai/cache/forget">${csrfField(p.session)}<input type="hidden" name="key" value="${e(r.key)}"><button class="ghost">Forget</button></form></td></tr>`,
-          )
-          .join('')}</table>`
-      : '<p class="muted">Nothing saved yet. Questions asked twice or more are researched by the daily refresh.</p>';
-    const cacheCard = `<div class="card"><p class="muted flush">${c.serving ? 'Serving saved answers' : 'Not serving (switch off above)'} · daily refresh ${c.refreshOn ? `at ${String(c.hourUtc).padStart(2, '0')}:00 UTC, up to ${c.maxPerRun} questions` : 'off'} · ${c.saved} saved, ${c.failing} with failed refreshes, served ${c.hits} times</p>
-<p class="muted">Last refresh: ${c.last ? `${e(utc(c.last.at))} UTC, ${c.last.saved}/${c.last.picked} saved in ${(c.last.ms / 1000).toFixed(0)} s${c.last.note ? ` (${e(c.last.note)})` : ''}${c.last.rejected.length ? `<br>Rejected: ${c.last.rejected.map((r) => `${e(clip(r.question, 40))}: ${e(clip(r.reason, 90))}`).join('<br>')}` : ''}` : 'never'}${c.running ? ' · ⏳ running now' : ''}</p>
-${cacheRows}
-<form class="inline" method="post" action="/admin/ai/cache/refresh">${csrfField(p.session)}<button class="ghost">Refresh now</button></form></div>`;
-
     const body = `${head('AI', 'The model that writes Ordis\'s answers, the switches around it, and what it has been asked lately.')}
 ${status}
 <h2>Switches</h2>
 ${toggles}
 <h2>Model</h2>
 ${models || '<p class="muted">Connect the AI server to choose a model.</p>'}
-<h2>Answer cache</h2>
-${cacheCard}
 <h2>Recent questions</h2>
 <div class="card">${logRows}<p class="muted">Last 24 h: ${e(summary || 'none')} · the full log is in Discord with <code>/ailog</code></p></div>`;
     html(res, layout('AI', body, p));
   });
-
-  router.post(
-    '/ai/cache/refresh',
-    action('ai', async (_req, session) => {
-      const busy = cacheOverview(ctx).running;
-      if (busy) throw new UserError("A refresh is already running.");
-      void refreshAnswers(ctx);
-      await audit(session, 'Started a refresh of the saved answers');
-      return 'Refresh started. Reload this page in a minute for the result.';
-    }),
-  );
-
-  router.post(
-    '/ai/cache/forget',
-    action('ai', async (req, session) => {
-      const key = typeof req.body.key === 'string' ? req.body.key : '';
-      if (!key || !store.deleteCacheRow(guildId, key)) throw new UserError('That saved answer is already gone.');
-      await audit(session, 'Forgot a saved answer', [{ name: 'Question', value: key.slice(0, 100) }]);
-      return 'Forgotten. The next question will be answered fresh.';
-    }),
-  );
 
   router.post(
     '/ai/toggle',

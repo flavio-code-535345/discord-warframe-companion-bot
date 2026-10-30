@@ -62,10 +62,6 @@ export const SETTINGS: SettingDef[] = [
 
   { key: 'SEARXNG_URL', group: 'Web search', kind: 'text', label: 'SearXNG URL', help: 'e.g. http://192.168.178.45:8888 (JSON format enabled). Empty = no web results.' },
 
-  { key: 'ANSWER_REFRESH_ENABLED', group: 'Answer cache', kind: 'bool', label: 'Daily refresh', help: 'Research the most asked questions once a day and save verified answers.' },
-  { key: 'ANSWER_REFRESH_MAX', group: 'Answer cache', kind: 'int', label: 'Questions per refresh', help: 'At most this many per run (1 to 30).' },
-  { key: 'ANSWER_REFRESH_HOUR_UTC', group: 'Answer cache', kind: 'int', label: 'Refresh hour (UTC)', help: '0 to 23.' },
-
   { key: 'RIVEN_CRAWL_ENABLED', group: 'Riven analyzer', kind: 'bool', label: 'Slow background read', help: "Read warframe.market's riven listings one weapon at a time, so grades are ready. Off = listings are only read when someone asks for a grade." },
   { key: 'RIVEN_CRAWL_INTERVAL_SECONDS', group: 'Riven analyzer', kind: 'int', label: 'Seconds between weapons', help: 'One request per weapon (about 420 weapons). 10 to 3600; the default of 45 reads them all in about five hours.' },
   { key: 'RIVEN_REFRESH_DAYS', group: 'Riven analyzer', kind: 'int', label: 'Read each weapon again after (days)', help: '1 to 30.' },

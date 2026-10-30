@@ -63,20 +63,6 @@ const first = (q: string, patterns: RegExp[]) => {
   return null;
 };
 
-const LOOKUP_KINDS: ReadonlySet<Intent['kind']> = new Set(['price', 'drops', 'relic', 'world', 'fissures', 'bounties', 'clanEvents', 'build']);
-
-/**
- * Whether a message in the chat channel is a question for Ordis: anything ending in "?", or a request that
- * clearly names a lookup ("price of arcane energize", "baro"), so ordinary chatter is left alone.
- */
-export function isChannelQuestion(raw: string): boolean {
-  const text = raw.trim();
-  if (!text) return false;
-  // "good night all" mentions a cycle word but is a greeting.
-  if (/^(?:good|have a (?:good|great)|gn|gm)\b/i.test(text)) return text.endsWith('?');
-  return text.endsWith('?') || LOOKUP_KINDS.has(detectIntent(text).kind);
-}
-
 export function detectIntent(raw: string): Intent {
   const q = raw.toLowerCase().replace(/\s+/g, ' ').replace(/[?!.]+$/, '').trim();
   if (!q || /^(hi|hey|hello|yo|sup|help|ordis|commands|what can you do|what do you do|how do (?:i|you) use (?:you|this|ordis))\b.{0,20}$/.test(q)) {

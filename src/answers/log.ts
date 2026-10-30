@@ -45,11 +45,11 @@ const SOURCE_LABEL: Record<AiSource, string> = {
   cloud: '☁️ cloud',
   excerpt: '📄 wiki excerpt',
   lookup: '🔎 lookup',
-  cache: '💾 saved answer',
   correction: '✏️ staff correction',
 };
 
-export const sourceLabel = (e: Pick<AiLogEntry, 'source' | 'model'>): string => `${SOURCE_LABEL[e.source]}${e.model ? ` (${e.model})` : ''}`;
+/** Older entries can name a source that no longer exists ("cache", the saved answers of the removed answer cache). */
+export const sourceLabel = (e: Pick<AiLogEntry, 'source' | 'model'>): string => `${Object.hasOwn(SOURCE_LABEL, e.source) ? SOURCE_LABEL[e.source] : e.source}${e.model ? ` (${e.model})` : ''}`;
 
 const oneLine = (s: string, max: number): string => {
   const t = s.replace(/\s+/g, ' ').trim();

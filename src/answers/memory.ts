@@ -73,8 +73,6 @@ export function forget(key?: string): void {
   else convos.delete(key);
 }
 
-export const conversationCount = (): number => convos.size;
-
 /**
  * Whether a message leans on what was said before: it points back with a pronoun or starts with a connector ("and", "what
  * about"), and is short. Such a message cannot be understood or looked up on its own: the facts are looked up for the subject of

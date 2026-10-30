@@ -1,7 +1,6 @@
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { DEFAULT_MODEL_CHOICE, aiOverview, chooseModel, installModel, requireBase, setToggle, testModel, tuneModel } from '../../ai/control.js';
 import { personaBand, updateBrain } from '../../agent/brain.js';
-import { cacheOverview, refreshAnswers } from '../../answers/cache.js';
 import { gb, listInstalled } from '../../ai/ollama.js';
 import { type AiToggle, TOGGLES, TOGGLE_KEYS, isToggle } from '../../ai/settings.js';
 import { UserError } from '../../services/clan.js';
@@ -60,12 +59,6 @@ export const ai: Command = {
     )
     .addSubcommand((s) =>
       s
-        .setName('cache')
-        .setDescription('Saved answers to frequently asked questions: status, or refresh them now')
-        .addStringOption((o) => o.setName('action').setDescription('What to do').setRequired(true).addChoices({ name: 'status', value: 'status' }, { name: 'refresh now', value: 'refresh' })),
-    )
-    .addSubcommand((s) =>
-      s
         .setName('test')
         .setDescription('Send one short prompt to the local model and time the answer')
         .addStringOption((o) => o.setName('prompt').setDescription('Default: a greeting').setMaxLength(300)),
@@ -114,27 +107,10 @@ export const ai: Command = {
       return;
     }
 
-    if (sub === 'cache') {
-      const o = cacheOverview(ctx);
-      if (interaction.options.getString('action', true) === 'refresh') {
-        if (o.running) throw new UserError('A refresh is already running.');
-        const channelId = interaction.channelId;
-        void refreshAnswers(ctx).then(async (r) => {
-          const channel = await ctx.client.channels.fetch(channelId).catch(() => null);
-          if (r && channel?.isSendable()) await channel.send({ content: `💾 Answer refresh done: ${r.saved}/${r.picked} saved${r.rejected.length ? `, ${r.rejected.length} rejected (see the admin panel's AI page)` : ''}${r.note ? ` (${r.note})` : ''}.`, allowedMentions: { parse: [] } }).catch(() => {});
-        });
-        await interaction.editReply('💾 Refreshing the saved answers in the background. I will post here when it is done.');
-        return;
-      }
-      const last = o.last ? `${o.last.saved}/${o.last.picked} saved, ${o.last.rejected.length} rejected (${new Date(o.last.at).toISOString().slice(0, 16).replace('T', ' ')} UTC)` : 'never';
-      await interaction.editReply(`💾 **Answer cache:** ${o.serving ? 'serving' : 'not serving'} · ${o.saved} saved, ${o.failing} with failed refreshes, served ${o.hits} times\nDaily refresh: ${o.refreshOn ? `${String(o.hourUtc).padStart(2, '0')}:00 UTC, up to ${o.maxPerRun} questions` : 'off'} · last run: ${last}${o.running ? ' · running now' : ''}`);
-      return;
-    }
-
     if (sub === 'persona') {
       const level = interaction.options.getInteger('level', true);
       updateBrain(ctx.store, { ordisness: level });
-      await interaction.editReply(`Ordis-ness is now ${level}/100 (${personaBand(level).name}). It applies to the agent's next answer. The full prompt and tuning are on the admin panel's Brain page.`);
+      await interaction.editReply(`Ordis-ness is now ${level}/100 (${personaBand(level).name}). It applies from the next answer. The agent's prompt and tuning are on the admin panel's Brain page.`);
       return;
     }
 

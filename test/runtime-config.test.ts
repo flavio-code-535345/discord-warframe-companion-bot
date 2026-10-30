@@ -33,12 +33,12 @@ describe('runtime settings', () => {
   it('survives a restart: the stored value is applied on top of the environment again', () => {
     const s = setup();
     initRuntimeConfig(s.config, s.store);
-    setSetting(s.config, s.store, 'ANSWER_REFRESH_MAX', '12');
+    setSetting(s.config, s.store, 'RIVEN_CRAWL_INTERVAL_SECONDS', '120');
     setSetting(s.config, s.store, 'OPERATOR_IDS', '603293720061935626, 220147375786688512');
     resetRuntimeConfig();
     const again = { config: loadConfig(s.env), store: s.store, env: s.env };
     initRuntimeConfig(again.config, again.store);
-    assert.equal(again.config.ANSWER_REFRESH_MAX, 12);
+    assert.equal(again.config.RIVEN_CRAWL_INTERVAL_SECONDS, 120);
     assert.deepEqual(again.config.OPERATOR_IDS, ['603293720061935626', '220147375786688512']);
   });
 
