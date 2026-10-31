@@ -2,8 +2,6 @@ import { type Message } from 'discord.js';
 import { logAnswer } from '../answers/log.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
-import { handleCorrectionReply } from './corrections.js';
-import { addRatingReactions } from './ratings.js';
 
 export const stripMention = (text: string, botId: string) => text.replace(new RegExp(`<@!?${botId}>`, 'g'), '').trim();
 
@@ -27,13 +25,10 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
 
   const reply = (content: string) => message.reply({ content, allowedMentions: { parse: [], repliedUser: true } });
   const question = stripMention(message.content, botId);
-  // A reply to one of Ordis's logged answers: staff replying with the right answer correct him (members suggest a correction for staff to approve).
-  const answered = !isDM && message.reference?.messageId ? store.aiLogByMessage(config.DISCORD_GUILD_ID, message.reference.messageId) : null;
-  if (answered && (await handleCorrectionReply(message, ctx, answered, question))) return;
   // In the chat channel Ordis stays out of conversations between members (a reply to someone else's message) and of messages
   // with no text (a picture on its own).
   if (inChatChannel && !mentioned && !question) return;
-  if (inChatChannel && !mentioned && !answered && message.reference?.messageId) {
+  if (inChatChannel && !mentioned && message.reference?.messageId) {
     const ref = await message.fetchReference().catch(() => null);
     if (ref && ref.author.id !== botId) return;
   }
@@ -53,10 +48,8 @@ export async function handleChatMessage(message: Message, ctx: AppContext): Prom
     void message.channel.sendTyping().catch(() => {});
     const answer = await smartAnswer(question.slice(0, 500), ctx);
     if (answer.silent) return;
-    const sent = await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
-    const logged = logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer, sent.id);
-    // The ✅ and ❌ under a logged answer are staff's quick rating (see ratings.ts); DMs and staff corrections don't get them.
-    if (logged !== null && !isDM && answer.source !== 'correction') void addRatingReactions(sent);
+    await message.reply({ content: answer.content, embeds: answer.embeds, allowedMentions: { parse: [], repliedUser: true } });
+    logAnswer(ctx, { id: message.author.id, name: message.member?.displayName ?? message.author.displayName, channelId: isDM ? null : message.channelId, via: isDM ? 'dm' : 'chat' }, question, answer);
   } catch (err) {
     console.error('[chat] answer failed:', err);
     await reply('Ordis encountered a -- CRITICAL ERROR -- small hiccup, Operator. Please try again shortly.').catch(() => {});

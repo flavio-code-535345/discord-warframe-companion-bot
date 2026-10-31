@@ -38,7 +38,6 @@ function field(st: SettingState): string {
 export function registerConfigRoutes({ router, ctx, pc, html, action, audit }: Deps): void {
   const { config, store } = ctx;
   const states = () => new Map(settingStates(config, store).map((s) => [s.def.key, s]));
-  const isOwner = (session: PanelSession) => config.PANEL_OWNER_IDS.includes(session.userId);
 
   router.get('/config', (req, res) => {
     const p = pc(res, 'config', req);
@@ -46,7 +45,6 @@ export function registerConfigRoutes({ router, ctx, pc, html, action, audit }: D
     const groups = [...new Set(SETTINGS.map((s) => s.group))];
     const retire = all.filter((s) => s.source === 'panel' && process.env[s.def.key]).map((s) => s.def.key);
     const pending = all.filter((s) => s.pendingRestart);
-    const owner = p.session ? config.PANEL_OWNER_IDS.includes(p.session.userId) : false;
 
     const intro = `<div class="card stack"><p class="muted flush">Values set here win over environment variables and apply right away (the ones marked "restart" after the next restart). Clear a value or tick <em>reset</em> to go back to the environment or the built-in default. Secrets and anything the panel's own login needs stay environment-only (listed at the bottom).</p>
 <form class="inline" method="post" action="/admin/config/adopt">${csrfField(p.session)}<button class="ghost">Copy the current environment values into the panel</button> <span class="muted">so those variables can be removed from your stack</span></form>
@@ -58,8 +56,7 @@ ${pending.length ? `<div class="flash err">Needs a restart to take effect: ${pen
         const rows = all
           .filter((s) => s.def.group === g)
           .map((s) => {
-            const locked = s.def.ownerOnly && !owner;
-            return `<div class="card"><div class="row"><div><strong>${e(s.def.label)}</strong>${s.def.restart ? ' <span class="muted">(restart)</span>' : ''}<div class="muted">${e(s.def.help)}</div><div class="muted"><code>${e(s.def.key)}</code> ${SOURCE[s.source]}${s.source === 'panel' ? ` otherwise: ${e(s.fallback || 'off / empty')}` : ''}${locked ? ` ${badge('panel owners only', 'warn')}` : ''}</div></div><div>${locked ? `<code>${e(s.value || '—')}</code>` : field(s)}${locked || s.source !== 'panel' ? '' : `<label class="check"><input type="checkbox" name="reset_${e(s.def.key)}" value="1"> reset</label>`}</div></div></div>`;
+            return `<div class="card"><div class="row"><div><strong>${e(s.def.label)}</strong>${s.def.restart ? ' <span class="muted">(restart)</span>' : ''}<div class="muted">${e(s.def.help)}</div><div class="muted"><code>${e(s.def.key)}</code> ${SOURCE[s.source]}${s.source === 'panel' ? ` otherwise: ${e(s.fallback || 'off / empty')}` : ''}</div></div><div>${field(s)}${s.source !== 'panel' ? '' : `<label class="check"><input type="checkbox" name="reset_${e(s.def.key)}" value="1"> reset</label>`}</div></div></div>`;
           })
           .join('');
         return `<h2>${e(g)}</h2><form class="stack" method="post" action="/admin/config/save">${csrfField(p.session)}<input type="hidden" name="group" value="${e(g)}">${rows}<div><button>Save ${e(g)}</button></div></form>`;
@@ -105,7 +102,6 @@ ${holds.length ? holds.map((h) => `<p class="flush">⏸ <code>${e(h.host)}</code
         changes.push({ def, raw });
       }
       if (!changes.length) return 'Nothing changed.';
-      if (changes.some((c) => c.def.ownerOnly) && !isOwner(session)) throw new UserError('Only panel owners can change that setting.');
       for (const c of changes) {
         if (c.raw === null) resetSetting(config, store, c.def.key);
         else {

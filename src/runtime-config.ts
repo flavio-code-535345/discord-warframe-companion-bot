@@ -23,8 +23,6 @@ export interface SettingDef {
   options?: readonly string[];
   /** Read when the bot starts (Discord intents, the wiki index, rate limiters): a change is saved now and applies after a restart. */
   restart?: boolean;
-  /** Only the panel owners (PANEL_OWNER_IDS) may change it. */
-  ownerOnly?: boolean;
 }
 
 export const SETTINGS: SettingDef[] = [
@@ -46,7 +44,6 @@ export const SETTINGS: SettingDef[] = [
 
   { key: 'CLAN_NAME', group: 'Identity', kind: 'text', label: 'Clan name', help: 'Used in answers and as the name the screenshot roles check against.' },
   { key: 'BOT_NAME', group: 'Identity', kind: 'text', label: 'Bot name', help: "The bot's Discord username and the name it uses for itself." },
-  { key: 'OPERATOR_IDS', group: 'Operators', kind: 'ids', ownerOnly: true, label: 'Operator Discord IDs', help: 'Comma-separated user IDs that may give Ordis free-form instructions. Only panel owners can change this.' },
 
   { key: 'LOCAL_AI_URL', group: 'Local AI (Ollama)', kind: 'text', label: 'Ollama URL', help: 'OpenAI-compatible endpoint, e.g. http://192.168.178.45:11434/v1. Empty = no local model.' },
   { key: 'LOCAL_AI_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Default local model', help: 'Used unless a model was chosen on the AI page or with /ai model.' },

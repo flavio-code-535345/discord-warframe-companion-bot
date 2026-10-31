@@ -32,7 +32,6 @@ import type { AiSource } from '../db.js';
 import { type WorldState, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { calculate } from './calc.js';
 import { circuitAnswer } from './circuit.js';
-import { findCorrection } from './corrections.js';
 import { type Intent, type WorldView, detectIntent } from './intent.js';
 import { masteryAnswer } from './mastery.js';
 import { mathExpression, noContent, questionLike, thanks } from './understand.js';
@@ -62,8 +61,6 @@ export interface SmartAnswer {
   model?: string | null;
   intent?: string;
   ms?: number;
-  /** Why the answer needs a look (it is logged and listed by the MCP tool answers_to_review). */
-  review?: string | null;
 }
 
 /** Ordis's voice: one short line before the data. */
@@ -85,7 +82,6 @@ export const HELP_TEXT = [
   '• **Right now:** "when is Baro coming?", "is it night on Cetus?", "steel path axi fissures", "today\'s sortie", "Entrati bounties", "when can I get the Torid Incarnon?"',
   '• **Your clan:** "when is our next clan event?"',
   '• **Anything else:** Ordis links the wiki pages that answer it ("how do Archon Shards work?").',
-  '• **Wrong answer?** Reply to it with the right one (no question mark). When an admin replies it takes effect at once; other replies go to the admins to approve.',
   'Slash commands: `/item` `/price` `/drops` `/wiki` `/wf` `/track` `/event` `/lfg` `/clan`.',
 ].join('\n');
 
@@ -181,7 +177,7 @@ const namedPage = (question: string): string | null => {
 export async function wikiAnswer(question: string): Promise<SmartAnswer> {
   const results = await searchWiki(question, 3, { pageChunks: 3, pageChars: 2600 }).catch(() => [] as WikiResult[]);
   if (!results.length) {
-    return { content: `Ordis found nothing on the wiki for that, Operator. Try other words, or search it yourself: ${searchLink(question)}`, embeds: [], found: false, source: 'lookup', review: 'nothing found on the wiki' };
+    return { content: `Ordis found nothing on the wiki for that, Operator. Try other words, or search it yourself: ${searchLink(question)}`, embeds: [], found: false, source: 'lookup' };
   }
   const named = namedPage(question);
   // Only a sentence of the named page itself is quoted (its passages from the search, else the page read whole).
@@ -192,7 +188,7 @@ export async function wikiAnswer(question: string): Promise<SmartAnswer> {
   const guide = named && BEST_FARM.test(question) ? await readWikiPage(`${named.replace(/\s*\([^)]*\)$/, '')} Farming Guide`, 100).catch(() => null) : null;
   const titles = [...new Set([guide?.title, direct?.source.title, named, ...results.map((r) => r.title)].filter((t): t is string => Boolean(t)))].slice(0, 3);
   const quote = direct ? `> ${direct.text.replace(/\s+/g, ' ')}\n` : '';
-  return { content: `${quote}${links(titles)}`, embeds: [], found: true, source: direct ? 'excerpt' : 'lookup', review: direct ? null : 'links only: no sentence of a named page fit the question' };
+  return { content: `${quote}${links(titles)}`, embeds: [], found: true, source: direct ? 'excerpt' : 'lookup' };
 }
 
 /** The item card for a name the member typed, when the item database has exactly that item ("helminth" is not the Helminth Charger). */
@@ -312,16 +308,13 @@ export function withoutName(q: string): string {
   return /[,:;!.-]/.test(m[1]!) || /^(how|what|whats|what's|where|when|whens|why|who|which|can|could|should|would|will|do|does|did|tell|give|show|list|find|check|research|search|explain|help|please)\b/i.test(rest) ? rest : q;
 }
 
-/** Answers a chat message: a staff correction, an exact lookup, or the wiki. */
+/** Answers a chat message: an exact lookup, or the wiki. */
 export async function smartAnswer(raw: string, ctx: AppContext): Promise<SmartAnswer> {
   const question = withoutName(raw);
   const intent = detectIntent(question);
   const started = Date.now();
   const done = (a: SmartAnswer, kind?: string): SmartAnswer => ({ ...a, source: a.source ?? 'lookup', model: null, intent: a.intent ?? kind ?? intent.kind, ms: Date.now() - started });
 
-  // A staff correction (see answers/corrections.ts) for exactly this question wins over everything else.
-  const fix = findCorrection(ctx, question);
-  if (fix) return { content: fix.correction, embeds: [], found: true, source: 'correction', model: null, intent: 'correction', ms: Date.now() - started };
   if (thanks(question)) return done({ content: 'Always, Operator. Ordis lives to serve.', embeds: [], found: true }, 'smalltalk');
   // A link, an emoji or "lol" has nothing to look up.
   if (noContent(question)) return done({ content: '', embeds: [], found: false, silent: true }, 'smalltalk');

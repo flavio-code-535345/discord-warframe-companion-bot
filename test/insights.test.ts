@@ -35,8 +35,8 @@ const entry = (over: Partial<Parameters<Store['addAiLog']>[1]> = {}) => ({
   via: 'chat' as const,
   question: 'How do I unlock Venus?',
   intent: 'wiki',
-  source: 'local' as const,
-  model: 'gemma',
+  source: 'excerpt' as const,
+  model: null,
   found: true,
   ms: 4000,
   answer: 'Do things.',
@@ -47,12 +47,12 @@ describe('ai log tool', () => {
   it('normalizes questions and finds repeats and unanswered ones', () => {
     assert.equal(normalizeQuestion('  How do I unlock Venus?! '), 'how do i unlock venus');
     const s = summarizeAiLog([
-      { source: 'local', intent: 'wiki', found: true, question: 'How do I unlock Venus?' },
-      { source: 'local', intent: 'wiki', found: true, question: 'how do i unlock venus' },
+      { source: 'excerpt', intent: 'wiki', found: true, question: 'How do I unlock Venus?' },
+      { source: 'excerpt', intent: 'wiki', found: true, question: 'how do i unlock venus' },
       { source: 'lookup', intent: 'price', found: false, question: 'price of nothing' },
     ]);
     assert.equal(s.count, 3);
-    assert.deepEqual(s.bySource, { local: 2, lookup: 1 });
+    assert.deepEqual(s.bySource, { excerpt: 2, lookup: 1 });
     assert.equal(s.unanswered, 1);
     assert.deepEqual(s.repeatedQuestions, [{ question: 'how do i unlock venus', times: 2 }]);
   });
@@ -64,7 +64,7 @@ describe('ai log tool', () => {
     const { call } = setup(store);
     assert.equal((await call('get_ai_log', { limit: 10 })).entries.length, 2);
     assert.deepEqual((await call('get_ai_log', { limit: 10, user_id: '2' })).entries.map((e: { user: string }) => e.user), ['B']);
-    assert.equal((await call('get_ai_log', { limit: 10, source: 'local' })).entries.length, 1);
+    assert.equal((await call('get_ai_log', { limit: 10, source: 'excerpt' })).entries.length, 1);
     assert.equal((await call('get_ai_log', { limit: 10, only_unanswered: true })).entries.length, 1);
   });
 });
@@ -78,7 +78,7 @@ describe('bot health tool', () => {
     assert.equal(out.discord.ready, true);
     assert.equal(out.lifecycle.state, 'running');
     assert.equal(out.ai.localModel, 'gemma');
-    assert.deepEqual(out.answersLast24h, { local: 1 });
+    assert.deepEqual(out.answersLast24h, { excerpt: 1 });
     assert.equal(out.features.leveling, true);
   });
 });

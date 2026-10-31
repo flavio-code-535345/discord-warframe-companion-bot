@@ -4,7 +4,7 @@ import type { AiLogEntry, AiSource } from '../db.js';
 import type { SmartAnswer } from './smart.js';
 
 /**
- * AI question log: who asked what, where, and which model (or plain lookup) produced the answer. Kept in the database for
+ * Question log: who asked what, where, and how it was answered (a quoted wiki sentence or a lookup). Kept in the database for
  * 30 days and shown to staff with /ailog. Never throws: logging must not stop an answer from being delivered.
  */
 
@@ -15,8 +15,8 @@ export interface LoggedAsker {
   via: AiLogEntry['via'];
 }
 
-/** Records the answer and returns its log id (null when logging is off or failed). `messageId` is the Discord message that carried it. */
-export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: LoggedAsker, question: string, answer: SmartAnswer, messageId: string | null = null): number | null {
+/** Records the answer and returns its log id (null when logging is off or failed). */
+export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: LoggedAsker, question: string, answer: SmartAnswer): number | null {
   if (!aiToggle('log')) return null;
   try {
     return ctx.store.addAiLog(ctx.config.DISCORD_GUILD_ID, {
@@ -32,8 +32,6 @@ export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: Logged
       found: answer.found,
       ms: answer.ms ?? 0,
       answer: answer.content.slice(0, 1500),
-      messageId,
-      review: answer.review ?? null,
     });
   } catch (err) {
     console.warn('[ailog] could not record the question:', err instanceof Error ? err.message : err);
@@ -42,14 +40,11 @@ export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: Logged
 }
 
 const SOURCE_LABEL: Record<AiSource, string> = {
-  local: '🏠 local',
-  cloud: '☁️ cloud',
   excerpt: '📄 wiki excerpt',
   lookup: '🔎 lookup',
-  correction: '✏️ staff correction',
 };
 
-/** Older entries can name a source that no longer exists ("cache", the saved answers of the removed answer cache). */
+/** Older entries can name a source that no longer exists (the removed models, corrections and answer cache): shown as stored. */
 export const sourceLabel = (e: Pick<AiLogEntry, 'source' | 'model'>): string => `${Object.hasOwn(SOURCE_LABEL, e.source) ? SOURCE_LABEL[e.source] : e.source}${e.model ? ` (${e.model})` : ''}`;
 
 const oneLine = (s: string, max: number): string => {

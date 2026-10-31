@@ -49,7 +49,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       },
       {
         name: 'Ordis chat channel',
-        value: `${ch(s.chatChannelId)} · Ordis answers questions written there from lookups and the wiki; mentions, replies, /ask and DMs work everywhere · an admin's reply to an answer corrects him${chatWarnings.length ? `
+        value: `${ch(s.chatChannelId)} · Ordis answers questions written there from lookups and the wiki; mentions, replies, /ask and DMs work everywhere${chatWarnings.length ? `
 ⚠️ ${chatWarnings.join('; ')}` : ''}`,
       },
     );

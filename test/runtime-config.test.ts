@@ -34,12 +34,12 @@ describe('runtime settings', () => {
     const s = setup();
     initRuntimeConfig(s.config, s.store);
     setSetting(s.config, s.store, 'RIVEN_CRAWL_INTERVAL_SECONDS', '120');
-    setSetting(s.config, s.store, 'OPERATOR_IDS', '603293720061935626, 220147375786688512');
+    setSetting(s.config, s.store, 'SEARXNG_URL', 'http://searx:8888');
     resetRuntimeConfig();
     const again = { config: loadConfig(s.env), store: s.store, env: s.env };
     initRuntimeConfig(again.config, again.store);
     assert.equal(again.config.RIVEN_CRAWL_INTERVAL_SECONDS, 120);
-    assert.deepEqual(again.config.OPERATOR_IDS, ['603293720061935626', '220147375786688512']);
+    assert.equal(again.config.SEARXNG_URL, 'http://searx:8888');
   });
 
   it('clearing a value returns to the default; clearing an optional one switches it off even when the environment sets it', () => {
@@ -105,6 +105,5 @@ describe('runtime settings', () => {
       assert.ok(!covered.has(name), `${name} must stay environment-only`);
     }
     assert.ok(ENV_ONLY.flatMap((o) => o.names).includes('ALLOW_CODE_EDIT'));
-    assert.ok(SETTINGS.find((x) => x.key === 'OPERATOR_IDS')!.ownerOnly);
   });
 });

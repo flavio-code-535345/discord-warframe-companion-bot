@@ -61,11 +61,6 @@ export const EnvSchema = z.object({
     .string()
     .default('603293720061935626')
     .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
-  /** Discord IDs of the two clan owners ("Legion" and "Tumba"): the only people Ordis takes free-form instructions from (answers/operator.ts). */
-  OPERATOR_IDS: z
-    .string()
-    .default('220147375786688512,603293720061935626')
-    .transform((v) => v.split(',').map((s) => s.trim()).filter((s) => /^\d{15,22}$/.test(s))),
   /** Third-party API etiquette (warframe/fetch.ts): the gap between requests to one host, a global cap, the pause after a 403, retries, and cache lifetimes. */
   API_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(10_000).default(500),
   API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(5).max(600).default(60),

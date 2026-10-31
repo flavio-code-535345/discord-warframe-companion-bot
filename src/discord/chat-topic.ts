@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 
 /** The chat channel's description: what Ordis does there, so members know how to use it. Kept under Discord's 1024-character limit. */
 export const CHAT_TOPIC =
-  'Ask Ordis about Warframe: prices, drops, items, Baro, fissures, the Circuit, or anything on the wiki. He answers from live data and links the wiki pages, nothing made up. Wrong answer? Reply with the right one.';
+  'Ask Ordis about Warframe: prices, drops, items, Baro, fissures, the Circuit, or anything on the wiki. He answers from live data and links the wiki pages, nothing made up.';
 
 /** The description the bot last wrote to a channel, so it can tell its own text from one staff wrote by hand. */
 const writtenKey = (channelId: string) => `chat_topic_written:${channelId}`;

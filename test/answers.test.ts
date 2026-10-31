@@ -8,7 +8,7 @@ import { Store } from '../src/db.js';
 import { api } from '../src/warframe/fetch.js';
 import { MIN_READY_PAGES, WikiIndex, setWikiIndex } from '../src/wiki/index.js';
 
-const config = { BOT_NAME: 'Cephalon Ordis', CLAN_NAME: 'The Rats Den 69', DISCORD_GUILD_ID: 'g', OPERATOR_IDS: ['1'], PANEL_OWNER_IDS: ['9'], WARFRAME_PLATFORM: 'pc' };
+const config = { BOT_NAME: 'Cephalon Ordis', CLAN_NAME: 'The Rats Den 69', DISCORD_GUILD_ID: 'g', WARFRAME_PLATFORM: 'pc' };
 const ctxOf = (store = new Store(':memory:')) => ({ config, store }) as never;
 
 const realFetch = globalThis.fetch;
@@ -212,7 +212,6 @@ describe('answers from the wiki', () => {
     assert.doesNotMatch(a.content, /^>/m, 'nothing quoted out of context');
     assert.match(a.content, /^📖 \[Kinemantik Instant Messenger\]/);
     assert.equal(a.source, 'lookup');
-    assert.match(a.review!, /links only/);
     const none = await wikiAnswer('zxqv plorb');
     assert.equal(none.found, false);
     assert.match(none.content, /found nothing on the wiki.*index\.php\?search=zxqv%20plorb/);
@@ -265,14 +264,5 @@ describe('smartAnswer', () => {
     assert.equal(wiki.source, 'excerpt');
     assert.match(wiki.content, /^> Bite is a Mod/);
     assert.equal(wiki.model, null, 'no model anywhere');
-  });
-
-  it('lists answers worth a look', () => {
-    const store = new Store(':memory:');
-    const log = (question: string, review: string | null) => store.addAiLog('g', { at: Date.now(), userId: '5', userName: 'Rat', channelId: 'c', via: 'chat', question, intent: 'wiki', source: 'lookup', model: null, found: true, ms: 1, answer: 'a', review });
-    log('fine', null);
-    log('thin', 'links only: x');
-    store.rateAiLog('g', log('rated', null), 'wrong', '7');
-    assert.deepEqual(store.aiLogToReview('g', 0, 10).map((e) => e.question).sort(), ['rated', 'thin']);
   });
 });

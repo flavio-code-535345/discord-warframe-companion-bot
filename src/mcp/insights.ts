@@ -4,7 +4,6 @@ import { chooseModel, setToggle } from '../ai/control.js';
 import { localModelOf } from '../ai/ollama.js';
 import { TOGGLE_KEYS, TOGGLES, aiToggle } from '../ai/settings.js';
 import { localAvailable } from '../ai/local.js';
-import { normalizeQuestion } from '../answers/corrections.js';
 import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
@@ -22,11 +21,11 @@ import { READ_ONLY, snowflake, tool } from './util.js';
  * its models are healthy, and member levels (with a way to lift people to a level, e.g. when a level unlocks a permission).
  */
 
-const SOURCES = ['local', 'cloud', 'excerpt', 'lookup', 'correction'] as const satisfies readonly AiSource[];
+const SOURCES = ['excerpt', 'lookup'] as const satisfies readonly AiSource[];
 const iso = (ms: number | null): string | null => (ms ? new Date(ms).toISOString() : null);
 
 /** Lower-cased, punctuation-free question, so "How do I unlock Venus?" and "how do i unlock venus" count as one. */
-export { normalizeQuestion } from '../answers/corrections.js';
+export const normalizeQuestion = (q: string): string => q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 
 export interface AiLogSummary {
   count: number;
@@ -66,7 +65,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Questions members asked Ordis',
       description:
-        'The log of questions members asked Ordis (chat channel, DMs, /ask) with the answer, which model wrote it (local Ollama, cloud, wiki excerpt, or a direct lookup) and how long it took. Kept 30 days. Also returns counts by source and intent, the questions that found nothing, and questions asked more than once, which shows what the wiki or rules should cover.',
+        'The log of questions members asked Ordis (chat channel, DMs, /ask) with the answer, how it was made (a quoted wiki sentence or a direct lookup) and how long it took. Kept 30 days. Also returns counts by source and intent, the questions that found nothing, and questions asked more than once, which shows what the wiki or rules should cover.',
       inputSchema: {
         limit: z.number().int().min(1).max(200).default(30).describe('Newest entries to return'),
         hours: z.number().min(1).max(720).optional().describe('Only the last N hours'),
@@ -96,8 +95,6 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           seconds: Number((e.ms / 1000).toFixed(1)),
           found: e.found,
           answer: e.answer,
-          ...(e.review ? { review: e.review } : {}),
-          ...(e.rating ? { rating: e.rating } : {}),
         })),
       };
     }),
@@ -107,37 +104,13 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     'test_answer',
     {
       title: 'Test a chat answer',
-      description: 'Runs a question through the same path as the chat channel (corrections, lookups, the wiki) on the live bot, without posting or logging anything, and returns the answer: the text, the embed titles, how it was made and how long it took.',
+      description: 'Runs a question through the same path as the chat channel (lookups, the wiki) on the live bot, without posting or logging anything, and returns the answer: the text, the embed titles, how it was made and how long it took.',
       inputSchema: { question: z.string().min(1).max(500) },
       annotations: READ_ONLY,
     },
     tool(async ({ question }) => {
       const a = await smartAnswer(question, ctx);
-      return { content: a.content, embeds: a.embeds.map((e) => e.data.title ?? null), found: a.found, silent: a.silent ?? false, intent: a.intent, source: a.source, ms: a.ms, review: a.review ?? null };
-    }),
-  );
-
-  server.registerTool(
-    'answers_to_review',
-    {
-      title: 'Answers that need a look',
-      description:
-        "Chat answers worth a look: questions the wiki had nothing for, answers that were only links (no sentence of a named page fit), and answers staff rated wrong (❌), newest first, with the reason. Fix them in batches (a lookup rule, a staff correction) instead of waiting for screenshots.",
-      inputSchema: { days: z.number().min(1).max(30).default(7).describe('How far back'), limit: z.number().int().min(1).max(100).default(30) },
-      annotations: READ_ONLY,
-    },
-    tool(async ({ days, limit }) => {
-      const rows = store.aiLogToReview(guildId, Date.now() - days * 86_400_000, limit);
-      const reasons: Record<string, number> = {};
-      for (const e of rows) {
-        const kind = e.rating === 'wrong' ? 'rated wrong' : (e.review ?? '').split(':')[0]!;
-        reasons[kind] = (reasons[kind] ?? 0) + 1;
-      }
-      return {
-        count: rows.length,
-        byReason: reasons,
-        entries: rows.map((e) => ({ at: iso(e.at), user: e.userName, question: e.question, kind: e.intent, source: e.source, review: e.review, rating: e.rating, answer: e.answer })),
-      };
+      return { content: a.content, embeds: a.embeds.map((e) => e.data.title ?? null), found: a.found, silent: a.silent ?? false, intent: a.intent, source: a.source, ms: a.ms };
     }),
   );
 

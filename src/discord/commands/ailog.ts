@@ -4,13 +4,13 @@ import type { AiSource } from '../../db.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 
-const STAT_ORDER: AiSource[] = ['local', 'cloud', 'excerpt', 'lookup', 'correction'];
+const STAT_ORDER: AiSource[] = ['excerpt', 'lookup'];
 
-/** Staff: what members asked Ordis and which model answered. */
+/** Staff: what members asked Ordis and how it was answered. */
 export const ailog: Command = {
   data: new SlashCommandBuilder()
     .setName('ailog')
-    .setDescription('Staff: recent questions members asked Ordis and which model answered')
+    .setDescription('Staff: recent questions members asked Ordis and how they were answered')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addIntegerOption((o) => o.setName('count').setDescription('How many entries (default 8)').setMinValue(1).setMaxValue(25))
     .addUserOption((o) => o.setName('member').setDescription('Only this member'))
