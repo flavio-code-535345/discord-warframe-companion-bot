@@ -14,7 +14,7 @@ import { getWikiIndex } from '../wiki/index.js';
 import { groundAnswer } from './check.js';
 import { composeWith } from './compose.js';
 import { relatedCorrections } from './corrections.js';
-import { judgeAnswer, quickSanity } from './review.js';
+import { quickSanity } from './review.js';
 import { withModelSlot } from './slot.js';
 import type { SmartAnswer } from './smart.js';
 import { reportStatus } from './status.js';
@@ -246,10 +246,10 @@ export async function factAnswer(ctx: AppContext, question: string, opts: FactOp
     trace.removed = grounded?.removed.map((r) => `${r.why}: ${r.sentence}`) ?? ['(most of it: the wiki is quoted instead)'];
     if (grounded) {
       if (grounded.removed.length) console.warn(`[answers] removed ${grounded.removed.length} unsupported sentence(s): ${grounded.removed.map((r) => `${r.why}: ${r.sentence.slice(0, 80)}`).join(' | ')}`);
-      // The sanity test (review.ts): cheap rules, then the model's verdict. A weak answer is written once more with the reason;
-      // if it stays weak the better of the two is sent and logged for review.
+      // The sanity test (review.ts): cheap rules. A weak answer is written once more with the reason; if it stays weak the better
+      // of the two is sent and logged for review.
       const factsText = g.facts.map((f) => `${f.label}\n${f.text}`).join('\n\n');
-      const weak = quickSanity(question, grounded.text, factsText.length) ?? (await judgeAnswer(config, question, grounded.text, factsText));
+      const weak = quickSanity(question, grounded.text, factsText.length);
       let answer = { text: grounded.text, via: written.via, model: written.model };
       let review: string | null = null;
       if (weak) {

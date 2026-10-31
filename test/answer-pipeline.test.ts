@@ -8,7 +8,7 @@ import { groundAnswer } from '../src/answers/check.js';
 import { availability, circuitAnswer, circuitTopic, namedIn, nextReset, parseRotations, resetRotations, weekOf } from '../src/answers/circuit.js';
 import { resetLocalAi } from '../src/answers/compose.js';
 import { masteryAnswer } from '../src/answers/mastery.js';
-import { judgeAnswer, quickSanity } from '../src/answers/review.js';
+import { quickSanity } from '../src/answers/review.js';
 import { forget, memoryKey, recall, recallSubject, remember } from '../src/answers/memory.js';
 import { dropFact, elementsFact, factAnswer, factsUserPrompt, mathAnswer, relevantDrops } from '../src/answers/pipeline.js';
 import { smartAnswer, withoutName } from '../src/answers/smart.js';
@@ -357,21 +357,13 @@ describe('the sanity test and the self-review', () => {
     assert.equal(quickSanity('what rewards can the icebind give', 'The chest gives **Kuva** and an **Archon Shard**.', 400), null);
   });
 
-  it("reads the model's verdict, and never blocks an answer on an unclear one", async () => {
-    const say = (content: string) => (async () => Response.json({ choices: [{ message: { content } }] })) as never;
-    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('OK')), null);
-    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('WEAK: it does not list the chest rewards.')), 'it does not list the chest rewards.');
-    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('Hmm, maybe?')), null);
-  });
-
-  it('judges and rewrites with the local model, and the cloud one never sees it while the local one works', async () => {
+  it('rewrites a thin answer with the local model, and the cloud one never sees it while the local one works', async () => {
     readyIndex({ 'The Icebind': 'The Icebind gives a Crested Frozen Chest with 7,500 Kuva, an Omni Forma or an Archon Shard.' });
     const cfg = { ...config, FREE_AI_KEY: 'k' };
     const calls: string[] = [];
     const replies = {
       local: [
-        'The **Icebind** gives **rewards** from a chest.',
-        'WEAK: it does not name the chest rewards.',
+        'The Icebind gives **rewards** from a chest.',
         'The **Crested Frozen Chest** gives **7,500 Kuva**, an **Omni Forma** or an **Archon Shard**.',
       ],
       cloud: [] as string[],
@@ -383,7 +375,7 @@ describe('the sanity test and the self-review', () => {
       return Response.json({ choices: [{ message: { content: replies[where].shift() ?? 'OK' } }] });
     }) as typeof fetch;
     const a = await factAnswer({ config: cfg, store: new Store(':memory:') } as never, 'what rewards can the icebind give', { ask: 'acquire' });
-    assert.deepEqual(calls, ['local', 'local', 'local'], 'written, judged and rewritten by the local model');
+    assert.deepEqual(calls, ['local', 'local'], 'written and rewritten by the local model');
     assert.match(a.content, /Omni Forma/);
     assert.equal(a.source, 'local');
     assert.equal(a.review, null, 'fixed by the second try');
@@ -444,15 +436,14 @@ describe('smartAnswer routing', () => {
 
   it('carries the subject into a follow-up, and remembers it', async () => {
     readyIndex({ Wisp: 'Wisp is a Warframe. Her blueprints drop from the Ropalolyst on Jupiter.' });
-    // Each answer is followed by the sanity check's verdict.
-    const sent = fakeNet({}, ['**Wisp** is a Warframe whose blueprints drop from the **Ropalolyst** on **Jupiter**.', 'OK', 'Her blueprints drop from the **Ropalolyst** on **Jupiter**.', 'OK']);
+    const sent = fakeNet({}, ['**Wisp** is a Warframe whose blueprints drop from the **Ropalolyst** on **Jupiter**.', 'Her blueprints drop from the **Ropalolyst** on **Jupiter**.']);
     const key = memoryKey('c', '5');
     const first = await smartAnswer('what is wisp', ctxOf(), { id: '5', name: 'Rat', key });
     assert.equal(first.subject, 'Wisp');
     assert.equal(recallSubject(key), 'Wisp');
     const second = await smartAnswer('and how do I get it?', ctxOf(), { id: '5', name: 'Rat', key });
     assert.equal(second.content, 'Her blueprints drop from the **Ropalolyst** on **Jupiter**.');
-    assert.match(sent[2]!.user, /previous question: "what is wisp", which was about Wisp/);
-    assert.match(sent[2]!.user, /\[1\] Wiki: Wisp/);
+    assert.match(sent[1]!.user, /previous question: "what is wisp", which was about Wisp/);
+    assert.match(sent[1]!.user, /\[1\] Wiki: Wisp/);
   });
 });
