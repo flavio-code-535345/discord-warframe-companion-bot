@@ -246,8 +246,8 @@ export async function factAnswer(ctx: AppContext, question: string, opts: FactOp
     trace.removed = grounded?.removed.map((r) => `${r.why}: ${r.sentence}`) ?? ['(most of it: the wiki is quoted instead)'];
     if (grounded) {
       if (grounded.removed.length) console.warn(`[answers] removed ${grounded.removed.length} unsupported sentence(s): ${grounded.removed.map((r) => `${r.why}: ${r.sentence.slice(0, 80)}`).join(' | ')}`);
-      // The sanity test (review.ts): cheap rules, then the cloud model's verdict. A weak answer is written once more, by the
-      // stronger model when there is one; if it stays weak the better of the two is sent and logged for review.
+      // The sanity test (review.ts): cheap rules, then the model's verdict. A weak answer is written once more with the reason;
+      // if it stays weak the better of the two is sent and logged for review.
       const factsText = g.facts.map((f) => `${f.label}\n${f.text}`).join('\n\n');
       const weak = quickSanity(question, grounded.text, factsText.length) ?? (await judgeAnswer(config, question, grounded.text, factsText));
       let answer = { text: grounded.text, via: written.via, model: written.model };
@@ -256,7 +256,7 @@ export async function factAnswer(ctx: AppContext, question: string, opts: FactOp
         trace.review = weak;
         reportStatus('🔁 Improving the answer');
         const again = `${user}\n\nA reviewer found the first answer weak: ${weak}\nFirst answer:\n${grounded.text}\n\nWrite a better answer from the FACTS that fixes this.`;
-        const second = await withModelSlot(() => composeWith(config, system, again, fetch, Date.now(), brain().maxChars, true)).catch(() => null);
+        const second = await withModelSlot(() => composeWith(config, system, again, fetch, Date.now(), brain().maxChars)).catch(() => null);
         const better = second ? groundAnswer(second.text, evidence) : null;
         if (better && quickSanity(question, better.text, factsText.length) === null) answer = { text: better.text, via: second!.via, model: second!.model };
         else review = `weak even after a second try: ${weak}`;

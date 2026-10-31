@@ -3,7 +3,7 @@ import { type ComposeConfig, composeWith } from './compose.js';
 /**
  * The sanity test a written answer passes before it is sent, and the self-review behind it. A small model given the right
  * facts can still answer thinly ("the Icebind has rewards" without naming them), so each answer is checked: first with cheap
- * rules, then by the free cloud model, which reads the question, the answer and the facts and says what is missing. A weak
+ * rules, then by the model, which reads the question, the answer and the facts and says what is missing. A weak
  * answer is written once more (pipeline.ts); one that stays weak is sent anyway, but logged with the reason, and the MCP tool
  * answers_to_review lists those, together with nothing-found answers and the ones staff rated wrong, so they can be fixed in
  * batches instead of one screenshot at a time.
@@ -31,12 +31,12 @@ const JUDGE = [
 ].join(' ');
 
 /**
- * The cloud model's verdict on an answer: null when it is fine (or nothing could judge it), else what is missing. Only the free
- * cloud endpoint judges: it takes a second or two, where the local CPU model would add half a minute to every answer.
+ * The model's verdict on an answer: null when it is fine (or nothing could judge it), else what is missing. The local model
+ * judges, like it writes (the owner wants answers made on his own hardware); the free cloud model only stands in when the local
+ * one is down, as for every answer. On a CPU this adds the time to read the facts once more.
  */
 export async function judgeAnswer(config: ComposeConfig, question: string, answer: string, facts: string, fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch, now = Date.now()): Promise<string | null> {
-  if (!config.FREE_AI_KEY) return null;
-  const verdict = await composeWith({ ...config, LOCAL_AI_URL: undefined }, JUDGE, `QUESTION: ${question}\n\nANSWER:\n${answer}\n\nFACTS:\n${facts.slice(0, 7000)}`, fetcher, now, 400).catch(() => null);
+  const verdict = await composeWith(config, JUDGE, `QUESTION: ${question}\n\nANSWER:\n${answer}\n\nFACTS:\n${facts.slice(0, 6000)}`, fetcher, now, 400).catch(() => null);
   const text = verdict?.text.trim() ?? '';
   const weak = /^WEAK\b\s*:?\s*([\s\S]*)$/i.exec(text);
   // Anything but a clear WEAK (OK, an empty or garbled reply) lets the answer through: the judge must not block answers.

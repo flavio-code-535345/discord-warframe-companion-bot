@@ -357,22 +357,24 @@ describe('the sanity test and the self-review', () => {
     assert.equal(quickSanity('what rewards can the icebind give', 'The chest gives **Kuva** and an **Archon Shard**.', 400), null);
   });
 
-  it("reads the cloud model's verdict, and never blocks an answer on an unclear one", async () => {
-    const cfg = { ...config, FREE_AI_KEY: 'k' };
+  it("reads the model's verdict, and never blocks an answer on an unclear one", async () => {
     const say = (content: string) => (async () => Response.json({ choices: [{ message: { content } }] })) as never;
-    assert.equal(await judgeAnswer(cfg, 'q', 'a', 'f', say('OK')), null);
-    assert.equal(await judgeAnswer(cfg, 'q', 'a', 'f', say('WEAK: it does not list the chest rewards.')), 'it does not list the chest rewards.');
-    assert.equal(await judgeAnswer(cfg, 'q', 'a', 'f', say('Hmm, maybe?')), null);
-    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('WEAK: x')), null, 'no cloud key: no judge');
+    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('OK')), null);
+    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('WEAK: it does not list the chest rewards.')), 'it does not list the chest rewards.');
+    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('Hmm, maybe?')), null);
   });
 
-  it('rewrites a weak answer once, with the cloud model first, and logs one that stays weak', async () => {
+  it('judges and rewrites with the local model, and the cloud one never sees it while the local one works', async () => {
     readyIndex({ 'The Icebind': 'The Icebind gives a Crested Frozen Chest with 7,500 Kuva, an Omni Forma or an Archon Shard.' });
     const cfg = { ...config, FREE_AI_KEY: 'k' };
     const calls: string[] = [];
     const replies = {
-      local: ['The **Icebind** gives **rewards** from a chest.'],
-      cloud: ['WEAK: it does not name the chest rewards.', 'The **Crested Frozen Chest** gives **7,500 Kuva**, an **Omni Forma** or an **Archon Shard**.'],
+      local: [
+        'The **Icebind** gives **rewards** from a chest.',
+        'WEAK: it does not name the chest rewards.',
+        'The **Crested Frozen Chest** gives **7,500 Kuva**, an **Omni Forma** or an **Archon Shard**.',
+      ],
+      cloud: [] as string[],
     };
     globalThis.fetch = (async (url: string | URL) => {
       const where = String(url).startsWith('http://h') ? 'local' : 'cloud';
@@ -381,14 +383,13 @@ describe('the sanity test and the self-review', () => {
       return Response.json({ choices: [{ message: { content: replies[where].shift() ?? 'OK' } }] });
     }) as typeof fetch;
     const a = await factAnswer({ config: cfg, store: new Store(':memory:') } as never, 'what rewards can the icebind give', { ask: 'acquire' });
-    assert.deepEqual(calls, ['local', 'cloud', 'cloud'], 'written locally, judged and rewritten by the cloud model');
+    assert.deepEqual(calls, ['local', 'local', 'local'], 'written, judged and rewritten by the local model');
     assert.match(a.content, /Omni Forma/);
-    assert.equal(a.source, 'cloud');
+    assert.equal(a.source, 'local');
     assert.equal(a.review, null, 'fixed by the second try');
 
     replies.local.push('The **Icebind** has rewards.', 'The **Icebind** has rewards.');
-    replies.cloud.push('WEAK: no rewards named.');
-    const stuck = await factAnswer({ config: { ...cfg, FREE_AI_DAILY_LIMIT: 0 }, store: new Store(':memory:') } as never, 'what rewards can the icebind give', { ask: 'acquire' });
+    const stuck = await factAnswer({ config: cfg, store: new Store(':memory:') } as never, 'what rewards can the icebind give', { ask: 'acquire' });
     assert.match(stuck.review!, /weak even after a second try: the question asks for several things/);
   });
 
@@ -443,14 +444,15 @@ describe('smartAnswer routing', () => {
 
   it('carries the subject into a follow-up, and remembers it', async () => {
     readyIndex({ Wisp: 'Wisp is a Warframe. Her blueprints drop from the Ropalolyst on Jupiter.' });
-    const sent = fakeNet({}, ['**Wisp** is a Warframe whose blueprints drop from the **Ropalolyst** on **Jupiter**.', 'Her blueprints drop from the **Ropalolyst** on **Jupiter**.']);
+    // Each answer is followed by the sanity check's verdict.
+    const sent = fakeNet({}, ['**Wisp** is a Warframe whose blueprints drop from the **Ropalolyst** on **Jupiter**.', 'OK', 'Her blueprints drop from the **Ropalolyst** on **Jupiter**.', 'OK']);
     const key = memoryKey('c', '5');
     const first = await smartAnswer('what is wisp', ctxOf(), { id: '5', name: 'Rat', key });
     assert.equal(first.subject, 'Wisp');
     assert.equal(recallSubject(key), 'Wisp');
     const second = await smartAnswer('and how do I get it?', ctxOf(), { id: '5', name: 'Rat', key });
     assert.equal(second.content, 'Her blueprints drop from the **Ropalolyst** on **Jupiter**.');
-    assert.match(sent[1]!.user, /previous question: "what is wisp", which was about Wisp/);
-    assert.match(sent[1]!.user, /\[1\] Wiki: Wisp/);
+    assert.match(sent[2]!.user, /previous question: "what is wisp", which was about Wisp/);
+    assert.match(sent[2]!.user, /\[1\] Wiki: Wisp/);
   });
 });
