@@ -64,10 +64,12 @@ export interface AiLogEntry {
   messageId: string | null;
   /** Staff feedback from the admin panel, used as guidance for the model. */
   rating: 'right' | 'wrong' | null;
+  /** Why the answer self-review thinks this answer is worth a look (answers/review.ts); null when it passed. */
+  review: string | null;
 }
 
 /** Input for addAiLog: the message id is filled in after the reply has been sent. */
-export type NewAiLogEntry = Omit<AiLogEntry, 'id' | 'messageId' | 'rating'> & { messageId?: string | null };
+export type NewAiLogEntry = Omit<AiLogEntry, 'id' | 'messageId' | 'rating' | 'review'> & { messageId?: string | null; review?: string | null };
 
 /**
  * A staff correction to an answer. Approved ones are served word for word when the same question comes back and are shown to
@@ -577,6 +579,10 @@ const MIGRATIONS: string[] = [
   DROP TABLE IF EXISTS answer_cache;
   DELETE FROM bot_meta WHERE key IN ('answer_refresh_last', 'answer_refresh_day', 'ai_toggle_cache', 'cfg_ANSWER_REFRESH_ENABLED', 'cfg_ANSWER_REFRESH_MAX', 'cfg_ANSWER_REFRESH_HOUR_UTC');
   `,
+  // The answer self-review (answers/review.ts): why an answer is worth a look, empty when it is fine.
+  `
+  ALTER TABLE ai_log ADD COLUMN review TEXT;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -937,8 +943,8 @@ export class Store {
   /** Records one answered question and drops entries older than the retention window. */
   addAiLog(guildId: string, e: NewAiLogEntry, retentionMs = 30 * 86_400_000): number {
     const r = this.db
-      .prepare('INSERT INTO ai_log (guild_id, at, user_id, user_name, channel_id, via, question, intent, source, model, found, ms, answer, message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(guildId, e.at, e.userId, e.userName, e.channelId, e.via, e.question, e.intent, e.source, e.model, e.found ? 1 : 0, e.ms, e.answer, e.messageId ?? null);
+      .prepare('INSERT INTO ai_log (guild_id, at, user_id, user_name, channel_id, via, question, intent, source, model, found, ms, answer, message_id, review) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(guildId, e.at, e.userId, e.userName, e.channelId, e.via, e.question, e.intent, e.source, e.model, e.found ? 1 : 0, e.ms, e.answer, e.messageId ?? null, e.review ?? null);
     // Entries that carry staff feedback are kept: they are guidance, not just a log.
     this.db.prepare('DELETE FROM ai_log WHERE guild_id = ? AND at < ? AND rating IS NULL').run(guildId, e.at - retentionMs);
     return Number(r.lastInsertRowid);
@@ -961,7 +967,15 @@ export class Store {
       answer: str(r.answer),
       messageId: str(r.message_id),
       rating: r.rating === 'right' || r.rating === 'wrong' ? r.rating : null,
+      review: str(r.review),
     };
+  }
+
+  /** Answers worth a look since `since`: flagged by the self-review or rated wrong by staff, newest first. */
+  aiLogToReview(guildId: string, since: number, limit: number): AiLogEntry[] {
+    return (
+      this.db.prepare("SELECT * FROM ai_log WHERE guild_id = ? AND at >= ? AND (review IS NOT NULL OR rating = 'wrong') ORDER BY at DESC, id DESC LIMIT ?").all(guildId, since, limit) as Row[]
+    ).map((r) => this.toAiLog(r));
   }
 
   getAiLog(guildId: string, id: number): AiLogEntry | null {

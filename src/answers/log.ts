@@ -33,6 +33,7 @@ export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: Logged
       ms: answer.ms ?? 0,
       answer: answer.content.slice(0, 1500),
       messageId,
+      review: answer.review ?? null,
     });
   } catch (err) {
     console.warn('[ailog] could not record the question:', err instanceof Error ? err.message : err);

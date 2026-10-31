@@ -8,6 +8,7 @@ import { groundAnswer } from '../src/answers/check.js';
 import { availability, circuitAnswer, circuitTopic, namedIn, nextReset, parseRotations, resetRotations, weekOf } from '../src/answers/circuit.js';
 import { resetLocalAi } from '../src/answers/compose.js';
 import { masteryAnswer } from '../src/answers/mastery.js';
+import { judgeAnswer, quickSanity } from '../src/answers/review.js';
 import { forget, memoryKey, recall, recallSubject, remember } from '../src/answers/memory.js';
 import { dropFact, elementsFact, factAnswer, factsUserPrompt, mathAnswer, relevantDrops } from '../src/answers/pipeline.js';
 import { smartAnswer, withoutName } from '../src/answers/smart.js';
@@ -345,6 +346,59 @@ describe('the facts pipeline', () => {
     assert.equal(a.found, false);
     assert.match(a.content, /could not find that/);
     assert.doesNotMatch(a.content, /sweater/);
+  });
+});
+
+describe('the sanity test and the self-review', () => {
+  it('catches thin answers with plain rules', () => {
+    assert.match(quickSanity('what rewards can the icebind give', 'The Icebind has **rewards**.', 400)!, /several things/);
+    assert.match(quickSanity('what is the helminth', 'I do not have information regarding that.', 400)!, /no information/);
+    assert.match(quickSanity('how do i get wisp', 'From a boss.', 3000)!, /very short/);
+    assert.equal(quickSanity('what rewards can the icebind give', 'The chest gives **Kuva** and an **Archon Shard**.', 400), null);
+  });
+
+  it("reads the cloud model's verdict, and never blocks an answer on an unclear one", async () => {
+    const cfg = { ...config, FREE_AI_KEY: 'k' };
+    const say = (content: string) => (async () => Response.json({ choices: [{ message: { content } }] })) as never;
+    assert.equal(await judgeAnswer(cfg, 'q', 'a', 'f', say('OK')), null);
+    assert.equal(await judgeAnswer(cfg, 'q', 'a', 'f', say('WEAK: it does not list the chest rewards.')), 'it does not list the chest rewards.');
+    assert.equal(await judgeAnswer(cfg, 'q', 'a', 'f', say('Hmm, maybe?')), null);
+    assert.equal(await judgeAnswer(config, 'q', 'a', 'f', say('WEAK: x')), null, 'no cloud key: no judge');
+  });
+
+  it('rewrites a weak answer once, with the cloud model first, and logs one that stays weak', async () => {
+    readyIndex({ 'The Icebind': 'The Icebind gives a Crested Frozen Chest with 7,500 Kuva, an Omni Forma or an Archon Shard.' });
+    const cfg = { ...config, FREE_AI_KEY: 'k' };
+    const calls: string[] = [];
+    const replies = {
+      local: ['The **Icebind** gives **rewards** from a chest.'],
+      cloud: ['WEAK: it does not name the chest rewards.', 'The **Crested Frozen Chest** gives **7,500 Kuva**, an **Omni Forma** or an **Archon Shard**.'],
+    };
+    globalThis.fetch = (async (url: string | URL) => {
+      const where = String(url).startsWith('http://h') ? 'local' : 'cloud';
+      if (!String(url).endsWith('/chat/completions')) return new Response('{}', { status: 404 });
+      calls.push(where);
+      return Response.json({ choices: [{ message: { content: replies[where].shift() ?? 'OK' } }] });
+    }) as typeof fetch;
+    const a = await factAnswer({ config: cfg, store: new Store(':memory:') } as never, 'what rewards can the icebind give', { ask: 'acquire' });
+    assert.deepEqual(calls, ['local', 'cloud', 'cloud'], 'written locally, judged and rewritten by the cloud model');
+    assert.match(a.content, /Omni Forma/);
+    assert.equal(a.source, 'cloud');
+    assert.equal(a.review, null, 'fixed by the second try');
+
+    replies.local.push('The **Icebind** has rewards.', 'The **Icebind** has rewards.');
+    replies.cloud.push('WEAK: no rewards named.');
+    const stuck = await factAnswer({ config: { ...cfg, FREE_AI_DAILY_LIMIT: 0 }, store: new Store(':memory:') } as never, 'what rewards can the icebind give', { ask: 'acquire' });
+    assert.match(stuck.review!, /weak even after a second try: the question asks for several things/);
+  });
+
+  it('lists flagged and wrongly rated answers for review', () => {
+    const store = new Store(':memory:');
+    const log = (question: string, review: string | null) => store.addAiLog('g', { at: Date.now(), userId: '5', userName: 'Rat', channelId: 'c', via: 'chat', question, intent: 'acquire', source: 'local', model: 'm', found: true, ms: 1, answer: 'a', review });
+    log('fine', null);
+    log('thin', 'weak even after a second try: x');
+    store.rateAiLog('g', log('rated', null), 'wrong', '7');
+    assert.deepEqual(store.aiLogToReview('g', 0, 10).map((e) => e.question).sort(), ['rated', 'thin']);
   });
 });
 

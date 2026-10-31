@@ -96,7 +96,33 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           seconds: Number((e.ms / 1000).toFixed(1)),
           found: e.found,
           answer: e.answer,
+          ...(e.review ? { review: e.review } : {}),
+          ...(e.rating ? { rating: e.rating } : {}),
         })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    'answers_to_review',
+    {
+      title: 'Answers that need a look',
+      description:
+        "The self-review's list: answers that stayed weak after Ordis's sanity test and second try, answers that quoted the wiki or found nothing, and answers staff rated wrong (❌), newest first, with the reason. Fix them in batches (a better source, a rule, a staff correction) instead of waiting for screenshots.",
+      inputSchema: { days: z.number().min(1).max(30).default(7).describe('How far back'), limit: z.number().int().min(1).max(100).default(30) },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ days, limit }) => {
+      const rows = store.aiLogToReview(guildId, Date.now() - days * 86_400_000, limit);
+      const reasons: Record<string, number> = {};
+      for (const e of rows) {
+        const kind = e.rating === 'wrong' ? 'rated wrong' : (e.review ?? '').split(':')[0]!;
+        reasons[kind] = (reasons[kind] ?? 0) + 1;
+      }
+      return {
+        count: rows.length,
+        byReason: reasons,
+        entries: rows.map((e) => ({ at: iso(e.at), user: e.userName, question: e.question, kind: e.intent, source: e.source, review: e.review, rating: e.rating, answer: e.answer })),
       };
     }),
   );

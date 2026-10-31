@@ -103,7 +103,8 @@ export function registerBrainTools(server: McpServer, ctx: AppContext): void {
         seconds: Number(((Date.now() - started) / 1000).toFixed(1)),
         subject: a.subject ?? null,
         embeds: a.embeds.map((e) => e.data.title).filter(Boolean),
-        ...(a.trace ? { facts: a.trace.facts, written: a.trace.written, removed: a.trace.removed } : {}),
+        ...(a.trace ? { facts: a.trace.facts, written: a.trace.written, removed: a.trace.removed, sanity: a.trace.review ?? 'passed' } : {}),
+        ...(a.review ? { review: a.review } : {}),
       };
     }),
   );

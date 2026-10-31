@@ -61,7 +61,9 @@ export interface SmartAnswer {
   /** The wiki page the answer was about, remembered so a follow-up ("and how do I get it?") knows what "it" is. */
   subject?: string | null;
   /** How a facts answer was made (for test_answer and debugging): the facts the model saw, its own words, what the check removed. */
-  trace?: { facts: string[]; written?: string; removed?: string[] };
+  trace?: { facts: string[]; written?: string; removed?: string[]; review?: string };
+  /** Why the self-review thinks this answer needs a look (it is logged and listed by the MCP tool answers_to_review). */
+  review?: string | null;
 }
 
 /** One of the in-character intro lines; below Ordis-ness 10 a neutral one. */

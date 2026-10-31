@@ -117,8 +117,11 @@ export interface Composed {
   model: string;
 }
 
-/** One model call with any system prompt, local model first, then the free cloud one. Used by the answer pipeline, small talk and operator mode. */
-export async function composeWith(config: ComposeConfig, system: string, user: string, fetcher: Fetcher = fetch, now = Date.now(), maxChars = 1500): Promise<Composed | null> {
+/**
+ * One model call with any system prompt, local model first, then the free cloud one. Used by the answer pipeline, small talk and
+ * operator mode. `cloudFirst` turns the order round (the pipeline's second try at a thin answer goes to the stronger model).
+ */
+export async function composeWith(config: ComposeConfig, system: string, user: string, fetcher: Fetcher = fetch, now = Date.now(), maxChars = 1500, cloudFirst = false): Promise<Composed | null> {
   const endpoints: Endpoint[] = [];
   const localModel = localModelOf(config);
   if (config.LOCAL_AI_URL && localModel && aiToggle('local') && now >= localDownUntil) {
@@ -129,14 +132,20 @@ export async function composeWith(config: ComposeConfig, system: string, user: s
     const models = [config.FREE_AI_MODEL, config.FREE_AI_FALLBACK_MODEL].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);
     endpoints.push({ url: config.FREE_AI_URL, key: config.FREE_AI_KEY, models, timeoutMs: 20_000, local: false });
   }
+  if (cloudFirst) endpoints.reverse();
   for (const ep of endpoints) {
-    if (!ep.local && !allow(config.FREE_AI_DAILY_LIMIT, now)) return null;
+    // Cloud first is only a preference: over the allowance or failing, the local model still answers.
+    if (!ep.local && !allow(config.FREE_AI_DAILY_LIMIT, now)) {
+      if (cloudFirst) continue;
+      return null;
+    }
     const { text, failed, model } = await ask(ep, system, user, fetcher);
     if (ep.local && failed) {
       localDownUntil = now + LOCAL_COOLDOWN_MS;
       console.warn(`[answers] local AI unavailable, using the cloud endpoint for the next ${LOCAL_COOLDOWN_MS / 60_000} min`);
       continue;
     }
+    if (!ep.local && failed && cloudFirst) continue;
     // A clean reply from the local model is final, including "not covered"; only a failure moves on.
     if (!text) return null;
     return { text: text.length > maxChars ? `${text.slice(0, maxChars - 3)}…` : text, via: ep.local ? 'local' : 'cloud', model: model ?? ep.models[0]! };

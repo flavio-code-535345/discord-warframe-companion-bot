@@ -172,7 +172,9 @@ test('the answer cache is dropped with its switch and settings, also from a data
     const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
     raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
     raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b')");
-    raw.exec(`PRAGMA user_version = ${version - 1}`);
+    // Back to before the cache migration (two from the end; the review column after it goes too, so it can be added again).
+    raw.exec('ALTER TABLE ai_log DROP COLUMN review');
+    raw.exec(`PRAGMA user_version = ${version - 2}`);
     raw.close();
 
     const store = new Store(file);

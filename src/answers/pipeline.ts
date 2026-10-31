@@ -14,6 +14,7 @@ import { getWikiIndex } from '../wiki/index.js';
 import { groundAnswer } from './check.js';
 import { composeWith } from './compose.js';
 import { relatedCorrections } from './corrections.js';
+import { judgeAnswer, quickSanity } from './review.js';
 import { withModelSlot } from './slot.js';
 import type { SmartAnswer } from './smart.js';
 import { reportStatus } from './status.js';
@@ -230,30 +231,48 @@ export async function factAnswer(ctx: AppContext, question: string, opts: FactOp
   const trace: NonNullable<SmartAnswer['trace']> = { facts: g.facts.map((f) => `${f.label} (${f.text.length} chars)`) };
   const base = { subject: g.subject, intent: opts.ask, trace };
   if (!g.facts.length) {
-    return { ...base, content: `Ordis searched the archives, Operator, but found nothing on that. Try other words, or name the item or activity.`, embeds: [], found: false, source: 'lookup', model: null };
+    return { ...base, content: `Ordis searched the archives, Operator, but found nothing on that. Try other words, or name the item or activity.`, embeds: [], found: false, source: 'lookup', model: null, review: 'nothing found: no wiki page or drop table matched' };
   }
 
   reportStatus('✍️ Writing the answer');
   const followUp = opts.previous ? { previous: opts.previous, subject: g.subject } : undefined;
   const user = factsUserPrompt(question, g.facts, followUp);
-  const written = await withModelSlot(() => composeWith(config, factsSystemPrompt(config.BOT_NAME, config.CLAN_NAME, opts.ask, brain().ordisness), user, fetch, Date.now(), brain().maxChars));
+  const system = factsSystemPrompt(config.BOT_NAME, config.CLAN_NAME, opts.ask, brain().ordisness);
+  const written = await withModelSlot(() => composeWith(config, system, user, fetch, Date.now(), brain().maxChars));
+  const evidence = `${user}\n${config.BOT_NAME} ${config.CLAN_NAME}`;
   if (written) {
     trace.written = written.text;
-    const evidence = `${user}\n${config.BOT_NAME} ${config.CLAN_NAME}`;
     const grounded = groundAnswer(written.text, evidence);
     trace.removed = grounded?.removed.map((r) => `${r.why}: ${r.sentence}`) ?? ['(most of it: the wiki is quoted instead)'];
     if (grounded) {
       if (grounded.removed.length) console.warn(`[answers] removed ${grounded.removed.length} unsupported sentence(s): ${grounded.removed.map((r) => `${r.why}: ${r.sentence.slice(0, 80)}`).join(' | ')}`);
-      return { ...base, content: grounded.text, embeds, found: true, source: written.via, model: written.model };
+      // The sanity test (review.ts): cheap rules, then the cloud model's verdict. A weak answer is written once more, by the
+      // stronger model when there is one; if it stays weak the better of the two is sent and logged for review.
+      const factsText = g.facts.map((f) => `${f.label}\n${f.text}`).join('\n\n');
+      const weak = quickSanity(question, grounded.text, factsText.length) ?? (await judgeAnswer(config, question, grounded.text, factsText));
+      let answer = { text: grounded.text, via: written.via, model: written.model };
+      let review: string | null = null;
+      if (weak) {
+        trace.review = weak;
+        reportStatus('🔁 Improving the answer');
+        const again = `${user}\n\nA reviewer found the first answer weak: ${weak}\nFirst answer:\n${grounded.text}\n\nWrite a better answer from the FACTS that fixes this.`;
+        const second = await withModelSlot(() => composeWith(config, system, again, fetch, Date.now(), brain().maxChars, true)).catch(() => null);
+        const better = second ? groundAnswer(second.text, evidence) : null;
+        if (better && quickSanity(question, better.text, factsText.length) === null) answer = { text: better.text, via: second!.via, model: second!.model };
+        else review = `weak even after a second try: ${weak}`;
+        trace.review = `${weak}${review ? ' (still weak)' : ' (rewritten)'}`;
+      }
+      return { ...base, content: answer.text, embeds, found: true, source: answer.via, model: answer.model, review };
     }
     console.warn(`[answers] the written answer was mostly unsupported, quoting the wiki instead: ${written.text.slice(0, 200)}`);
   }
   // No model, NOT_COVERED, or an answer the facts don't support: quote the sentences of the wiki that fit the question, but only
   // when the question named the page (a page that merely shares a word with it would be quoted out of context).
+  const why = written ? 'the written answer was mostly unsupported by the facts' : 'the model found no answer in the facts';
   const direct = g.subject ? answerFrom(question, g.wiki) : null;
-  if (direct) return { ...base, content: `${archiveLine()}\n${direct.text}`, embeds, found: true, source: 'excerpt', model: null };
-  if (g.drops.length) return { ...base, content: `${archiveLine()} the drop tables have it.`, embeds, found: true, source: 'lookup', model: null };
-  return { ...base, content: `Ordis could not find that in the archives, Operator. These pages came closest:`, embeds, found: false, source: 'lookup', model: null };
+  if (direct) return { ...base, content: `${archiveLine()}\n${direct.text}`, embeds, found: true, source: 'excerpt', model: null, review: `quoted the wiki: ${why}` };
+  if (g.drops.length) return { ...base, content: `${archiveLine()} the drop tables have it.`, embeds, found: true, source: 'lookup', model: null, review: `only the drop tables: ${why}` };
+  return { ...base, content: `Ordis could not find that in the archives, Operator. These pages came closest:`, embeds, found: false, source: 'lookup', model: null, review: `nothing found: ${why}` };
 }
 
 /** "9 x 2" → "9 × 2 = **18**", or null when it isn't a sum calculate() accepts. */
