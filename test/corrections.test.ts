@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { PermissionFlagsBits, type Message } from 'discord.js';
-import { brain, normalizeBrain, resetBrainState, updateBrain } from '../src/agent/brain.js';
-import { useAgent } from '../src/agent/answer.js';
 import { resetCapabilities } from '../src/ai/ollama.js';
 import { resetAiToggles } from '../src/ai/settings.js';
-import { resetLocalAi } from '../src/answers/compose.js';
-import { addCorrection, approveCorrection, findCorrection, guidanceFor, isStaff, rejectCorrection } from '../src/answers/corrections.js';
-import { MEMORY_TTL_MS, forget, isFollowUp, memoryKey, recall, remember, transcript } from '../src/answers/memory.js';
+import { resetLocalAi } from '../src/ai/local.js';
+import { addCorrection, approveCorrection, findCorrection, isStaff, rejectCorrection } from '../src/answers/corrections.js';
 import { smartAnswer } from '../src/answers/smart.js';
 import { Store } from '../src/db.js';
 import { handleCorrectionReply } from '../src/discord/corrections.js';
@@ -36,66 +33,9 @@ const ctxOf = (store = new Store(':memory:')) => ({ config, store }) as never;
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
-  forget();
-  resetBrainState();
   resetAiToggles();
   resetLocalAi();
   resetCapabilities();
-});
-
-describe('conversation memory', () => {
-  it('replays the last N messages of one person in one channel, oldest first', () => {
-    const key = memoryKey('c1', 'u1');
-    remember(key, 'q1', 'a1');
-    remember(key, 'q2', 'a2');
-    remember(key, 'q3', 'a3');
-    assert.deepEqual(recall(key, 10).map((t) => t.content), ['q1', 'a1', 'q2', 'a2', 'q3', 'a3']);
-    assert.deepEqual(recall(key, 3).map((t) => t.content), ['a2', 'q3', 'a3'], 'the newest N messages');
-    assert.deepEqual(recall(key, 0), [], '0 turns it off');
-    assert.deepEqual(recall(memoryKey('c2', 'u1'), 10), [], 'another channel is another conversation');
-    assert.deepEqual(recall(memoryKey('c1', 'u2'), 10), [], 'and so is another person');
-    assert.notEqual(memoryKey(null, 'u1'), memoryKey('c1', 'u1'));
-  });
-
-  it('forgets a conversation that has been quiet too long', () => {
-    const key = memoryKey('c1', 'u1');
-    remember(key, 'q', 'a', 1_000);
-    assert.equal(recall(key, 10, 1_000 + MEMORY_TTL_MS - 1).length, 2);
-    assert.equal(recall(key, 10, 1_000 + MEMORY_TTL_MS + 1).length, 0);
-    // A new question after the pause starts a fresh conversation instead of resuming the stale one.
-    remember(key, 'old', 'old', 1_000);
-    remember(key, 'new', 'new', 1_000 + MEMORY_TTL_MS + 5);
-    assert.deepEqual(recall(key, 10, 1_000 + MEMORY_TTL_MS + 6).map((t) => t.content), ['new', 'new']);
-  });
-
-  it('never keeps more than the slider maximum and cuts long messages', () => {
-    const key = memoryKey('c', 'u');
-    for (let i = 0; i < 50; i++) remember(key, `q${i}`, 'x'.repeat(5000));
-    const all = recall(key, 1000);
-    assert.equal(all.length, 30);
-    assert.ok(all.every((t) => t.content.length <= 1200));
-  });
-
-  it('spots messages that lean on what was said before', () => {
-    for (const f of ['and how do I get it?', 'what about its drops', 'why?', 'where does that drop', 'Thanks!', 'is there a faster way for them?']) assert.equal(isFollowUp(f), true, f);
-    for (const s of ['where does Neo N16 drop?', 'how do archon shards work?', 'what is baro selling']) assert.equal(isFollowUp(s), false, s);
-    assert.equal(isFollowUp('how do I get it when the game says I need to finish the quest first and then wait for the next update to happen'), false, 'long messages stand alone');
-  });
-
-  it('writes a transcript for single-shot prompts', () => {
-    assert.equal(transcript([{ role: 'user', content: 'a  b' }, { role: 'assistant', content: 'c' }]), 'Member: a b\nOrdis: c');
-  });
-
-  it('has a slider setting that defaults to 10, clamps to 0-30, and survives a save', () => {
-    assert.equal(brain().memoryMessages, 10);
-    assert.equal(normalizeBrain({ memoryMessages: 99 }).memoryMessages, 30);
-    assert.equal(normalizeBrain({ memoryMessages: -4 }).memoryMessages, 0);
-    assert.equal(normalizeBrain({ memoryMessages: '7' }).memoryMessages, 7);
-    assert.equal(normalizeBrain({ memoryMessages: 'x' }).memoryMessages, 10);
-    const store = new Store(':memory:');
-    updateBrain(store, { memoryMessages: 4 });
-    assert.match(store.getMeta('brain_settings') ?? '', /"memoryMessages":4/);
-  });
 });
 
 describe('corrections', () => {
@@ -122,7 +62,6 @@ describe('corrections', () => {
     const r = addCorrection(ctx, { entry: entry(store), text: 'Buy it at Teshin.', authorId: '5', authorName: 'Rat', staff: false, source: 'member_reply' })!;
     assert.equal(r.status, 'pending');
     assert.equal(findCorrection(ctx, Q), null, 'a suggestion is never served');
-    assert.equal(guidanceFor(ctx, Q), '', 'nor shown to the model');
     assert.equal(approveCorrection(ctx, r.id, '7', 'Buy it at Teshin for 15,000 Steel Essence.'), true);
     assert.equal(findCorrection(ctx, Q)?.correction, 'Buy it at Teshin for 15,000 Steel Essence.');
     assert.equal(store.getCorrection('g', r.id)!.decidedBy, '7');
@@ -161,80 +100,18 @@ describe('corrections', () => {
     assert.equal(isStaff(ctx, '5', false), false);
   });
 
-  it('gives the model related corrections and rated answers, and nothing unrelated', () => {
-    const store = new Store(':memory:');
-    const ctx = ctxOf(store);
-    addCorrection(ctx, { entry: null, question: Q, text: 'Buy it from Steel Path Honors.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
-    const wrong = entry(store, { question: 'Where can I farm Galvanized Aptitude arcane?', answer: 'In the Void, from the Tenno.', messageId: 'm2' });
-    store.rateAiLog('g', wrong.id, 'wrong', '7');
-    const right = entry(store, { question: 'What does the Kuva Lich weakness mean?', answer: 'It is the element that defeats the lich.', messageId: 'm3' });
-    store.rateAiLog('g', right.id, 'right', '7');
-
-    const g = guidanceFor(ctx, 'how can I get the Condition Overload mod');
-    assert.match(g, /Staff corrections/);
-    assert.match(g, /Steel Path Honors/);
-    assert.doesNotMatch(g, /Galvanized/);
-    assert.match(guidanceFor(ctx, 'where do I farm galvanized aptitude arcane'), /marked WRONG[\s\S]*Void, from the Tenno/);
-    assert.match(guidanceFor(ctx, 'what does the kuva lich weakness do'), /marked RIGHT[\s\S]*element that defeats/);
-    assert.equal(guidanceFor(ctx, 'when does baro arrive'), '', 'unrelated questions get nothing');
-  });
-
-  it('serves the correction word for word, ahead of everything, except for a follow-up', async () => {
+  it('serves the correction word for word, ahead of everything', async () => {
     const store = new Store(':memory:');
     const ctx = ctxOf(store);
     addCorrection(ctx, { entry: null, question: Q, text: 'Steel Path Honors, 15 Steel Essence.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
     globalThis.fetch = async () => new Response('{}', { status: 500 });
-    const a = await smartAnswer(Q, ctx, { id: '5', name: 'Rat' });
+    const a = await smartAnswer(Q, ctx);
     assert.equal(a.source, 'correction');
     assert.equal(a.content, 'Steel Path Honors, 15 Steel Essence.');
     assert.equal(a.intent, 'correction');
-    const operator = await smartAnswer('how do i get condition overload??', ctx, { id: '1', name: 'Boss' });
-    assert.equal(operator.source, 'correction', 'operators get it too');
+    assert.equal((await smartAnswer('how do i get condition overload??', ctx)).source, 'correction', 'punctuation does not matter');
   });
 
-  it('writes the exchange into memory and uses it for the next, short question', async () => {
-    const store = new Store(':memory:');
-    const ctx = ctxOf(store);
-    const key = memoryKey('c', '5');
-    addCorrection(ctx, { entry: null, question: Q, text: 'Steel Path Honors, for 15 Steel Essence.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
-    await smartAnswer(Q, ctx, { id: '5', name: 'Rat', key });
-    assert.deepEqual(recall(key, 10).map((t) => t.content), [Q, 'Steel Path Honors, for 15 Steel Essence.']);
-
-    // The follow-up is not answered from the pronoun alone: the facts are gathered for the previous question too, and the model is told what it follows.
-    const bodies: { messages: { role: string; content: string }[] }[] = [];
-    globalThis.fetch = (async (url: string, init: RequestInit) => {
-      if (!String(url).endsWith('/chat/completions')) return new Response('{}', { status: 404 });
-      bodies.push(JSON.parse(String(init.body)));
-      return new Response(JSON.stringify({ choices: [{ message: { content: 'It costs 15 Steel Essence.' } }] }));
-    }) as typeof fetch;
-    const a = await smartAnswer('and how much does it cost?', ctx, { id: '5', name: 'Rat', key });
-    assert.equal(a.intent, 'general');
-    assert.equal(a.content, 'It costs 15 Steel Essence.');
-    const user = bodies[0]!.messages[1]!.content;
-    assert.match(user, /previous question: "How do I get Condition Overload\?"/);
-    assert.match(user, /Staff correction for "How do I get Condition Overload\?" \(trusted\)\nSteel Path Honors, for 15 Steel Essence\./, 'the related correction is a fact');
-    assert.deepEqual(recall(key, 10).map((t) => t.content).slice(-2), ['and how much does it cost?', 'It costs 15 Steel Essence.']);
-  });
-
-  it('keeps conversations apart and does nothing with memory switched off', async () => {
-    const store = new Store(':memory:');
-    const ctx = ctxOf(store);
-    addCorrection(ctx, { entry: null, question: Q, text: 'Steel Path Honors.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
-    updateBrain(store, { memoryMessages: 0 });
-    const key = memoryKey('c', '5');
-    await smartAnswer(Q, ctx, { id: '5', name: 'Rat', key });
-    assert.deepEqual(recall(key, 10), []);
-  });
-
-  it('sends follow-ups to the agent for everyone, but ordinary questions only as the Brain settings say', () => {
-    const ctx = ctxOf();
-    assert.equal(useAgent(ctx, '5', 'wiki'), false, 'default: operators only');
-    assert.equal(useAgent(ctx, '5', 'drops'), false);
-    assert.equal(useAgent(ctx, '5', 'drops', true), true, 'a follow-up needs the conversation in front of the model');
-    assert.equal(useAgent(ctx, '5', 'help', true), false);
-    updateBrain(new Store(':memory:'), { agentFor: 'off' });
-    assert.equal(useAgent(ctx, '5', 'drops', true), false, 'switched off means off');
-  });
 });
 
 describe('replying to Ordis in Discord', () => {
@@ -351,21 +228,16 @@ describe('rating answers with reactions', () => {
     assert.equal(store.getAiLog('g', id)!.rating, null);
   });
 
-  it('feeds a rating given by reaction into the guidance for related questions', async () => {
-    const { store, ctx } = setup();
-    await handleRatingReaction(reaction('❌', { manage: true }), user('5'), ctx, true);
-    assert.match(guidanceFor(ctx, 'how do I unlock venus quickly'), /marked WRONG[\s\S]*Do the quest/);
-  });
 });
 
-describe('the chat channel answers anything', () => {
+describe('the chat channel', () => {
   const CHAT = 'chat-channel';
   const setup = () => {
     const store = new Store(':memory:');
     store.updateSettings('g', { chatChannelId: CHAT });
     addCorrection({ config, store } as never, { entry: null, question: 'Kuva Lich', text: 'An enemy that steals your Kuva.', authorId: '7', authorName: 'Boss', staff: true, source: 'panel' });
     const replies: string[] = [];
-    const ctx = { config: { ...config, ENABLE_MESSAGE_CONTENT: true }, store, ai: null, client: { user: { id: 'bot' } } } as never;
+    const ctx = { config: { ...config, ENABLE_MESSAGE_CONTENT: true }, store, client: { user: { id: 'bot' } } } as never;
     const message = (content: string, over: { mention?: boolean; reference?: { authorId: string } | null; id?: string } = {}) =>
       ({
         id: over.id ?? 'x1',
@@ -417,7 +289,7 @@ describe('the chat channel description', () => {
   };
 
   it('tells members they can just write, within Discord limits', () => {
-    assert.match(CHAT_TOPIC, /no question mark needed/);
+    assert.match(CHAT_TOPIC, /links the wiki pages/);
     assert.ok(CHAT_TOPIC.length <= 1024);
   });
 

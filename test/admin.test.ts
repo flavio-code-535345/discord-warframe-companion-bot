@@ -4,7 +4,6 @@ import { after, before, test } from 'node:test';
 import { ChannelType, type Client } from 'discord.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
-import { brain, resetBrainState } from '../src/agent/brain.js';
 import { aiToggle, resetAiToggles } from '../src/ai/settings.js';
 import { addCorrection } from '../src/answers/corrections.js';
 import { Store } from '../src/db.js';
@@ -35,7 +34,7 @@ before(async () => {
     channels: { cache: new Map() },
     guilds: { fetch: async () => ({ id: GUILD, channels: { fetch: async (id?: string) => (id ? testChannels.get(id) ?? null : testChannels), cache: testChannels }, roles: { fetch: async () => new Map(), cache: new Map() } }) },
   } as unknown as Client;
-  const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client, ai: null };
+  const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client };
   const server = startHttpServer(ctx);
   await new Promise<void>((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -168,61 +167,6 @@ test('the AI page shows the switches, and a switch flipped there is the one the 
   resetAiToggles();
 });
 
-test('the Brain page shows the prompt and slider, and saving clamps and applies the settings', async () => {
-  const { cookie } = sessionCookie(OWNER);
-  const page = await get('/admin/brain', cookie);
-  assert.equal(page.status, 200);
-  const body = await page.text();
-  assert.match(body, /<h1>Brain<\/h1>/);
-  assert.match(body, /type="range" name="ordisness"/);
-  assert.match(body, /You are Cephalon Ordis, the Cephalon of the Warframe clan/);
-
-  const noCsrf = await post('/admin/brain/save', { ordisness: '90' }, cookie);
-  assert.equal(noCsrf.status, 403);
-
-  const saved = await post('/admin/brain/save', { ordisness: '900', temperature: '0.8', maxSteps: '3', agentFor: 'everyone', scope: 'all', toolMode: 'text', prompt: 'Custom prompt {{persona}}', show_tools: '1', tool_search_wiki: '1', _csrf: 'csrf-token' }, cookie);
-  assert.equal(saved.status, 302);
-  assert.equal(brain().ordisness, 100);
-  assert.equal(brain().temperature, 0.8);
-  assert.equal(brain().agentFor, 'everyone');
-  assert.equal(brain().prompt, 'Custom prompt {{persona}}');
-  assert.equal(brain().showTools, true);
-  assert.ok(brain().disabledTools.includes('search_web') && !brain().disabledTools.includes('search_wiki'), 'unticked tools are switched off');
-  assert.match(store.getMeta('brain_settings') ?? '', /"ordisness":100/);
-  assert.match(await (await get('/admin/brain', cookie)).text(), /Custom prompt/);
-
-  const noConfirm = await post('/admin/brain/reset', { _csrf: 'csrf-token' }, cookie);
-  assert.match(decodeURIComponent((noConfirm.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Tick/);
-  await post('/admin/brain/reset', { confirm: 'yes', _csrf: 'csrf-token' }, cookie);
-  assert.equal(brain().ordisness, 10);
-  assert.equal(brain().prompt, '');
-  resetBrainState();
-});
-
-test('the Brain chat streams the run as JSON lines, and only the Brain page may run a script', async () => {
-  const { cookie } = sessionCookie(OWNER);
-  const page = await get('/admin/brain', cookie);
-  assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'nonce-[^']+'; connect-src 'self'/);
-  const html = await page.text();
-  assert.match(html, /<script nonce="[^"]+">/);
-  assert.match(html, /id="chatform"/);
-  assert.doesNotMatch(await (await get('/admin/ai', cookie)).text(), /<script/);
-
-  const noCsrf = await post('/admin/brain/chat', { question: 'hi' }, cookie);
-  assert.equal(noCsrf.status, 403);
-  const empty = await post('/admin/brain/chat', { question: ' ', _csrf: 'csrf-token' }, cookie);
-  assert.equal(empty.status, 400);
-
-  // The test bot has no model, so the run fails at once: a start line, then the reason.
-  const res = await post('/admin/brain/chat', { question: 'what is a Kuva Lich?', history: '[{"role":"user","content":"x"},{"bad":1}]', _csrf: 'csrf-token' }, cookie);
-  assert.equal(res.status, 200);
-  assert.match(res.headers.get('content-type') ?? '', /x-ndjson/);
-  const lines = (await res.text()).trim().split('\n').map((l) => JSON.parse(l));
-  assert.equal(lines[0].t, 'start');
-  assert.equal(lines.at(-1).t, 'error');
-  assert.match(lines.at(-1).message, /No model is available/);
-});
-
 test('the AI page has the switches and no answer cache any more', async () => {
   const { cookie } = sessionCookie(OWNER);
   const body = await (await get('/admin/ai', cookie)).text();
@@ -335,18 +279,6 @@ test('the Rivens page shows the scan channel, needs the CSRF header to scan, and
   } finally {
     globalThis.fetch = realFetch;
   }
-});
-
-test('the Brain page has a conversation memory slider that saves and clamps', async () => {
-  const { cookie } = sessionCookie(OWNER);
-  const body = await (await get('/admin/brain', cookie)).text();
-  assert.match(body, /type="range" name="memoryMessages" min="0" max="30" step="1" value="10"/);
-  await post('/admin/brain/save', { memoryMessages: '4', _csrf: 'csrf-token' }, cookie);
-  assert.equal(brain().memoryMessages, 4);
-  assert.match(await (await get('/admin/brain', cookie)).text(), /name="memoryMessages"[^>]*value="4"/);
-  await post('/admin/brain/save', { memoryMessages: '500', _csrf: 'csrf-token' }, cookie);
-  assert.equal(brain().memoryMessages, 30);
-  resetBrainState();
 });
 
 test('the Corrections page approves suggestions, edits and deletes corrections, adds one, and rates answers', async () => {

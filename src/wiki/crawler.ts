@@ -13,8 +13,9 @@ const BUSY_WAIT_MS = 20_000;
 /** …but not forever: after this many waits in a row the refresh gives up until the next check. */
 const MAX_BUSY_WAITS = 60;
 const STARTUP_DELAY_MS = 90_000;
-const CHECK_INTERVAL_MS = 6 * 3_600_000;
-const REFRESH_AFTER_MS = 24 * 3_600_000;
+const CHECK_INTERVAL_MS = 3_600_000;
+/** Chat answers come from this copy, so it follows the wiki closely; a refresh only downloads the pages that changed. */
+const REFRESH_AFTER_MS = 6 * 3_600_000;
 
 type Fetcher = (url: string) => Promise<Response>;
 

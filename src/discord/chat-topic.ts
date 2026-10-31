@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 
 /** The chat channel's description: what Ordis does there, so members know they can simply write. Kept under Discord's 1024-character limit. */
 export const CHAT_TOPIC =
-  'Ask Ordis anything about Warframe: no question mark needed, just write. He remembers your last messages, so follow-ups work, or reply to an answer to carry on. Wrong answer? Reply with the right one: admins fix him at once, other replies go to the admins to approve.';
+  'Ask Ordis anything about Warframe: prices, drops, items, what is up right now, or anything on the wiki, and he links the wiki pages that answer it. Wrong answer? Reply with the right one: admins fix him at once, other replies go to the admins to approve.';
 
 /**
  * Keeps the Ordis chat channel's description in line with how the channel works. Only writes when it differs (Discord limits

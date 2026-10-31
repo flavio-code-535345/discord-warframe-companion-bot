@@ -1,11 +1,11 @@
-import { embedStatus } from '../wiki/embed.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { chooseModel, setToggle } from '../ai/control.js';
 import { localModelOf } from '../ai/ollama.js';
 import { TOGGLE_KEYS, TOGGLES, aiToggle } from '../ai/settings.js';
-import { localAvailable } from '../answers/compose.js';
+import { localAvailable } from '../ai/local.js';
 import { normalizeQuestion } from '../answers/corrections.js';
+import { smartAnswer } from '../answers/smart.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
 import { levelOf, xpForLevel } from '../leveling/xp.js';
@@ -13,7 +13,7 @@ import { syncLevelRoles } from '../leveling/service.js';
 import { UserError } from '../services/clan.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { api } from '../warframe/fetch.js';
-import { questionQueue, screenshotQueue } from '../queue.js';
+import { screenshotQueue } from '../queue.js';
 import { worldStateInfo } from '../warframe/worldstate.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
@@ -104,11 +104,25 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
   );
 
   server.registerTool(
+    'test_answer',
+    {
+      title: 'Test a chat answer',
+      description: 'Runs a question through the same path as the chat channel (corrections, lookups, the wiki) on the live bot, without posting or logging anything, and returns the answer: the text, the embed titles, how it was made and how long it took.',
+      inputSchema: { question: z.string().min(1).max(500) },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ question }) => {
+      const a = await smartAnswer(question, ctx);
+      return { content: a.content, embeds: a.embeds.map((e) => e.data.title ?? null), found: a.found, silent: a.silent ?? false, intent: a.intent, source: a.source, ms: a.ms, review: a.review ?? null };
+    }),
+  );
+
+  server.registerTool(
     'answers_to_review',
     {
       title: 'Answers that need a look',
       description:
-        "The self-review's list: answers that stayed weak after Ordis's sanity test and second try, answers that quoted the wiki or found nothing, and answers staff rated wrong (❌), newest first, with the reason. Fix them in batches (a better source, a rule, a staff correction) instead of waiting for screenshots.",
+        "Chat answers worth a look: questions the wiki had nothing for, answers that were only links (no sentence of a named page fit), and answers staff rated wrong (❌), newest first, with the reason. Fix them in batches (a lookup rule, a staff correction) instead of waiting for screenshots.",
       inputSchema: { days: z.number().min(1).max(30).default(7).describe('How far back'), limit: z.number().int().min(1).max(100).default(30) },
       annotations: READ_ONLY,
     },
@@ -149,19 +163,16 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           stoppedAt: iso(Number(store.getMeta('lifecycle_stopped_at')) || null),
         },
         warframeApi: { enabled: ws.enabled, everySeconds: ws.intervalSeconds, lastCall: iso(ws.lastCallAt), lastOk: ws.lastOk, detail: ws.lastDetail },
-        queues: { questions: { ...questionQueue.snapshot(), ...questionQueue.stats, concurrency: questionQueue.config.concurrency }, screenshots: { ...screenshotQueue.snapshot(), ...screenshotQueue.stats, concurrency: screenshotQueue.config.concurrency } },
+        queues: { screenshots: { ...screenshotQueue.snapshot(), ...screenshotQueue.stats, concurrency: screenshotQueue.config.concurrency } },
         apiClient: { ...api.stats, limits: api.limits, pausedHosts: api.cooldowns().map((c) => ({ host: c.host, until: new Date(c.until).toISOString(), reason: c.reason })) },
         ai: {
           localModel: config.LOCAL_AI_URL ? (localModelOf(config) ?? null) : null,
           localSkippedAfterFailure: config.LOCAL_AI_URL ? !localAvailable() : null,
           cloudModel: config.FREE_AI_KEY ? config.FREE_AI_MODEL : null,
           cloudDailyLimit: config.FREE_AI_KEY ? config.FREE_AI_DAILY_LIMIT : null,
-          claudeChat: Boolean(ctx.ai),
           switches: Object.fromEntries(TOGGLE_KEYS.map((k) => [k, aiToggle(k)])),
         },
         wikiIndex: wiki && { pages: wiki.pages, chunks: wiki.chunks, refreshedAt: iso(wiki.refreshedAt) },
-        // Meaning-based reranking of wiki results: whether it is on, paused after a failure (model missing or Ollama down) and how often it ran.
-        wikiEmbeddings: embedStatus(),
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
         features: {
           statusReports: Boolean(s.statusChannelId),
@@ -246,7 +257,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     'set_ai_switch',
     {
       title: 'AI switches',
-      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model), thinking (let a thinking-capable local model reason first), websearch (SearXNG results), operators (build designs and last-resort free-form answers for the two owners), log (the question log).',
+      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model that reads screenshots OCR cannot), thinking (let a thinking-capable local model reason first), websearch (SearXNG results for search_web), log (the question log).',
       inputSchema: { feature: z.enum(TOGGLE_KEYS as [string, ...string[]]), on: z.boolean() },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -257,7 +268,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     'choose_ai_model',
     {
       title: 'Choose the AI model',
-      description: 'Chooses which installed Ollama model answers questions (same as /ai model and the panel). Use "-" to go back to the bot\'s LOCAL_AI_MODEL. Install new models with ollama_pull.',
+      description: 'Chooses which installed Ollama model reads the screenshots OCR cannot (same as /ai model and the panel). Use "-" to go back to the bot\'s LOCAL_AI_MODEL. Install new models with ollama_pull.',
       inputSchema: { name: z.string().min(1).max(120) },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },

@@ -6,7 +6,7 @@ import type { Store } from '../db.js';
  * effect immediately, with no redeploy.
  */
 
-export type AiToggle = 'local' | 'thinking' | 'websearch' | 'operators' | 'log';
+export type AiToggle = 'local' | 'thinking' | 'websearch' | 'log';
 
 export interface ToggleInfo {
   label: string;
@@ -15,10 +15,9 @@ export interface ToggleInfo {
 }
 
 export const TOGGLES: Record<AiToggle, ToggleInfo> = {
-  local: { label: 'Local model', help: 'Use the self-hosted Ollama model for answers (and as the screenshot backup). Off: only the free cloud model.', default: true },
+  local: { label: 'Local model', help: 'Use the self-hosted Ollama model to read screenshots OCR cannot. Off: only the free cloud model.', default: true },
   thinking: { label: 'Thinking', help: 'Let the local model reason before answering. Slower (30 s or more on a CPU) and only for models that support it.', default: false },
-  websearch: { label: 'Web search', help: 'Search Warframe sites on the web (SearXNG) when a member asks for it ("check reddit"), and let the agent use the web.', default: true },
-  operators: { label: 'Operator mode', help: 'Let the two operators ask Ordis to design builds, and get a free-form answer when the wiki has nothing.', default: true },
+  websearch: { label: 'Web search', help: 'Let the MCP tool search_web search Warframe sites on the web (SearXNG).', default: true },
   log: { label: 'Question log', help: 'Record the questions members ask, for /ailog (kept 30 days).', default: true },
 };
 

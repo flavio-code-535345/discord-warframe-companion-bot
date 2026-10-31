@@ -35,9 +35,8 @@ export const SETTINGS: SettingDef[] = [
   { key: 'WORLDSTATE_POLL_SECONDS', group: 'Warframe data', kind: 'int', label: 'World state poll interval (seconds)', help: 'Minimum time between calls to the feed. At least 60.' },
   { key: 'WARFRAME_PLATFORM', group: 'Warframe data', kind: 'select', options: ['pc', 'ps4', 'xbox', 'switch', 'mobile'], label: 'Platform', help: 'Which platform /price and Ordis look at on warframe.market, and which world state (pc, ps4, xbox, switch) is shown.' },
 
-  { key: 'QUEUE_QUESTIONS_CONCURRENCY', group: 'Queues', kind: 'int', label: 'Questions answered at the same time', help: 'Questions that need the model wait in line; this many run at once (1 to 4). 1 suits a CPU model.' },
-  { key: 'QUEUE_SCREENSHOTS_CONCURRENCY', group: 'Queues', kind: 'int', label: 'Screenshots read at the same time', help: 'Screenshots wait in line too (1 to 4).' },
-  { key: 'QUEUE_MAX_WAITING', group: 'Queues', kind: 'int', label: 'Longest line', help: 'How many may wait in each queue (1 to 100). More than that are asked to try again later; one person can have 2 waiting.' },
+  { key: 'QUEUE_SCREENSHOTS_CONCURRENCY', group: 'Queues', kind: 'int', label: 'Screenshots read at the same time', help: 'Screenshots (roles and riven scans) wait in line; this many are read at once (1 to 4). 1 suits a CPU.' },
+  { key: 'QUEUE_MAX_WAITING', group: 'Queues', kind: 'int', label: 'Longest line', help: 'How many may wait in the queue (1 to 100). More than that are asked to try again later; one person can have 2 waiting.' },
   { key: 'API_MIN_INTERVAL_MS', group: 'API limits and cache', kind: 'int', label: 'Minimum gap between requests (ms)', help: 'Between two requests to the same host (warframestat.us, warframe.market, the wiki, DE). 0 to 10000.' },
   { key: 'API_RATE_LIMIT_PER_MINUTE', group: 'API limits and cache', kind: 'int', label: 'Requests per minute (all hosts)', help: 'Global cap. Background work (the wiki crawler) may only use half of it. 5 to 600.' },
   { key: 'API_COOLDOWN_MINUTES', group: 'API limits and cache', kind: 'int', label: 'Cooldown after a 403 (minutes)', help: 'A host that answers 403 is left completely alone this long. A 429 follows its Retry-After header instead.' },
@@ -53,7 +52,6 @@ export const SETTINGS: SettingDef[] = [
   { key: 'LOCAL_AI_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Default local model', help: 'Used unless a model was chosen on the AI page or with /ai model.' },
   { key: 'LOCAL_AI_TIMEOUT_SECONDS', group: 'Local AI (Ollama)', kind: 'int', label: 'Local model timeout (seconds)', help: 'How long one request to the local model may wait (5 to 300).' },
 
-  { key: 'EMBED_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Embedding model', help: 'A small model in the same Ollama that reranks wiki search results by meaning (install it with /ai install tag:nomic-embed-text). Empty = off.' },
 
   { key: 'FREE_AI_URL', group: 'Free cloud AI', kind: 'text', label: 'Endpoint URL', help: 'Any OpenAI-compatible API. The key stays in the environment (FREE_AI_KEY).' },
   { key: 'FREE_AI_MODEL', group: 'Free cloud AI', kind: 'text', label: 'Model', help: 'The main cloud model.' },
@@ -67,11 +65,6 @@ export const SETTINGS: SettingDef[] = [
   { key: 'RIVEN_REFRESH_DAYS', group: 'Riven analyzer', kind: 'int', label: 'Read each weapon again after (days)', help: '1 to 30.' },
   { key: 'RIVEN_HIGH_PRICE', group: 'Riven analyzer', kind: 'int', label: 'High-value price line (platinum)', help: 'Rivens listed at or above this count as high value when grading (50 to 100000).' },
 
-  { key: 'AI_MODEL', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'text', label: 'Claude model', help: 'Only used when an Anthropic key is set.' },
-  { key: 'AI_EFFORT', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'select', options: ['low', 'medium', 'high'], label: 'Claude effort', help: 'Reasoning effort.' },
-  { key: 'AI_WEB_SEARCH', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'bool', label: 'Claude web search', help: "Let Claude use its web search tool on Warframe sites." },
-  { key: 'AI_USER_HOURLY_LIMIT', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'int', restart: true, label: 'Questions per member per hour', help: 'Rate limit.' },
-  { key: 'AI_DAILY_LIMIT', group: 'Claude chat (needs ANTHROPIC_API_KEY)', kind: 'int', restart: true, label: 'Questions per day', help: 'Rate limit for the whole server.' },
 
   { key: 'ENABLE_MESSAGE_CONTENT', group: 'Needs a restart', kind: 'bool', restart: true, label: 'Read message content', help: 'Lets Ordis read the chat channel, screenshots and sticky/audit text. Also needs the Message Content intent in the Developer Portal.' },
   { key: 'ENABLE_MEMBER_LOGGING', group: 'Needs a restart', kind: 'bool', restart: true, label: 'Log member joins and leaves', help: 'Needs the Server Members intent in the Developer Portal.' },
@@ -81,7 +74,7 @@ export const SETTINGS: SettingDef[] = [
 
 /** Environment variables that stay environment-only, and why (shown on the Config page). */
 export const ENV_ONLY: { names: string[]; why: string }[] = [
-  { names: ['DISCORD_TOKEN', 'ANTHROPIC_API_KEY', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET'], why: 'Secrets: never stored in the database or shown in the panel.' },
+  { names: ['DISCORD_TOKEN', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET'], why: 'Secrets: never stored in the database or shown in the panel.' },
   { names: ['DISCORD_GUILD_ID', 'DATA_DIR', 'HTTP_HOST', 'HTTP_PORT'], why: 'Needed before the bot (and its database) can start.' },
   { names: ['PUBLIC_URL', 'PANEL_OWNER_IDS'], why: 'The panel login depends on them; a wrong value here could lock you out.' },
   { names: ['MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL', 'ALLOW_CODE_EDIT'], why: 'Security and infrastructure switches (ALLOW_CODE_EDIT lets the MCP patch the bot\'s code): deliberately not changeable from a web page.' },

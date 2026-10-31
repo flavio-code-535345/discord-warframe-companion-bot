@@ -19,7 +19,6 @@ const ctx = (): AppContext => ({
   config: loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD }),
   store: new Store(':memory:'),
   client: { isReady: () => false } as unknown as Client,
-  ai: null,
 });
 
 describe('dates that cannot be shown', () => {

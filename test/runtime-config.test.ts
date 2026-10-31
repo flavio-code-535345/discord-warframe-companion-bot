@@ -68,7 +68,7 @@ describe('runtime settings', () => {
     assert.equal(setSetting(s.config, s.store, 'MCP_AUTH_TOKEN', 'y'.repeat(30)), 'Unknown setting.');
     assert.equal(s.config.WORLDSTATE_POLL_SECONDS, 600);
     assert.equal(s.store.getMeta('cfg_WORLDSTATE_POLL_SECONDS'), null, 'nothing was stored');
-    assert.equal(parseSetting('AI_EFFORT', 'high').ok, true);
+    assert.equal(parseSetting('WARFRAME_PLATFORM', 'ps4').ok, true);
   });
 
   it('tells the app when something changed, and flags settings that need a restart', () => {
@@ -101,7 +101,7 @@ describe('runtime settings', () => {
 
   it('covers no secret and no setting the panel login or the network binding depends on', () => {
     const covered = new Set<string>(SETTINGS.map((x) => x.key));
-    for (const name of ['DISCORD_TOKEN', 'ANTHROPIC_API_KEY', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET', 'PUBLIC_URL', 'PANEL_OWNER_IDS', 'HTTP_PORT', 'HTTP_HOST', 'DATA_DIR', 'DISCORD_GUILD_ID', 'ALLOW_CODE_EDIT', 'MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL']) {
+    for (const name of ['DISCORD_TOKEN', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET', 'PUBLIC_URL', 'PANEL_OWNER_IDS', 'HTTP_PORT', 'HTTP_HOST', 'DATA_DIR', 'DISCORD_GUILD_ID', 'ALLOW_CODE_EDIT', 'MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL']) {
       assert.ok(!covered.has(name), `${name} must stay environment-only`);
     }
     assert.ok(ENV_ONLY.flatMap((o) => o.names).includes('ALLOW_CODE_EDIT'));

@@ -1,24 +1,6 @@
-/**
- * How Ordis reads a question before anything is looked up. Pure, no model: a small model mixes up "how do I get X" with "what
- * is X", and the two need different parts of a wiki page, so the code decides what kind of answer is wanted, and whether the
- * message is plain arithmetic, small talk, or a request to search the web.
- */
-
-/** What kind of answer a question wants; it decides which wiki sections and data are gathered and how the answer is written. */
-export type Ask = 'farm' | 'acquire' | 'when' | 'explain' | 'howto' | 'compare' | 'general';
+/** How Ordis reads a message before anything is looked up. Pure: plain arithmetic, a question, or chatter. */
 
 const lower = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
-
-export function classifyAsk(question: string): Ask {
-  const q = lower(question);
-  if (/\b(vs\.?|versus|better than|which is better|compared? (to|with))\b/.test(q)) return 'compare';
-  if (/\b(best|fastest|quickest|easiest|efficient|optimal|good)\b[^?]*\b(farm|farming|grind|grinding|place to (get|farm)|way to (get|farm|earn|gain))\b|\bfarm(ing)? (spot|location|route|method)s?\b|\bwhere (do|can|should) i farm\b/.test(q)) return 'farm';
-  if (/^(when|what time)\b|\b(when|how long until|next time|next week)\b[^?]*\b(get|farm|come|return|back|available|reset|rotat\w*)\b/.test(q)) return 'when';
-  if (/\b(how|where|what)\b[^?]*\b(get|obtain|acquire|unlock|earn|gain|buy|find|craft|build|farm|gather|access)\b|\b(drops?|dropped)\b|^(get|obtain|unlock|farm)\b/.test(q)) return 'acquire';
-  if (/^(what|who)('s|s| is| are| was| were| does| do)\b|\bexplain\b|\bwhat does\b|\bhow does\b|\bhow do [^?]* work\b|\bmeaning of\b|\bwhat('s| is) the (point|use|purpose)\b/.test(q)) return 'explain';
-  if (/^(how|can) (do|can|should|to|would)?\s*(i|you|we|one)?\b|^how to\b/.test(q)) return 'howto';
-  return 'general';
-}
 
 /** A plain sum ("what is 9 x 2", "2+2") as an expression for calculate(), or null. */
 export function mathExpression(question: string): string | null {
@@ -50,7 +32,5 @@ export function noContent(text: string): boolean {
   return !rest || /^(lol|lmao|lmfao|rofl|haha+|hehe+|xd+|gg|ty|thx|thanks|thank you|ok|okay|k|kk|nice|cool|wow|bruh|f|rip|gn|gm|yes|no|yep|nope|ye|yeah|nah)$/i.test(rest);
 }
 
-/** "check reddit", "research online", "search the web": the member wants web results, not only the wiki. */
-export function wantsResearch(text: string): boolean {
-  return /\b(check|search|look (it |that )?up|research|google|browse)\b[^?]*\b(reddit|online|web|internet|youtube|forums?|overframe)\b|\b(on|from|check) reddit\b|\bresearch online\b/i.test(text);
-}
+/** A thank-you on its own ("thanks!", "ty ordis"). */
+export const thanks = (text: string): boolean => /^\W*(thanks?|thank you|thx|ty)\b[\s\w]{0,20}\W*$/i.test(text.trim());

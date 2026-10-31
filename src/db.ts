@@ -579,9 +579,14 @@ const MIGRATIONS: string[] = [
   DROP TABLE IF EXISTS answer_cache;
   DELETE FROM bot_meta WHERE key IN ('answer_refresh_last', 'answer_refresh_day', 'ai_toggle_cache', 'cfg_ANSWER_REFRESH_ENABLED', 'cfg_ANSWER_REFRESH_MAX', 'cfg_ANSWER_REFRESH_HOUR_UTC');
   `,
-  // The answer self-review (answers/review.ts): why an answer is worth a look, empty when it is fine.
+  // Why a logged answer is worth a look (nothing found, links without a quote), empty when it is fine.
   `
   ALTER TABLE ai_log ADD COLUMN review TEXT;
+  `,
+  // Chat answers come from lookups and the wiki only: the agent's Brain settings, the operator-mode switch and the settings of
+  // the removed Claude chat, embedding reranking and question queue go.
+  `
+  DELETE FROM bot_meta WHERE key IN ('brain_settings', 'ai_toggle_operators', 'cfg_AI_MODEL', 'cfg_AI_EFFORT', 'cfg_AI_WEB_SEARCH', 'cfg_AI_USER_HOURLY_LIMIT', 'cfg_AI_DAILY_LIMIT', 'cfg_EMBED_MODEL', 'cfg_QUEUE_QUESTIONS_CONCURRENCY', 'cfg_AGENT_LOCAL_MIN_TIMEOUT_SECONDS');
   `,
 ];
 
@@ -983,7 +988,7 @@ export class Store {
     return r ? this.toAiLog(r) : null;
   }
 
-  /** The logged answer that a Discord message carried (a reply to that message is a correction or a follow-up). */
+  /** The logged answer that a Discord message carried (a reply to that message may be a correction). */
   aiLogByMessage(guildId: string, messageId: string): AiLogEntry | null {
     const r = this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND message_id = ? ORDER BY id DESC LIMIT 1').get(guildId, messageId) as Row | undefined;
     return r ? this.toAiLog(r) : null;
@@ -996,10 +1001,6 @@ export class Store {
   /** Staff feedback on an answer: 'right', 'wrong', or null to clear it. */
   rateAiLog(guildId: string, id: number, rating: 'right' | 'wrong' | null, by: string, now = Date.now()): boolean {
     return Number(this.db.prepare('UPDATE ai_log SET rating = ?, rated_by = ?, rated_at = ? WHERE guild_id = ? AND id = ?').run(rating, rating ? by : null, rating ? now : null, guildId, id).changes) > 0;
-  }
-
-  ratedAiLog(guildId: string, rating: 'right' | 'wrong', limit: number): AiLogEntry[] {
-    return (this.db.prepare('SELECT * FROM ai_log WHERE guild_id = ? AND rating = ? ORDER BY rated_at DESC, id DESC LIMIT ?').all(guildId, rating, limit) as Row[]).map((r) => this.toAiLog(r));
   }
 
   ratingCounts(guildId: string): { right: number; wrong: number } {

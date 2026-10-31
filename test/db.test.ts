@@ -171,15 +171,17 @@ test('the answer cache is dropped with its switch and settings, also from a data
     const raw = new DatabaseSync(file);
     const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
     raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
-    raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b')");
-    // Back to before the cache migration (two from the end; the review column after it goes too, so it can be added again).
+    raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x')");
+    // Back to before the cache migration (three from the end; the review column after it goes too, so it can be added again).
     raw.exec('ALTER TABLE ai_log DROP COLUMN review');
-    raw.exec(`PRAGMA user_version = ${version - 2}`);
+    raw.exec(`PRAGMA user_version = ${version - 3}`);
     raw.close();
 
     const store = new Store(file);
     assert.equal(store.getMeta('ai_toggle_cache'), null);
     assert.equal(store.getMeta('cfg_ANSWER_REFRESH_MAX'), null);
+    assert.equal(store.getMeta('brain_settings'), null, 'and the settings of the removed agent and reranking');
+    assert.equal(store.getMeta('cfg_EMBED_MODEL'), null);
     assert.equal(store.getMeta('local_ai_model'), 'gemma4:e4b', 'other settings stay');
     store.close();
     const check = new DatabaseSync(file);

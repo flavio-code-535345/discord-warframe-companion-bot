@@ -10,7 +10,7 @@ const MIN_CHARS = 12;
 /**
  * A reply to one of Ordis's logged answers that is not itself a question counts as a correction: from staff (an operator,
  * a panel admin or anyone with Manage Server) it is saved and takes effect at once (✅), from anyone else it becomes a
- * suggestion for staff to approve on the admin panel (📝). A reply that ends in "?" is a follow-up question instead and
+ * suggestion for staff to approve on the admin panel (📝). A reply that ends in "?" is a new question instead and
  * returns false, as does anything that is only thanks or too short to be an answer.
  *
  * `entry` is the logged answer the message replies to, `text` the message without the bot mention.

@@ -13,7 +13,6 @@ import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worlds
 import { webSearch } from '../warframe/websearch.js';
 import { registerAdminTools } from './admin.js';
 import { registerCodeTools } from './code.js';
-import { registerBrainTools } from './brain.js';
 import { registerInsightTools } from './insights.js';
 import { registerOllamaTools } from './ollama.js';
 import { registerRivenTools } from './rivens.js';
@@ -349,7 +348,6 @@ export function createMcpServer(ctx: AppContext): McpServer {
   if (ctx.config.ALLOW_CODE_EDIT) registerCodeTools(server, ctx);
   registerOllamaTools(server, ctx);
   registerInsightTools(server, ctx);
-  registerBrainTools(server, ctx);
   registerRivenTools(server, ctx);
 
   return server;

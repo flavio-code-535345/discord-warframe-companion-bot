@@ -28,7 +28,6 @@ import {
   unsign,
 } from './auth.js';
 import { registerAiRoutes } from './ai-page.js';
-import { registerBrainRoutes } from './brain-page.js';
 import { syncChatTopic } from '../../discord/chat-topic.js';
 import { registerCorrectionsRoutes } from './corrections-page.js';
 import { registerMessagesRoutes } from './messages-page.js';
@@ -413,7 +412,6 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
   // --- AI (same controls as the /ai command) ---
 
   registerAiRoutes({ router, ctx, pc, html, action, audit });
-  registerBrainRoutes({ router, ctx, pc, html, action, audit });
   registerCorrectionsRoutes({ router, ctx, pc, html, action, audit });
   registerMessagesRoutes({ router, ctx, pc, html, audit, channelOptions: async () => channelOptions(await guild()) });
   registerSsTestRoutes({ router, ctx, pc, html });

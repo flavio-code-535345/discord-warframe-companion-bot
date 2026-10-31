@@ -134,6 +134,5 @@ export class WorkQueue {
   }
 }
 
-/** The two queues: answers that use the model, and screenshot reads. Limits come from the config (see index.ts). */
-export const questionQueue = new WorkQueue('questions');
+/** The screenshot reads (screenshot roles and riven scans) wait here. Limits come from the config (see index.ts). */
 export const screenshotQueue = new WorkQueue('screenshots');

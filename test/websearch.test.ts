@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { allowedUrl, asPassages, webSearch, withWarframe } from '../src/warframe/websearch.js';
+import { allowedUrl, webSearch, withWarframe } from '../src/warframe/websearch.js';
 
 const reply = (results: object[], status = 200) => async () => new Response(JSON.stringify({ results }), { status });
 
@@ -20,7 +20,6 @@ describe('web search', () => {
       ]),
     );
     assert.deepEqual(out.map((r) => r.title), ['Hotfix 40.0.5', 'WF sub']);
-    assert.match(asPassages(out)[0]!.title, /\(web, 2026-10-20\)/);
   });
 
   it('sends a json search for warframe and never throws', async () => {

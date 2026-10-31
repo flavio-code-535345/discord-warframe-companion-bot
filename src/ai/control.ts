@@ -1,4 +1,4 @@
-import { localAvailable } from '../answers/compose.js';
+import { localAvailable } from './local.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
 import {
@@ -46,7 +46,6 @@ export interface AiOverview {
   download: (PullState & { progress: string | null }) | null;
   toggles: { key: AiToggle; label: string; help: string; on: boolean }[];
   webSearch: { configured: boolean; host: string | null };
-  operators: number;
 }
 
 export function requireBase(ctx: AppContext): string {
@@ -73,7 +72,6 @@ export async function aiOverview(ctx: AppContext, fetcher: typeof fetch = fetch)
     download: pull && { ...pull, progress: pullProgress(pull) },
     toggles,
     webSearch: { configured: Boolean(config.SEARXNG_URL), host: config.SEARXNG_URL ? new URL(config.SEARXNG_URL).host : null },
-    operators: config.OPERATOR_IDS.length,
   };
   if (!config.LOCAL_AI_URL) return base;
   const url = ollamaBase(config.LOCAL_AI_URL);

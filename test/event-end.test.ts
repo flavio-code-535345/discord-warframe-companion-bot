@@ -30,7 +30,6 @@ function setup() {
     config: loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD }),
     store: new Store(':memory:'),
     client: { isReady: () => false, user: { displayAvatarURL: () => 'https://cdn.example/avatar.png' }, channels: { fetch: async () => channel } } as unknown as Client,
-    ai: null,
   };
   return { ctx, sent, edits };
 }

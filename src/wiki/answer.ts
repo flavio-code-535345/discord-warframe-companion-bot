@@ -34,8 +34,8 @@ export function sentences(text: string): string[] {
     .filter((s) => s.length >= 25);
 }
 
-/** Up to `maxChars` of the most relevant sentences from the best passages, in reading order. Null when nothing fits. */
-export function answerFrom(question: string, passages: Passage[], maxChars = 700): DirectAnswer | null {
+/** Up to `maxSentences` (and `maxChars`) of the most relevant sentences from the best passages, in reading order. Null when nothing fits. */
+export function answerFrom(question: string, passages: Passage[], maxChars = 700, maxSentences = 3): DirectAnswer | null {
   const terms = queryTerms(question);
   if (!terms.length || !passages.length) return null;
   const cues = CUES.filter((c) => c.ask.test(question)).map((c) => c.sentence);
@@ -60,7 +60,7 @@ export function answerFrom(question: string, passages: Passage[], maxChars = 700
   const chosen: typeof best = [];
   let length = 0;
   for (const c of best) {
-    if (chosen.length >= 3 || length + c.s.length > maxChars) continue;
+    if (chosen.length >= maxSentences || length + c.s.length > maxChars) continue;
     if (c.rank !== best[0]!.rank) continue;
     chosen.push(c);
     length += c.s.length + 1;

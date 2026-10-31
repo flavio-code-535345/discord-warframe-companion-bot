@@ -1,6 +1,6 @@
 import { localModelOf } from '../ai/ollama.js';
 import { aiToggle } from '../ai/settings.js';
-import { localAvailable, markLocalDown } from '../answers/compose.js';
+import { localAvailable, markLocalDown } from '../ai/local.js';
 import { UserError } from '../services/clan.js';
 import type { CardReading } from './roles.js';
 
@@ -11,7 +11,7 @@ export interface VisionConfig {
   FREE_AI_URL: string;
   FREE_AI_MODEL: string;
   FREE_AI_FALLBACK_MODEL?: string | undefined;
-  /** Self-hosted vision-capable model (Ollama), tried first; the free cloud model is the backup. See answers/compose.ts. */
+  /** Self-hosted vision-capable model (Ollama), tried first; the free cloud model is the backup. See ai/local.ts. */
   LOCAL_AI_URL?: string | undefined;
   LOCAL_AI_MODEL?: string | undefined;
   LOCAL_AI_KEY?: string | undefined;

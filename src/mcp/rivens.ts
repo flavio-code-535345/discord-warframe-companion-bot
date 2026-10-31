@@ -7,7 +7,7 @@ import { getRivenWeapons } from '../rivens/market.js';
 import { gradeFor, rivenStatus, topFor } from '../rivens/service.js';
 import { READ_ONLY, tool } from './util.js';
 
-/** A riven grade as plain JSON: shared by the MCP `grade_riven` tool and the agent's tool of the same name. */
+/** A riven grade as plain JSON, for the MCP `grade_riven` tool. */
 export function rivenGradeSummary(r: Awaited<ReturnType<typeof gradeFor>>): object {
   const name = (slug: string) => r.names[slug] ?? slug;
   if (!r.grade) return { weapon: r.weapon.name, grade: null, listings: r.listings, note: 'Too few listings on warframe.market to compare with.' };
@@ -27,7 +27,7 @@ export function rivenGradeSummary(r: Awaited<ReturnType<typeof gradeFor>>): obje
   };
 }
 
-/** What sells for a weapon as plain JSON: shared by the MCP `riven_top_rolls` tool and the agent's tool of the same name. */
+/** What sells for a weapon as plain JSON, for the MCP `riven_top_rolls` tool. */
 export function rivenTopSummary(r: Awaited<ReturnType<typeof topFor>>): object {
   const name = (slug: string) => r.names[slug] ?? slug;
   if (!r.top) return { weapon: r.weapon.name, listings: r.listings, note: 'Too few listings on warframe.market to compare with.' };

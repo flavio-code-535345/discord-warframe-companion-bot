@@ -37,7 +37,7 @@ export function registerAiRoutes({ router, ctx, pc, html, action, audit }: Deps)
     const stats = store.aiLogStats(guildId, Date.now() - 86_400_000);
 
     const status = !o.configured
-      ? '<p class="muted">No local AI server is set up. Add <code>LOCAL_AI_URL</code> and <code>LOCAL_AI_MODEL</code> to the bot\'s environment to use Ollama; answers use the free cloud model until then.</p>'
+      ? '<p class="muted">No local AI server is set up. Add <code>LOCAL_AI_URL</code> and <code>LOCAL_AI_MODEL</code> to the bot\'s environment to use Ollama; screenshots OCR cannot read go to the free cloud model until then.</p>'
       : o.reachable
         ? `<div class="grid">
 ${statCard('AI server', 'Online', `Ollama ${e(o.version ?? '')}`, { tone: 'ok' })}
@@ -52,12 +52,12 @@ ${statCard('In memory right now', o.loaded.length ? e(o.loaded.map((m) => `${m.n
           `<tr><td><strong>${e(t.label)}</strong><div class="muted">${e(t.help)}</div></td><td>${badge(t.on ? 'on' : 'off', t.on ? 'ok' : '')}</td><td><form class="inline" method="post" action="/admin/ai/toggle">${csrfField(p.session)}<input type="hidden" name="feature" value="${e(t.key)}"><input type="hidden" name="on" value="${t.on ? '0' : '1'}"><button class="ghost">${t.on ? 'Turn off' : 'Turn on'}</button></form></td></tr>`,
       )
       .join('')}</table>
-<p class="muted">Web search: ${o.webSearch.configured ? `SearXNG at <code>${e(o.webSearch.host ?? '')}</code>` : 'not configured (<code>SEARXNG_URL</code>)'} · operators: ${o.operators} Discord IDs (<code>OPERATOR_IDS</code>)</p></div>`;
+<p class="muted">Web search: ${o.webSearch.configured ? `SearXNG at <code>${e(o.webSearch.host ?? '')}</code>` : 'not configured (<code>SEARXNG_URL</code>)'}</p></div>`;
 
     const modelOptions = o.installed.map((m) => ({ value: m.name, label: `${m.name} · ${gb(m.size)}${m.parameters ? ` · ${m.parameters}` : ''}` }));
     const models = o.reachable
       ? `<div class="card"><form class="stack" method="post" action="/admin/ai/model">${csrfField(p.session)}
-<div class="row"><label>Model that answers questions${select('model', modelOptions, o.chosen ? o.model : null, `— the bot's default${o.defaultModel ? ` (${o.defaultModel})` : ''} —`)}</label></div>
+<div class="row"><label>Model that reads screenshots${select('model', modelOptions, o.chosen ? o.model : null, `— the bot's default${o.defaultModel ? ` (${o.defaultModel})` : ''} —`)}</label></div>
 <div><button>Use this model</button></div></form></div>
 <div class="card"><form class="stack" method="post" action="/admin/ai/install">${csrfField(p.session)}
 <p class="muted">Downloads a model onto the AI server (several GB, runs in the background; reload this page to follow it). Use a library tag like <code>gemma3:27b</code> or <code>hf.co/user/repo:Q4_K_M</code>.</p>
@@ -85,7 +85,7 @@ ${
       : '<p class="muted">No questions logged yet.</p>';
     const summary = Object.entries(stats).map(([s, n]) => `${s} ${n}`).join(' · ');
 
-    const body = `${head('AI', 'The model that writes Ordis\'s answers, the switches around it, and what it has been asked lately.')}
+    const body = `${head('AI', 'Chat answers come from lookups and the wiki, with no model. The self-hosted model only reads the screenshots OCR cannot (screenshot roles): here are its switches, and what members asked lately.')}
 ${status}
 <h2>Switches</h2>
 ${toggles}

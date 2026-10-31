@@ -7,42 +7,17 @@ import type { AiLogEntry, Correction } from '../db.js';
  * reply is only a suggestion, which staff approve or reject on the admin panel's Corrections page. Staff can also mark
  * logged answers right or wrong there.
  *
- * What an approved correction does:
- *  - the same question (after normalizeQuestion) is answered with the correction word for word, before anything else;
- *  - related questions get the correction as a trusted fact (answer pipeline) or as guidance in the agent's prompt, together
- *    with the answers staff rated.
- *
- * Pending suggestions are never shown to the model: only text a staff member wrote or approved reaches a prompt.
+ * An approved correction answers the same question (after normalizeQuestion) word for word, before anything else. Pending
+ * suggestions are never shown to members.
  */
 
 /** Lower-cased, punctuation-free question, so "How do I unlock Venus?" and "how do i unlock venus" are one question. */
 export const normalizeQuestion = (q: string): string => q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 
 const MAX_TEXT = 1500;
-const MAX_GUIDANCE_CHARS = 2400;
 const SCAN_LIMIT = 500;
 
-const STOP = new Set(
-  'the and for are was you your with that this what when where which who how why does did can could would should will get got have has had not but its from into about than then them they their there here out all any some one more most much many very just also too use used using need want like make made take give tell show ask asking please thanks warframe'.split(' '),
-);
-
-/** The words of a question that carry its meaning. */
-export const keywords = (question: string): Set<string> => new Set(normalizeQuestion(question).split(' ').filter((w) => w.length >= 3 && !STOP.has(w)));
-
-/** How closely two questions overlap, 0..1 (shared keywords over the shorter one's); needs two shared words unless a question is that short. */
-export function relatedness(a: Set<string>, b: Set<string>): number {
-  if (!a.size || !b.size) return 0;
-  let shared = 0;
-  for (const w of a) if (b.has(w)) shared++;
-  const small = Math.min(a.size, b.size);
-  if (shared < Math.min(2, small)) return 0;
-  return shared / small;
-}
-
-const RELATED_AT = 0.6;
-
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-const oneLine = (s: string, n: number): string => clip(s.replace(/\s+/g, ' ').trim(), n);
 
 /** Whether this person may correct Ordis directly. `manageServer` is the Discord permission of the author in that server. */
 export function isStaff(ctx: Pick<AppContext, 'config' | 'store'>, userId: string, manageServer: boolean): boolean {
@@ -121,65 +96,4 @@ export const rejectCorrection = (ctx: Pick<AppContext, 'config' | 'store'>, id: 
 export function editCorrection(ctx: Pick<AppContext, 'config' | 'store'>, id: number, text: string): boolean {
   const t = text.replace(/\r\n/g, '\n').trim().slice(0, MAX_TEXT);
   return t ? ctx.store.updateCorrection(ctx.config.DISCORD_GUILD_ID, id, { correction: t }) : false;
-}
-
-/** Approved corrections whose question overlaps with this one, most related first: trusted facts for the answer pipeline. */
-export function relatedCorrections(ctx: Pick<AppContext, 'config' | 'store'>, question: string, max = 3): Correction[] {
-  const words = keywords(question);
-  if (!words.size) return [];
-  return ctx.store
-    .listCorrections(ctx.config.DISCORD_GUILD_ID, 'approved', SCAN_LIMIT)
-    .map((c) => ({ c, s: relatedness(words, keywords(c.question)) }))
-    .filter((x) => x.s >= RELATED_AT)
-    .sort((a, b) => b.s - a.s || b.c.createdAt - a.c.createdAt)
-    .slice(0, max)
-    .map((x) => x.c);
-}
-
-/**
- * The guidance block for a question: approved corrections that overlap with it, plus related answers staff rated wrong (what
- * not to repeat) and right (good examples). Empty when nothing applies. Capped, so it cannot crowd the prompt.
- */
-export function guidanceFor(ctx: Pick<AppContext, 'config' | 'store'>, question: string): string {
-  const guildId = ctx.config.DISCORD_GUILD_ID;
-  const words = keywords(question);
-  if (!words.size) return '';
-  const score = (q: string) => relatedness(words, keywords(q));
-
-  const corrections = ctx.store
-    .listCorrections(guildId, 'approved', SCAN_LIMIT)
-    .map((c) => ({ c, s: score(c.question) }))
-    .filter((x) => x.s >= RELATED_AT)
-    .sort((a, b) => b.s - a.s || b.c.createdAt - a.c.createdAt)
-    .slice(0, 4)
-    .map((x) => x.c);
-  // A question that already has a correction is covered by it: its rated answers would only repeat the mistake.
-  const corrected = new Set(ctx.store.listCorrections(guildId, 'approved', SCAN_LIMIT).map((c) => c.key));
-  const rated = (rating: 'right' | 'wrong', max: number) =>
-    ctx.store
-      .ratedAiLog(guildId, rating, 60)
-      .filter((e) => e.answer && !corrected.has(normalizeQuestion(e.question)))
-      .map((e) => ({ e, s: score(e.question) }))
-      .filter((x) => x.s >= RELATED_AT)
-      .sort((a, b) => b.s - a.s)
-      .slice(0, max)
-      .map((x) => x.e);
-  const wrong = rated('wrong', 2);
-  const right = rated('right', 2);
-  if (!corrections.length && !wrong.length && !right.length) return '';
-
-  const parts: string[] = [];
-  if (corrections.length) {
-    parts.push(
-      'Staff corrections (written by the clan admins; when one applies to the question, follow it over your memory, the tools and the wiki, and say it in your own words):',
-      ...corrections.map((c) => `- Question: ${oneLine(c.question, 160)}\n  Correct answer: ${oneLine(c.correction, 600)}`),
-    );
-  }
-  if (wrong.length) {
-    parts.push('Earlier answers that staff marked WRONG (do not repeat their mistakes):', ...wrong.map((e) => `- Question: ${oneLine(e.question, 160)}\n  Wrong answer: ${oneLine(e.answer ?? '', 300)}`));
-  }
-  if (right.length) {
-    parts.push('Earlier answers that staff marked RIGHT (a good example of what is wanted):', ...right.map((e) => `- Question: ${oneLine(e.question, 160)}\n  Good answer: ${oneLine(e.answer ?? '', 300)}`));
-  }
-  return clip(parts.join('\n'), MAX_GUIDANCE_CHARS);
 }

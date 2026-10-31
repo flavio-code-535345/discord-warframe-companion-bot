@@ -21,7 +21,7 @@ before(async () => {
   store = new Store(':memory:');
   // Only the store-backed tools are exercised here, so a minimal Discord client stub is enough.
   const client = { isReady: () => false } as unknown as Client;
-  const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client, ai: null };
+  const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client };
   const server = startHttpServer(ctx);
   await new Promise<void>((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

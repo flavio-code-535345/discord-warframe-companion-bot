@@ -43,9 +43,6 @@ const WANTS_LORE = /\b(lore|story|stories|history|backstory|personality|who (is|
 /** "What is X / how does X work": the sections that say what it does. */
 const USAGE_SECTION = /usage|\buse|mechanic|overview|function|feature|how|abilit|subsum|effect|work/i;
 const MAX_SUBPAGES = 6;
-/** Kept passage vectors (about 3 KB each); the oldest are dropped past this. */
-const MAX_VECTORS = 30_000;
-const VECTOR_PRUNE_EXTRA = 3_000;
 
 export const wikiUrl = (title: string) => `https://wiki.warframe.com/w/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 
@@ -79,7 +76,7 @@ export class WikiIndex {
       CREATE INDEX IF NOT EXISTS chunk_ids_title ON chunk_ids (title);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS aliases (alias TEXT PRIMARY KEY COLLATE NOCASE, target TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS embeddings (hash TEXT PRIMARY KEY, vec BLOB NOT NULL, at INTEGER NOT NULL);
+      DROP TABLE IF EXISTS embeddings;
       CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(title, section, body, tokenize = 'porter unicode61 remove_diacritics 2');
     `);
   }
@@ -157,56 +154,6 @@ export class WikiIndex {
 
   ready(): boolean {
     return this.stats().pages >= MIN_READY_PAGES;
-  }
-
-  // --- embeddings (see embed.ts): vectors of passages already scored, keyed by a hash of model + text ---
-
-  getVectors(hashes: string[]): Map<string, Float32Array> {
-    const out = new Map<string, Float32Array>();
-    const get = this.db.prepare('SELECT vec FROM embeddings WHERE hash = ?');
-    for (const h of hashes) {
-      const row = get.get(h) as Row | undefined;
-      const blob = row?.vec as Uint8Array | undefined;
-      if (blob) out.set(h, new Float32Array(blob.buffer.slice(blob.byteOffset, blob.byteOffset + blob.byteLength)));
-    }
-    return out;
-  }
-
-  putVectors(entries: readonly (readonly [string, Float32Array])[]): void {
-    if (!entries.length) return;
-    const put = this.db.prepare('INSERT OR REPLACE INTO embeddings (hash, vec, at) VALUES (?, ?, ?)');
-    const now = Date.now();
-    for (const [hash, vec] of entries) put.run(hash, new Uint8Array(vec.buffer, vec.byteOffset, vec.byteLength), now);
-    // Passages change with the wiki and with the question, so old vectors are dropped instead of growing without limit.
-    const n = Number((this.db.prepare('SELECT COUNT(*) AS n FROM embeddings').get() as Row).n);
-    if (n > MAX_VECTORS) this.db.prepare('DELETE FROM embeddings WHERE hash IN (SELECT hash FROM embeddings ORDER BY at LIMIT ?)').run(n - MAX_VECTORS + VECTOR_PRUNE_EXTRA);
-  }
-
-  /**
-   * More candidate pages for the reranker: the best full-text matches for ANY word of the question (search() requires most
-   * of them), skipping the pages in `exclude`. Unranked here; the reranker decides whether they are close enough in meaning.
-   */
-  pool(question: string, exclude: Set<string>, pages: number): WikiPassage[] {
-    const terms = queryTerms(question);
-    if (!terms.length) return [];
-    const wantsPatches = WANTS_PATCHES.test(question);
-    const wantsFluff = WANTS_FLUFF.test(question);
-    let rows: Row[];
-    try {
-      rows = this.db.prepare('SELECT title, section, body FROM chunks WHERE chunks MATCH ? ORDER BY bm25(chunks, 8.0, 3.0, 1.0) LIMIT 80').all(terms.map((t) => `"${t}"`).join(' OR ')) as Row[];
-    } catch {
-      return [];
-    }
-    const byPage = new Map<string, { title: string; chunks: { section: string; body: string }[] }>();
-    for (const r of rows) {
-      const t = String(r.title);
-      if (exclude.has(t.toLowerCase()) || (!wantsPatches && PATCH_TITLE.test(t)) || (!wantsFluff && FLUFF_TITLE.test(t))) continue;
-      if (!byPage.has(t) && byPage.size >= pages) continue;
-      const entry = byPage.get(t) ?? { title: t, chunks: [] };
-      if (entry.chunks.length < PER_PAGE_CHUNKS) entry.chunks.push({ section: String(r.section), body: String(r.body) });
-      byPage.set(t, entry);
-    }
-    return [...byPage.values()].map((p) => this.toPassage(p.title, p.chunks));
   }
 
   private chunksOf(title: string): { section: string; body: string }[] {

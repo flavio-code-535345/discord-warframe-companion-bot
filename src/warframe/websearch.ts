@@ -2,9 +2,9 @@ import { aiToggle } from '../ai/settings.js';
 import type { WikiResult } from './wiki.js';
 
 /**
- * Fresh web results from a self-hosted SearXNG (SEARXNG_URL): patch notes, news, forum and Reddit threads, build sites,
- * things the local wiki index is days behind on. Results are limited to Warframe sources, are plain snippets, and are
- * treated as untrusted text by the prompts. Never throws: a down search engine just means no extra results.
+ * Fresh web results from a self-hosted SearXNG (SEARXNG_URL) for the MCP tool search_web: patch notes, news, forum and Reddit
+ * threads, things the local wiki index is days behind on. Results are limited to Warframe sources and are plain snippets. Never
+ * throws: a down search engine just means no results.
  */
 
 type Fetcher = typeof fetch;
@@ -43,27 +43,11 @@ export interface WebResult extends WikiResult {
 
 export const withWarframe = (q: string): string => (/warframe/i.test(q) ? q : `warframe ${q}`);
 
-export interface WebSearchOptions {
-  /** Any website counts and the query is sent as written (the agent's search_web). Default: Warframe sources only, "warframe" added to the query. */
-  open?: boolean;
-}
-
-/** An http(s) link; with `open`, any site, otherwise only the Warframe hosts. */
-const usable = (url: string, open: boolean): boolean => {
-  if (!open) return allowedUrl(url) && okForHost(url);
-  try {
-    return ['https:', 'http:'].includes(new URL(url).protocol);
-  } catch {
-    return false;
-  }
-};
-
-export async function webSearch(baseUrl: string | undefined, query: string, limit = 3, fetcher: Fetcher = fetch, opts: WebSearchOptions = {}): Promise<WebResult[]> {
+export async function webSearch(baseUrl: string | undefined, query: string, limit = 3, fetcher: Fetcher = fetch): Promise<WebResult[]> {
   if (!baseUrl || !query.trim() || !aiToggle('websearch')) return [];
-  const open = opts.open === true;
   try {
     const q = query.trim().slice(0, 200);
-    const params = new URLSearchParams({ q: open ? q : withWarframe(q), format: 'json', language: 'en', categories: 'general,news', safesearch: '0' });
+    const params = new URLSearchParams({ q: withWarframe(q), format: 'json', language: 'en', categories: 'general,news', safesearch: '0' });
     const res = await fetcher(`${baseUrl.replace(/\/+$/, '')}/search?${params}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(6_000) });
     if (!res.ok) {
       console.warn(`[websearch] SearXNG answered HTTP ${res.status} (is the json format enabled in its settings?)`);
@@ -73,7 +57,7 @@ export async function webSearch(baseUrl: string | undefined, query: string, limi
     const seen = new Set<string>();
     const out: WebResult[] = [];
     for (const r of data.results ?? []) {
-      if (!r.url || !r.title || !usable(r.url, open) || seen.has(r.url)) continue;
+      if (!r.url || !r.title || !allowedUrl(r.url) || !okForHost(r.url) || seen.has(r.url)) continue;
       seen.add(r.url);
       out.push({ title: r.title.slice(0, 120), url: r.url, extract: (r.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 600), published: r.publishedDate ?? null });
       if (out.length >= limit) break;
@@ -84,7 +68,3 @@ export async function webSearch(baseUrl: string | undefined, query: string, limi
     return [];
   }
 }
-
-/** Web snippets in the same shape as wiki excerpts, labelled so the model and the reader can tell them apart. */
-export const asPassages = (results: WebResult[]): WikiResult[] =>
-  results.map((r) => ({ title: `${r.title} (web${r.published ? `, ${r.published.slice(0, 10)}` : ''})`, url: r.url, extract: r.extract }));

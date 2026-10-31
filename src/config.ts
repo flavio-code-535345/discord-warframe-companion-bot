@@ -27,13 +27,6 @@ export const EnvSchema = z.object({
   HTTP_HOST: z.string().default('0.0.0.0'),
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   MCP_AUTH_TOKEN: z.string().min(24, 'MCP_AUTH_TOKEN must be at least 24 characters').optional(),
-  // AI chat (Ordis answering questions). Disabled when no API key is set.
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  AI_MODEL: z.string().default('claude-opus-5-5'),
-  AI_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
-  AI_WEB_SEARCH: bool.default(true),
-  AI_USER_HOURLY_LIMIT: z.coerce.number().int().min(1).default(20),
-  AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(300),
   /** Switch on the Server Members intent just for the audit log (joins and leaves). Also enable it in the Developer Portal. */
   ENABLE_MEMBER_LOGGING: bool.default(false),
   /** Lets Ordis read every message in the /setup chat channel; needs the privileged Message Content intent. */
@@ -51,8 +44,6 @@ export const EnvSchema = z.object({
   LOCAL_AI_MODEL: z.string().optional(),
   LOCAL_AI_KEY: z.string().optional(),
   LOCAL_AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
-  /** Embedding model in the same Ollama (`/ai install tag:nomic-embed-text`) that reranks wiki search results by meaning. Without the model, or without LOCAL_AI_URL, the plain full-text results are used. */
-  EMBED_MODEL: z.string().max(120).default('nomic-embed-text'),
   /** Lets the MCP patch the bot's compiled code live (overlay in the data volume). Remote code execution for whoever holds MCP_AUTH_TOKEN: off by default. */
   ALLOW_CODE_EDIT: bool.default(false),
   /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
@@ -82,10 +73,9 @@ export const EnvSchema = z.object({
   API_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   API_PRICE_CACHE_SECONDS: z.coerce.number().int().min(10).max(3600).default(120),
   API_STABLE_CACHE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
-  /** Queues for the slow jobs (queue.ts): model answers and screenshot reads each run this many at a time, the rest wait in order. */
-  QUEUE_QUESTIONS_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+  /** The queue for screenshot reads (queue.ts): this many run at a time, the rest wait in order. */
   QUEUE_SCREENSHOTS_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
-  /** How many may wait in each queue; beyond that people are asked to try again later. */
+  /** How many may wait in the queue; beyond that people are asked to try again later. */
   QUEUE_MAX_WAITING: z.coerce.number().int().min(1).max(100).default(20),
   /** Riven analyzer (rivens/): the slow background read of warframe.market's riven listings (one weapon per interval), how old a weapon may get before it is read again, and the price line that counts as high value. */
   RIVEN_CRAWL_ENABLED: bool.default(true),

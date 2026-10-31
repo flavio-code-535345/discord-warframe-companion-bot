@@ -1,24 +1,20 @@
 import { join } from 'node:path';
-import { AskLimiter } from './ai/limits.js';
 import { BackupScheduler } from './backup/service.js';
 import { LfgVoiceSweeper } from './lfg/voice.js';
 import { configureWorldState } from './warframe/worldstate.js';
 import { SAFE_BOOT_MS, markOverlayHealthy } from './overlay.js';
 import { LOCAL_MODEL_META, setChosenModel } from './ai/ollama.js';
-import { loadBrain } from './agent/brain.js';
 import { loadAiToggles } from './ai/settings.js';
 import { reportStart, reportStop } from './lifecycle.js';
 import { RivenCrawler } from './rivens/crawler.js';
 import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
-import { bindEmbedder } from './wiki/embed.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
-import { OrdisBrain } from './ai/ordis.js';
 import { onRestart } from './selfupdate.js';
 import { loadConfig } from './config.js';
 import { initRuntimeConfig, onSettingChange } from './runtime-config.js';
 import { configureApi } from './warframe/fetch.js';
-import { questionQueue, screenshotQueue } from './queue.js';
+import { screenshotQueue } from './queue.js';
 import { syncIdentity } from './discord/identity.js';
 import type { AppContext } from './context.js';
 import { Store } from './db.js';
@@ -46,15 +42,10 @@ const applyApiConfig = () =>
   });
 applyApiConfig();
 const applyQueueConfig = () => {
-  questionQueue.configure({ concurrency: config.QUEUE_QUESTIONS_CONCURRENCY, maxWaiting: config.QUEUE_MAX_WAITING });
   screenshotQueue.configure({ concurrency: config.QUEUE_SCREENSHOTS_CONCURRENCY, maxWaiting: config.QUEUE_MAX_WAITING });
 };
 applyQueueConfig();
 const client = createClient(config);
-const ai = config.ANTHROPIC_API_KEY
-  ? { brain: new OrdisBrain(config, store), limiter: new AskLimiter(config.AI_USER_HOURLY_LIMIT, config.AI_DAILY_LIMIT) }
-  : null;
-if (!ai) console.warn('[ai] ANTHROPIC_API_KEY is not set: the Claude chat is off; Ordis answers from live data, the wiki and the free models.');
 const applyWorldState = () =>
   configureWorldState({
     url: config.WORLDSTATE_URL,
@@ -69,8 +60,7 @@ const applyWorldState = () =>
 applyWorldState();
 setChosenModel(store.getMeta(LOCAL_MODEL_META) || null);
 loadAiToggles(store);
-loadBrain(store);
-const ctx: AppContext = { config, store, client, ai };
+const ctx: AppContext = { config, store, client };
 // A few settings need more than a changed value when they change at runtime.
 onSettingChange((key) => {
   if (key.startsWith('API_')) applyApiConfig();
@@ -89,8 +79,6 @@ const rivenCrawler = new RivenCrawler(ctx);
 // The wiki index lives in its own file: it is big, rebuildable, and must not bloat the main database or backups.
 const wikiIndex = config.WIKI_INDEX ? new WikiIndex(join(config.DATA_DIR, 'wiki.db')) : null;
 setWikiIndex(wikiIndex);
-// The shared config object, so a model changed on the Config page applies at once.
-bindEmbedder(config);
 const wikiCrawler = wikiIndex ? new WikiCrawler(wikiIndex) : null;
 client.once('clientReady', () => {
   notifier.start();

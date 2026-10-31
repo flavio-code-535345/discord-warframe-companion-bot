@@ -73,7 +73,7 @@ test('lock denies sending for members, skips moderator roles, and unlock restore
     },
   } as unknown as GuildTextBasedChannel;
   const config = loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD });
-  const ctx: AppContext = { config, store: new Store(':memory:'), client: {} as Client, ai: null };
+  const ctx: AppContext = { config, store: new Store(':memory:'), client: {} as Client };
 
   assert.equal(await lockChannel(ctx, channel, 'test'), 2);
   assert.deepEqual(edits, [
@@ -112,7 +112,7 @@ test('a failed lock is undone, and an unlock carries on past an overwrite it can
       },
     },
   } as unknown as GuildTextBasedChannel;
-  const ctx: AppContext = { config: loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD }), store: new Store(':memory:'), client: {} as Client, ai: null };
+  const ctx: AppContext = { config: loadConfig({ DISCORD_TOKEN: 'x', DISCORD_GUILD_ID: GUILD }), store: new Store(':memory:'), client: {} as Client };
 
   // The second edit fails: the first is put back and no lock is left behind.
   await assert.rejects(lockChannel(ctx, channel, 'test'), /Unknown Role/);

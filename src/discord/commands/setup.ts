@@ -12,12 +12,11 @@ import { syncChatTopic } from '../chat-topic.js';
 
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement] as const;
 
-type Flags = Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ANTHROPIC_API_KEY'>;
+type Flags = Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT'>;
 
 export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
   const ch = (id: string | null) => (id ? `<#${id}>` : '*off*');
   const chatWarnings = [
-    flags.ANTHROPIC_API_KEY ? null : 'Claude is off (no ANTHROPIC_API_KEY): Ordis answers from live data, the wiki and the free models',
     s.chatChannelId && !flags.ENABLE_MESSAGE_CONTENT ? 'needs ENABLE_MESSAGE_CONTENT=true and the Message Content intent' : null,
   ].filter(Boolean);
   return new EmbedBuilder()
@@ -50,7 +49,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       },
       {
         name: 'Ordis chat channel',
-        value: `${ch(s.chatChannelId)} · Ordis answers everything written there (no question mark needed); mentions, replies, /ask and DMs work everywhere · he remembers follow-ups, and an admin's reply to an answer corrects him${chatWarnings.length ? `
+        value: `${ch(s.chatChannelId)} · Ordis answers questions written there from lookups and the wiki; mentions, replies, /ask and DMs work everywhere · an admin's reply to an answer corrects him${chatWarnings.length ? `
 ⚠️ ${chatWarnings.join('; ')}` : ''}`,
       },
     );
