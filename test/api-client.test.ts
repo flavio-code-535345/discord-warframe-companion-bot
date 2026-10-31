@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Store } from '../src/db.js';
 import { ApiBlockedError, ApiBusyError, ApiClient, ApiHttpError, parseRetryAfter } from '../src/warframe/fetch.js';
-import { CETUS, VALLIS, projectCycles, rollTwoPhase } from '../src/warframe/cycles.js';
+import { CETUS, VALLIS, projectCycles, rollDuviri, rollTwoPhase } from '../src/warframe/cycles.js';
 
 /** A client with a fake clock (sleeping just moves it forward) and a scripted fetch. */
 function setup(script: (url: string, init: RequestInit, n: number) => Response | Promise<Response> | Error) {
@@ -261,6 +261,19 @@ describe('cycle projection', () => {
     assert.equal(p.cambion.state, 'vome');
     assert.equal(p.cambion.expiry, p.cetus.expiry);
     assert.equal(p.vallis.projected, false);
+    assert.equal(p.duviri, null, 'no Duviri in the feed, none shown');
+  });
+
+  it('rolls Duviri\'s mood on in its fixed order instead of showing one that ended', () => {
+    const end = 9_000_000_000;
+    // Joy ended 21 minutes ago (the live bug: "Duviri Joy · 21 minutes ago"): it is Anger now, for another 99 minutes.
+    const anger = rollDuviri('Joy', end, end + 21 * 60_000);
+    assert.deepEqual(anger, { state: 'anger', expiry: end + 2 * 3_600_000, projected: true });
+    // Fear wraps round to Joy; 5 hours after Joy ended it is Sorrow (Anger, Envy, then Sorrow).
+    assert.equal(rollDuviri('fear', end, end + 1).state, 'joy');
+    assert.equal(rollDuviri('joy', end, end + 5 * 3_600_000).state, 'sorrow');
+    assert.equal(rollDuviri('joy', end, end - 1).projected, false, 'a mood that has not ended is left alone');
+    assert.equal(rollDuviri('Bliss', end, end + 1).state, 'Bliss', 'an unknown mood is shown as the feed gave it');
   });
 });
 

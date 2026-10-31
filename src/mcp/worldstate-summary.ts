@@ -70,8 +70,9 @@ function summarizeSection(ws: WorldState, section: Section, now: number): Record
       zariman: { state: p.zariman.state, ends: when(p.zariman.expiry, now), ...(p.zariman.projected ? { calculated: true } : {}) },
       earth: { state: p.earth.isDay ? 'day' : 'night', ends: when(p.earth.expiry, now), ...(p.earth.projected ? { calculated: true } : {}) },
       duviri: {
-        state: d.state,
-        ends: when(d.expiry, now),
+        state: p.duviri?.state ?? d.state,
+        ends: when(p.duviri?.expiry ?? d.expiry, now),
+        ...(p.duviri?.projected ? { calculated: true } : {}),
         circuitWarframes: d.choices?.find((c) => c.category === 'normal')?.choices ?? [],
         steelPathCircuitWeapons: d.choices?.find((c) => c.category === 'hard')?.choices ?? [],
       },

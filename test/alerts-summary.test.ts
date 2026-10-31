@@ -255,6 +255,26 @@ describe('the notifier', () => {
     assert.deepEqual(deleted, ['m2'], 'the previous note is gone');
   });
 
+  it('without a ping role keeps the summary alone: no "New" message for a new sortie, and a leftover one is removed', async () => {
+    const store = new Store(':memory:');
+    store.updateSettings('g', { alertsChannelId: 'chan' });
+    // A note from before, when a role was set (or from the old behaviour, which posted one even without a role).
+    store.setMeta('alerts_note:chan', JSON.stringify({ messageId: 'old-note', at: Date.now() }));
+    const sent: { content?: string }[] = [];
+    const deleted: string[] = [];
+    const channel = { id: 'chan', guildId: 'g', isSendable: () => true, send: async (p: (typeof sent)[number]) => (sent.push(p), { id: `m${sent.length}` }), messages: { edit: async () => {}, delete: async (id: string) => void deleted.push(id), fetch: async () => ({}) } };
+    const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
+    const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
+    const future = Date.now() + 3_600_000;
+    const sortie = (id: string, boss: string) => world({ sortie: { id, boss, expiry: new Date(future), variants: [] }, archonHunt: undefined, voidTrader: undefined, steelPath: undefined, alerts: [], invasions: [] });
+
+    await notifier.postWorldStateAlerts(sortie('s1', 'Vor'));
+    assert.deepEqual(deleted, ['old-note'], 'the leftover note goes at once');
+    await notifier.postWorldStateAlerts(sortie('s2', 'Ambulas'));
+    assert.ok(sent.every((s) => s.content === undefined), 'only the summary was ever sent');
+    assert.equal(sent.length, 1);
+  });
+
   it('keeps the summary but does not announce an event\'s endless resource missions, which get a readable name', async () => {
     const store = new Store(':memory:');
     store.updateSettings('g', { alertsChannelId: 'chan' });

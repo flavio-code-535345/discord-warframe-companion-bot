@@ -65,7 +65,7 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
       `**Cambion Drift** ${cap(p.cambion.state)} · ${discordTime(p.cambion.expiry)}`,
       `**Zariman** ${cap(p.zariman.state)} · ${discordTime(p.zariman.expiry)}`,
     ];
-    if (ws.duviriCycle?.state) lines.push(`**Duviri** ${cap(ws.duviriCycle.state)} · ${discordTime(ws.duviriCycle.expiry)}`);
+    if (p.duviri) lines.push(`**Duviri** ${cap(p.duviri.state)} · ${discordTime(p.duviri.expiry)}`);
     return lines.join('\n');
   }, true);
 

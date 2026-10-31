@@ -5,7 +5,8 @@ import type { WorldState } from './worldstate.js';
  * Open-world day/night cycles repeat on fixed schedules, so a cached world state never has to be wrong about them: when the
  * expiry it recorded has passed, the current phase is rolled forward locally instead of waiting for the next poll (or showing a
  * phase that ended minutes ago while the API is unreachable). Only the cycles with well-known fixed lengths are projected
- * (Cetus, Orb Vallis, Earth, Cambion Drift, which follows Cetus, and Zariman, which alternates Grineer and Corpus every 150 minutes); Duviri comes from the feed as it is.
+ * (Cetus, Orb Vallis, Earth, Cambion Drift, which follows Cetus, Zariman, which alternates Grineer and Corpus every 150 minutes,
+ * and Duviri, whose mood spiral changes every 2 hours in a fixed order).
  */
 
 const MIN = 60_000;
@@ -14,6 +15,9 @@ export const CETUS = { day: 100 * MIN, night: 50 * MIN };
 export const VALLIS = { warm: 400_000, cold: 20 * MIN };
 export const EARTH = { day: 240 * MIN, night: 240 * MIN };
 export const ZARIMAN = { corpus: 150 * MIN, grineer: 150 * MIN };
+/** Duviri's mood spiral: each mood lasts 2 hours, in this order, then it starts over (the wiki's Reset page). */
+export const DUVIRI_MOODS = ['joy', 'anger', 'envy', 'sorrow', 'fear'];
+export const DUVIRI_MOOD_MS = 120 * MIN;
 /** Beyond this the recorded state is too old to trust a roll-forward. */
 const MAX_PROJECT_MS = 7 * 24 * 3_600_000;
 
@@ -29,15 +33,25 @@ export function rollTwoPhase(first: boolean, expiry: number, firstLen: number, s
   return { first: cur, expiry: exp, projected: true };
 }
 
+/** Rolls Duviri's mood forward to `now`; a mood the order doesn't know is left as the feed gave it. */
+export function rollDuviri(state: string, expiry: number, now: number): { state: string; expiry: number; projected: boolean } {
+  const at = DUVIRI_MOODS.indexOf(state.toLowerCase());
+  if (at < 0 || !Number.isFinite(expiry) || expiry > now || now - expiry > MAX_PROJECT_MS) return { state, expiry, projected: false };
+  const steps = Math.floor((now - expiry) / DUVIRI_MOOD_MS) + 1;
+  return { state: DUVIRI_MOODS[(at + steps) % DUVIRI_MOODS.length]!, expiry: expiry + steps * DUVIRI_MOOD_MS, projected: true };
+}
+
 export interface ProjectedCycles {
   cetus: { isDay: boolean; expiry: number; projected: boolean };
   vallis: { isWarm: boolean; expiry: number; projected: boolean };
   earth: { isDay: boolean; expiry: number; projected: boolean };
   cambion: { state: string; expiry: number; projected: boolean };
   zariman: { state: 'corpus' | 'grineer'; expiry: number; projected: boolean };
+  /** Null when the feed has no Duviri cycle. */
+  duviri: { state: string; expiry: number; projected: boolean } | null;
 }
 
-export function projectCycles(ws: Pick<WorldState, 'cetusCycle' | 'vallisCycle' | 'earthCycle' | 'cambionCycle' | 'zarimanCycle'>, now = Date.now()): ProjectedCycles {
+export function projectCycles(ws: Pick<WorldState, 'cetusCycle' | 'vallisCycle' | 'earthCycle' | 'cambionCycle' | 'zarimanCycle' | 'duviriCycle'>, now = Date.now()): ProjectedCycles {
   const c = rollTwoPhase(ws.cetusCycle.isDay, toMs(ws.cetusCycle.expiry), CETUS.day, CETUS.night, now);
   const v = rollTwoPhase(ws.vallisCycle.isWarm, toMs(ws.vallisCycle.expiry), VALLIS.warm, VALLIS.cold, now);
   const e = rollTwoPhase(ws.earthCycle.isDay, toMs(ws.earthCycle.expiry), EARTH.day, EARTH.night, now);
@@ -55,5 +69,6 @@ export function projectCycles(ws: Pick<WorldState, 'cetusCycle' | 'vallisCycle' 
     earth: { isDay: e.first, expiry: e.expiry, projected: e.projected },
     cambion,
     zariman: { state: z.first ? 'corpus' : 'grineer', expiry: z.expiry, projected: z.projected },
+    duviri: ws.duviriCycle?.state ? rollDuviri(String(ws.duviriCycle.state), toMs(ws.duviriCycle.expiry), now) : null,
   };
 }

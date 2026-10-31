@@ -37,7 +37,7 @@ export function clampLines(lines: string[], limit = DESCRIPTION_LIMIT): string {
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function cyclesEmbed(ws: WorldState, now = Date.now()): EmbedBuilder {
-  // Cetus, Vallis, Earth and Cambion follow fixed schedules: if the cached feed is older than a phase, roll it forward locally.
+  // The cycles follow fixed schedules: if the cached feed is older than a phase, they are rolled forward locally.
   const p = projectCycles(ws, now);
   const c = { isDay: p.cetus.isDay, expiry: p.cetus.expiry };
   const v = { isWarm: p.vallis.isWarm, expiry: p.vallis.expiry };
@@ -51,7 +51,7 @@ export function cyclesEmbed(ws: WorldState, now = Date.now()): EmbedBuilder {
       { name: 'Cambion Drift', value: `${cap(cam.state)}\nends ${discordTime(cam.expiry)}`, inline: true },
       { name: 'Zariman', value: `${cap(z.state)} control\nends ${discordTime(z.expiry)}`, inline: true },
       { name: 'Earth', value: `${e.isDay ? '☀️ Day' : '🌙 Night'}\nends ${discordTime(e.expiry)}`, inline: true },
-      { name: 'Duviri', value: `${cap(d.state)}\nends ${discordTime(d.expiry)}`, inline: true },
+      { name: 'Duviri', value: p.duviri ? `${cap(p.duviri.state)}\nends ${discordTime(p.duviri.expiry)}` : '—', inline: true },
   );
   const stale = worldStateStaleNote(now);
   if (stale) embed.setFooter(footer(stale));

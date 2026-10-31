@@ -173,10 +173,10 @@ export async function postNote(ctx: AppContext, channel: SummaryChannel, payload
   if (previous) await channel.messages.delete(previous.messageId).catch(() => {});
 }
 
-/** Removes the "something new" message once it is old. */
-export async function expireNote(ctx: AppContext, channel: SummaryChannel, now = Date.now()): Promise<void> {
+/** Removes the "something new" message once it is old, or at once (`immediately`) when there is no role to ping any more. */
+export async function expireNote(ctx: AppContext, channel: SummaryChannel, now = Date.now(), immediately = false): Promise<void> {
   const saved = readNote(ctx.store.getMeta(noteKey(channel.id)));
-  if (!saved || now - saved.at < NOTE_TTL_MS) return;
+  if (!saved || (!immediately && now - saved.at < NOTE_TTL_MS)) return;
   await channel.messages.delete(saved.messageId).catch(() => {});
   ctx.store.setMeta(noteKey(channel.id), '');
 }
@@ -229,12 +229,15 @@ export class Notifier {
         // One message says everything that is going on and is edited in place; it is brought up to date before anyone is pinged.
         const target = channel as unknown as SummaryChannel;
         const url = await updateSummaryMessage(this.ctx, target, ws, { force: notify });
-        if (notify) {
+        // The short "New:" message exists only to ping the alerts role (an edit can't ping anyone). Without a role it would be a
+        // second message that pings nobody and repeats the summary, so the channel keeps the summary alone.
+        const roleId = settings.alertsRoleId;
+        if (notify && roleId) {
           await postNote(this.ctx, target, {
-            content: newItemsText(fresh.map((a) => a.embed.data.title ?? 'Something new'), url, settings.alertsRoleId),
-            allowedMentions: { roles: settings.alertsRoleId ? [settings.alertsRoleId] : [] },
+            content: newItemsText(fresh.map((a) => a.embed.data.title ?? 'Something new'), url, roleId),
+            allowedMentions: { roles: [roleId] },
           });
-        } else await expireNote(this.ctx, target);
+        } else await expireNote(this.ctx, target, Date.now(), !roleId);
       } catch (err) {
         console.error(`[notifier] could not post alerts to ${settings.alertsChannelId}:`, err);
       }

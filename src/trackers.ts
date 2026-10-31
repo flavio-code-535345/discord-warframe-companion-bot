@@ -163,7 +163,7 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
     ['cambion', 'Cambion Drift', p ? p.cambion.state : String(ws.cambionCycle?.state ?? ''), p ? p.cambion.expiry : ws.cambionCycle?.expiry],
     ['zariman', 'Zariman', p ? p.zariman.state : String(ws.zarimanCycle?.state ?? ''), p ? p.zariman.expiry : ws.zarimanCycle?.expiry],
     ['earth', 'Earth', p ? (p.earth.isDay ? 'day' : 'night') : ws.earthCycle?.isDay ? 'day' : 'night', p ? p.earth.expiry : ws.earthCycle?.expiry],
-    ['duviri', 'Duviri', String(ws.duviriCycle?.state ?? ''), ws.duviriCycle?.expiry],
+    ['duviri', 'Duviri', p?.duviri ? p.duviri.state : String(ws.duviriCycle?.state ?? ''), p?.duviri ? p.duviri.expiry : ws.duviriCycle?.expiry],
   ];
   for (const [cycle, name, state, expiry] of cycles) {
     if (!state || !live(expiry)) continue;

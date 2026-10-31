@@ -92,7 +92,7 @@ function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
     cycle('Cambion Drift', p.cambion.state, p.cambion.expiry),
     cycle('Zariman', p.zariman.state, p.zariman.expiry, { suffix: ' control' }),
     cycle('Earth', p.earth.isDay ? 'day' : 'night', p.earth.expiry),
-    cycle('Duviri', ws.duviriCycle.state, ws.duviriCycle.expiry, { note: circuit.length ? `Circuit: ${circuit.join(', ')}` : undefined }),
+    cycle('Duviri', p.duviri?.state ?? ws.duviriCycle.state, p.duviri?.expiry ?? ws.duviriCycle.expiry, { note: circuit.length ? `Circuit: ${circuit.join(', ')}` : undefined }),
   ];
 }
 
