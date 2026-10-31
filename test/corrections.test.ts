@@ -289,7 +289,7 @@ describe('the chat channel description', () => {
   };
 
   it('tells members they can just write, within Discord limits', () => {
-    assert.match(CHAT_TOPIC, /links the wiki pages/);
+    assert.match(CHAT_TOPIC, /links the wiki pages, nothing made up/);
     assert.ok(CHAT_TOPIC.length <= 1024);
   });
 
