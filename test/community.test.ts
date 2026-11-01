@@ -5,9 +5,7 @@ import { Store } from '../src/db.js';
 import { findInactive } from '../src/activity/service.js';
 import { assertValidBirthday, birthdaysOn, daysUntil } from '../src/birthdays/service.js';
 import { drawWinners, renderGiveaway } from '../src/giveaways/service.js';
-import { researchBoard } from '../src/research/service.js';
 import { rolesPanel } from '../src/selfroles/service.js';
-import { starPost } from '../src/starboard/service.js';
 import { describeTracker, priceDecision } from '../src/trackers.js';
 import { weekStart, weeklyDue, weeklyEmbeds } from '../src/discord/weekly.js';
 import type { WorldState } from '../src/warframe/worldstate.js';
@@ -19,23 +17,28 @@ const json = <T = Record<string, unknown>>(x: unknown): T => (x as { toJSON(): T
 const ctx = { config: { CLAN_NAME: 'The Rats Den 69', BOT_NAME: 'Cephalon Ordis', DISCORD_GUILD_ID: G }, client: { user: null } } as unknown as AppContext;
 
 describe('self-assign roles', () => {
-  it('lists the roles by group and gives each a button, in the same order', () => {
+  it('keeps the groups in the order they were added, each with its own row of buttons', () => {
     const store = new Store(':memory:');
     store.upsertSelfRole(G, { roleId: '1', group: 'Platform', label: 'PC', emoji: '🖥️', description: null, position: 0 });
     store.upsertSelfRole(G, { roleId: '2', group: 'Pings', label: 'Alerts', emoji: null, description: 'Baro, sortie, notable alerts', position: 1 });
     store.upsertSelfRole(G, { roleId: '3', group: 'Platform', label: 'PlayStation', emoji: null, description: null, position: 2 });
     const panel = rolesPanel(ctx, store.listSelfRoles(G));
-    const embed = json(panel.embeds![0]) as { fields: { name: string; value: string }[] };
-    assert.deepEqual(embed.fields.map((f) => f.name), ['Pings', 'Platform']);
-    assert.match(embed.fields[0]!.value, /Alerts\*\* · Baro/);
-    const ids = (panel.components as unknown[]).flatMap((r) => json<{ components: { custom_id: string }[] }>(r).components.map((c) => c.custom_id));
-    assert.deepEqual(ids, ['roles:2', 'roles:1', 'roles:3']);
+    const embed = json(panel.embeds![0]) as { fields: { name: string; value: string; inline: boolean }[] };
+    assert.deepEqual(embed.fields.map((f) => [f.name, f.inline]), [['Platform', true], ['Pings', false]], 'a group without descriptions is compact');
+    assert.match(embed.fields[1]!.value, /\*\*Alerts\*\*\n-# Baro/);
+    const rows = (panel.components as unknown[]).map((r) => json<{ components: { custom_id: string }[] }>(r).components.map((c) => c.custom_id));
+    assert.deepEqual(rows, [['roles:1', 'roles:3'], ['roles:2']]);
   });
 
   it('puts at most five buttons in a row', () => {
     const roles = Array.from({ length: 12 }, (_, i) => ({ roleId: String(i), group: 'G', label: `R${i}`, emoji: null, description: null, position: i }));
     const rows = rolesPanel(ctx, roles).components as unknown[];
     assert.equal(rows.length, 3);
+  });
+
+  it('packs the buttons together when a row per group would need more than five rows', () => {
+    const roles = Array.from({ length: 6 }, (_, i) => ({ roleId: String(i), group: `G${i}`, label: `R${i}`, emoji: null, description: null, position: i }));
+    assert.equal((rolesPanel(ctx, roles).components as unknown[]).length, 2);
   });
 
   it('a changed entry keeps its place, a removed one is gone', () => {
@@ -45,29 +48,6 @@ describe('self-assign roles', () => {
     assert.deepEqual(store.listSelfRoles(G).map((r) => r.label), ['World alerts']);
     assert.equal(store.deleteSelfRole(G, '1'), true);
     assert.equal(store.listSelfRoles(G).length, 0);
-  });
-});
-
-describe('dojo research board', () => {
-  it('groups open research by lab and keeps finished ones for a week', () => {
-    const store = new Store(':memory:');
-    const now = Date.UTC(2026, 10, 1);
-    const a = store.addResearch(G, { name: 'Kuva Nukor', lab: 'Tenno Lab', needs: 'Forma 2', addedBy: 'u' }, now);
-    store.addResearch(G, { name: 'Vauban', lab: 'Tenno Lab', needs: null, addedBy: 'u' }, now);
-    const old = store.addResearch(G, { name: 'Ignis', lab: 'Chem Lab', needs: null, addedBy: 'u' }, now);
-    store.updateResearch(G, a.id, { doneAt: now - DAY });
-    store.updateResearch(G, old.id, { doneAt: now - 10 * DAY });
-    const list = store.listResearch(G, now - 7 * DAY);
-    assert.deepEqual(list.map((r) => r.name), ['Vauban', 'Kuva Nukor'], 'open first; the one finished 10 days ago is gone');
-    const embed = json(researchBoard(ctx, list, now).embeds![0]) as { fields: { name: string; value: string }[] };
-    assert.deepEqual(embed.fields.map((f) => f.name), ['Tenno Lab', '✅ Finished this week']);
-    assert.match(embed.fields[1]!.value, /Kuva Nukor/);
-  });
-
-  it('an unknown id changes nothing', () => {
-    const store = new Store(':memory:');
-    assert.equal(store.updateResearch(G, 99, { needs: 'x' }), null);
-    assert.equal(store.removeResearch(G, 99), false);
   });
 });
 
@@ -145,23 +125,6 @@ describe('weekly reset post', () => {
     assert.match(text, /Braton, Lato/);
     assert.match(text, /Elite One/);
     assert.doesNotMatch(text, /Daily/);
-  });
-});
-
-describe('starboard', () => {
-  it('shows the stars, the channel, the text, the picture and a link back', () => {
-    const post = starPost({ authorName: 'Rat', authorAvatar: null, content: 'look at this riven', imageUrl: 'https://cdn.discordapp.com/x.png', channelId: '5', url: 'https://discord.com/channels/1/5/9', createdAt: 0 }, 4);
-    assert.equal(post.content, '⭐ **4** · <#5>');
-    const e = json<{ description: string; image?: { url: string } }>(post.embeds[0]);
-    assert.match(e.description!, /look at this riven[\s\S]*Jump to the message\]\(https:\/\/discord.com\/channels\/1\/5\/9\)/);
-    assert.equal(e.image?.url, 'https://cdn.discordapp.com/x.png');
-  });
-
-  it('remembers the copy and the count', () => {
-    const store = new Store(':memory:');
-    store.putStar({ messageId: 'm', guildId: G, channelId: 'c', starMessageId: 's', stars: 3 });
-    store.putStar({ messageId: 'm', guildId: G, channelId: 'c', starMessageId: 's', stars: 5 });
-    assert.deepEqual(store.getStar('m'), { starMessageId: 's', stars: 5 });
   });
 });
 

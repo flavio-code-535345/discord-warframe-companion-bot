@@ -17,7 +17,6 @@ import { handleAlertsSelect } from './alerts-panel.js';
 import { handleButton } from './buttons.js';
 import { trackMessageActivity, trackVoiceActivity } from '../activity/service.js';
 import { handleVoiceStateUpdate } from '../lfg/autovc.js';
-import { handleStarReaction } from '../starboard/service.js';
 import { handleHoneypotMessage } from '../moderation/honeypot.js';
 import { handleLevelMessage } from '../leveling/service.js';
 import { handleRivenMessage } from '../rivens/channel.js';
@@ -30,7 +29,7 @@ import { postWelcome } from './welcome.js';
 import { syncIdentity } from './identity.js';
 import type { Command } from './command.js';
 import { ask } from './commands/ask.js';
-import { birthday, giveaway, inactive, research, roles } from './commands/community.js';
+import { birthday, giveaway, inactive, roles } from './commands/community.js';
 import { activity } from './commands/activity.js';
 import { backup } from './commands/backup.js';
 import { clan } from './commands/clan.js';
@@ -48,22 +47,20 @@ import { vc } from './commands/vc.js';
 import { riven } from './commands/riven.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, riven, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, research, roles, inactive, vc, sticky, ailog, aiCommand, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [wf, item, price, riven, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, aiCommand, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ENABLE_MEMBER_LOGGING'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
   // text of messages that mention it and of DMs, which is all mention-based chat needs.
   // GuildVoiceStates is also unprivileged: squad voice upkeep needs to see who is in a channel.
-  // GuildMessageReactions (not privileged) is for the starboard's ⭐ count.
-  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessageReactions];
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates];
   // GuildModeration (not privileged) delivers audit log entries: who changed which role, channel or member.
   intents.push(GatewayIntentBits.GuildModeration);
   // These two are privileged: they must also be switched on in the Developer Portal, or login fails.
   if (config.ENABLE_WELCOME || config.ENABLE_MEMBER_LOGGING) intents.push(GatewayIntentBits.GuildMembers);
   if (config.ENABLE_MESSAGE_CONTENT) intents.push(GatewayIntentBits.MessageContent);
-  // DM channels aren't cached up front; the Channel partial lets their first message through. Reaction (with Message) delivers stars on
-  // messages from before the last restart.
-  return new Client({ intents, partials: [Partials.Channel, Partials.Message, Partials.Reaction] });
+  // DM channels aren't cached up front; the Channel partial lets their first message through.
+  return new Client({ intents, partials: [Partials.Channel, Partials.Message] });
 }
 
 async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {
@@ -101,8 +98,6 @@ export function attachHandlers(ctx: AppContext): void {
     trackVoiceActivity(before, after, ctx);
     void handleVoiceStateUpdate(ctx, before, after);
   });
-  client.on(Events.MessageReactionAdd, (reaction) => void handleStarReaction(reaction, ctx));
-  client.on(Events.MessageReactionRemove, (reaction) => void handleStarReaction(reaction, ctx));
 
   client.on(Events.MessageCreate, (message) => {
     stickyKeeper(ctx).onMessage(message);

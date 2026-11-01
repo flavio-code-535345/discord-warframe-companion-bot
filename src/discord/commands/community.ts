@@ -2,7 +2,6 @@ import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashComm
 import { inactivityReport } from '../../activity/service.js';
 import { assertValidBirthday, daysUntil, formatBirthday, MONTHS } from '../../birthdays/service.js';
 import { endGiveaway, rerollGiveaway, startGiveaway } from '../../giveaways/service.js';
-import { LABS, addResearch, finishResearch, listResearch, postResearchBoard, removeResearch, updateResearch } from '../../research/service.js';
 import { addSelfRole, postRolesPanel, removeSelfRole } from '../../selfroles/service.js';
 import { UserError } from '../../services/clan.js';
 import { discordTime, parseWhen } from '../../time.js';
@@ -62,76 +61,6 @@ export const roles: Command = {
     } else {
       const url = await postRolesPanel(ctx, interaction.options.getChannel('channel', true).id);
       await interaction.editReply(`Role menu posted: ${url}`);
-    }
-  },
-};
-
-/** The parts of /research that change the board are for staff (Manage Messages); listing it is for everyone. */
-const canManage = (perms: { has(p: bigint): boolean } | null) => perms?.has(PermissionFlagsBits.ManageMessages) ?? false;
-
-export const research: Command = {
-  data: new SlashCommandBuilder()
-    .setName('research')
-    .setDescription('The dojo research board: what the clan researches and what it still needs')
-    .addSubcommand((s) =>
-      s
-        .setName('add')
-        .setDescription('Staff: add a research to the board')
-        .addStringOption((o) => o.setName('name').setDescription('e.g. "Kuva Nukor" or "Vauban"').setRequired(true).setMaxLength(100))
-        .addStringOption((o) => o.setName('lab').setDescription('Lab').addChoices(...LABS.map((l) => ({ name: l, value: l }))))
-        .addStringOption((o) => o.setName('needs').setDescription('What is still missing, e.g. "Forma 2, Nitain 10"').setMaxLength(300)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('update')
-        .setDescription('Staff: change what a research still needs')
-        .addIntegerOption((o) => o.setName('id').setDescription('Number on the board').setRequired(true).setMinValue(1))
-        .addStringOption((o) => o.setName('needs').setDescription('What is still missing (empty: nothing)').setMaxLength(300)),
-    )
-    .addSubcommand((s) =>
-      s.setName('done').setDescription('Staff: mark a research as finished').addIntegerOption((o) => o.setName('id').setDescription('Number on the board').setRequired(true).setMinValue(1)),
-    )
-    .addSubcommand((s) =>
-      s.setName('remove').setDescription('Staff: take a research off the board').addIntegerOption((o) => o.setName('id').setDescription('Number on the board').setRequired(true).setMinValue(1)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('board')
-        .setDescription('Staff: post the live board in a channel')
-        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('What the clan is researching right now'))
-    .toJSON(),
-
-  async execute(interaction, ctx) {
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'list') {
-      const open = listResearch(ctx).filter((r) => r.doneAt === null);
-      const lines = open.map((r) => `**#${r.id} ${r.name}**${r.lab ? ` · ${r.lab}` : ''}${r.needs ? `\nNeeds: ${r.needs}` : ''}`);
-      await interaction.reply({
-        embeds: [new EmbedBuilder().setColor(COLORS.brand).setTitle('🔬 Dojo research').setDescription(lines.length ? clampLines(lines) : 'Nothing is being researched right now.')],
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (!canManage(interaction.memberPermissions)) throw new UserError('Only staff (Manage Messages) can change the research board.');
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const id = interaction.options.getInteger('id') ?? 0;
-    if (sub === 'add') {
-      const r = await addResearch(ctx, { name: interaction.options.getString('name', true), lab: interaction.options.getString('lab'), needs: interaction.options.getString('needs'), addedBy: interaction.user.id });
-      await interaction.editReply(`Research **#${r.id} ${r.name}** added.`);
-    } else if (sub === 'update') {
-      const r = await updateResearch(ctx, id, interaction.options.getString('needs'));
-      await interaction.editReply(`**#${r.id} ${r.name}** now needs: ${r.needs ?? 'nothing'}.`);
-    } else if (sub === 'done') {
-      const r = await finishResearch(ctx, id);
-      await interaction.editReply(`**${r.name}** marked as finished.`);
-    } else if (sub === 'remove') {
-      await removeResearch(ctx, id);
-      await interaction.editReply(`Research #${id} removed.`);
-    } else {
-      const url = await postResearchBoard(ctx, interaction.options.getChannel('channel', true).id);
-      await interaction.editReply(`Research board posted: ${url}`);
     }
   },
 };

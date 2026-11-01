@@ -57,8 +57,6 @@ function sampleBackup(): ServerBackup {
       autoVcHubChannelId: null,
       eventsRoleId: null,
       lfgRoleId: null,
-      starboardChannelId: null,
-      starboardThreshold: null,
       birthdayChannelId: null,
       weeklyChannelId: null,
     },

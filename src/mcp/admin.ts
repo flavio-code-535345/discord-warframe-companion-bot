@@ -51,7 +51,6 @@ const SETTING_CHANNEL_KINDS: Record<string, { types: ChannelType[]; label: strin
   level_channel_id: TEXT_CHANNEL,
   honeypot_channel_id: TEXT_CHANNEL,
   riven_channel_id: TEXT_CHANNEL,
-  starboard_channel_id: TEXT_CHANNEL,
   birthday_channel_id: TEXT_CHANNEL,
   weekly_channel_id: TEXT_CHANNEL,
   lfg_voice_category_id: { types: [ChannelType.GuildCategory], label: 'a category' },
@@ -743,7 +742,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the starboard (+ stars needed), the birthday channel and the weekly reset post channel. null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the birthday channel and the weekly reset post channel. null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
@@ -762,8 +761,6 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
         events_role_id: snowflake.nullable().optional().describe('Role pinged when a clan event is posted'),
         lfg_role_id: snowflake.nullable().optional().describe('Role pinged by /lfg when the activity has no role of its own'),
-        starboard_channel_id: snowflake.nullable().optional().describe('Messages with enough ⭐ reactions (from channels everyone can read) are re-posted here'),
-        starboard_threshold: z.number().int().min(1).max(50).nullable().optional().describe('Stars a message needs for the starboard (default 3)'),
         birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
         weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
       },
@@ -799,8 +796,6 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
         ...(args.events_role_id !== undefined ? { eventsRoleId: args.events_role_id } : {}),
         ...(args.lfg_role_id !== undefined ? { lfgRoleId: args.lfg_role_id } : {}),
-        ...(args.starboard_channel_id !== undefined ? { starboardChannelId: args.starboard_channel_id } : {}),
-        ...(args.starboard_threshold !== undefined ? { starboardThreshold: args.starboard_threshold } : {}),
         ...(args.birthday_channel_id !== undefined ? { birthdayChannelId: args.birthday_channel_id } : {}),
         ...(args.weekly_channel_id !== undefined ? { weeklyChannelId: args.weekly_channel_id } : {}),
       };

@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 import { getSendableChannel } from '../services/clan.js';
 
 /**
- * A message Ordis keeps up to date in place (the role menu, the research board): where it is lives in bot_meta under `key`, posting it
+ * A message Ordis keeps up to date in place (the role menu): where it is lives in bot_meta under `key`, posting it
  * again moves it (the old copy is deleted), and an edit of a message someone deleted just forgets it.
  */
 export interface LiveRef {

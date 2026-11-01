@@ -2,12 +2,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { inactivityReport } from '../activity/service.js';
 import type { AppContext } from '../context.js';
-import { LABS, addResearch, finishResearch, listResearch, postResearchBoard, removeResearch, updateResearch } from '../research/service.js';
 import { addSelfRole, postRolesPanel, removeSelfRole } from '../selfroles/service.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
-/** The self-assign role menu, the dojo research board and the inactivity report, the same operations as /roles, /research and /inactive. */
+/** The self-assign role menu and the inactivity report, the same operations as /roles and /inactive. */
 export function registerCommunityTools(server: McpServer, ctx: AppContext): void {
   const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: true } as const;
 
@@ -49,39 +48,6 @@ export function registerCommunityTools(server: McpServer, ctx: AppContext): void
       annotations: WRITE,
     },
     tool(async ({ channel_id }) => ({ url: await postRolesPanel(ctx, channel_id) })),
-  );
-
-  server.registerTool(
-    'manage_research',
-    {
-      title: 'Edit the dojo research board',
-      description:
-        'The dojo research board: add (name, lab, needs), update (id, needs), done (id), remove (id), board (channel_id: post the live board there) or list. The posted board updates itself.',
-      inputSchema: {
-        action: z.enum(['add', 'update', 'done', 'remove', 'board', 'list']),
-        id: z.number().int().min(1).optional(),
-        name: z.string().max(100).optional(),
-        lab: z.enum(LABS).optional(),
-        needs: z.string().max(300).optional(),
-        channel_id: snowflake.optional(),
-      },
-      annotations: WRITE,
-    },
-    tool(async ({ action, id, name, lab, needs, channel_id }) => {
-      const need = <T>(v: T | undefined, what: string): T => {
-        if (v === undefined) throw new UserError(`${what} is required for ${action}.`);
-        return v;
-      };
-      if (action === 'list') return listResearch(ctx);
-      if (action === 'add') return addResearch(ctx, { name: need(name, 'name'), lab, needs, addedBy: ctx.client.user?.id ?? 'mcp' });
-      if (action === 'update') return updateResearch(ctx, need(id, 'id'), needs ?? null);
-      if (action === 'done') return finishResearch(ctx, need(id, 'id'));
-      if (action === 'remove') {
-        await removeResearch(ctx, need(id, 'id'));
-        return { removed: id };
-      }
-      return { url: await postResearchBoard(ctx, need(channel_id, 'channel_id')) };
-    }),
   );
 
   server.registerTool(

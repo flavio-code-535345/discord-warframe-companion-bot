@@ -39,26 +39,42 @@ export function assertSelfAssignable(role: Role, me: GuildMember): void {
   if (masteryOfRoleName(role.name) !== null || levelTier(role.name) !== null) throw new UserError(`${role.name} is earned (mastery or level), so it can't be picked.`);
 }
 
-/** The panel: groups as embed fields and one button per role, in the same order. Pure apart from the brand icon. */
+/** Discord allows this many rows of buttons under one message. */
+const MAX_ROWS = 5;
+
+/**
+ * The panel, pure apart from the brand icon. Groups keep the order they were added in; a group whose roles have no descriptions is a
+ * compact inline field (so Platform and Region sit side by side), one with descriptions gets the full width. Each group's buttons start
+ * a row of their own, so the buttons line up with the headings; only when that would need more than five rows are they packed together.
+ */
 export function rolesPanel(ctx: AppContext, roles: SelfRole[]): Pick<MessageCreateOptions, 'embeds' | 'components'> {
   const groups = new Map<string, SelfRole[]>();
-  for (const r of roles.slice(0, MAX_SELF_ROLES)) groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
+  for (const r of [...roles].sort((a, b) => a.position - b.position).slice(0, MAX_SELF_ROLES)) groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
+  const icon = brandIcon(ctx);
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)
     .setTitle('🎭 Pick your roles')
-    .setDescription(roles.length ? 'Tap a button to get a role, tap it again to drop it. Only you see the answer.' : 'No roles to pick yet.')
-    .setFooter({ text: ctx.config.CLAN_NAME, iconURL: brandIcon(ctx) });
+    .setDescription(
+      roles.length
+        ? 'Tell the den what you play on, where you are and what Ordis should ping you for.\n-# Tap a button to get a role, tap it again to drop it. Only you see the answer.'
+        : 'No roles to pick yet.',
+    )
+    .setFooter({ text: ctx.config.CLAN_NAME, ...(icon ? { iconURL: icon } : {}) });
+  if (icon) embed.setThumbnail(icon);
   for (const [group, list] of groups) {
-    embed.addFields({ name: group, value: list.map((r) => `${r.emoji ? `${r.emoji} ` : ''}**${r.label}**${r.description ? ` · ${r.description}` : ''}`).join('\n').slice(0, 1024) });
+    const described = list.some((r) => r.description);
+    const line = (r: SelfRole) => `${r.emoji ? `${r.emoji} ` : ''}${described ? `**${r.label}**${r.description ? `\n-# ${r.description}` : ''}` : r.label}`;
+    embed.addFields({ name: group, value: list.map(line).join('\n').slice(0, 1024), inline: !described });
   }
-  const buttons = [...groups.values()].flat().map((r) => {
+  const button = (r: SelfRole) => {
     const b = new ButtonBuilder().setCustomId(`roles:${r.roleId}`).setLabel(r.label.slice(0, 80)).setStyle(ButtonStyle.Secondary);
     if (r.emoji) b.setEmoji(r.emoji);
     return b;
-  });
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < buttons.length; i += 5) rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(i, i + 5)));
-  return { embeds: [embed], components: rows };
+  };
+  const chunk = (list: SelfRole[]) => Array.from({ length: Math.ceil(list.length / 5) }, (_, i) => list.slice(i * 5, i * 5 + 5));
+  let rows = [...groups.values()].flatMap(chunk);
+  if (rows.length > MAX_ROWS) rows = chunk([...groups.values()].flat());
+  return { embeds: [embed], components: rows.map((row) => new ActionRowBuilder<ButtonBuilder>().addComponents(row.map(button))) };
 }
 
 /** Posts the panel in a channel (the previous one is removed) and remembers it. Returns its link. */

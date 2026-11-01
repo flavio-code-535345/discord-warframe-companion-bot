@@ -42,7 +42,6 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Riven scanning', value: s.rivenChannelId ? `${ch(s.rivenChannelId)}` : '*off*' },
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
       { name: 'Pings', value: [s.alertsRoleId ? `alerts <@&${s.alertsRoleId}>` : null, s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
-      { name: 'Starboard', value: s.starboardChannelId ? `${ch(s.starboardChannelId)} · ${s.starboardThreshold ?? 3} ⭐` : '*off*', inline: true },
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
       { name: 'Weekly reset post', value: ch(s.weeklyChannelId), inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
@@ -179,13 +178,6 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
-        .setName('starboard')
-        .setDescription('Re-post messages that get enough ⭐ reactions')
-        .addChannelOption((o) => o.setName('channel').setDescription('Starboard channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addIntegerOption((o) => o.setName('stars').setDescription('Stars a message needs (default 3)').setMinValue(1).setMaxValue(50)),
-    )
-    .addSubcommand((s) =>
-      s
         .setName('birthdays')
         .setDescription('Where Ordis wishes members a happy birthday (/birthday set)')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -221,7 +213,6 @@ export const setup: Command = {
               { name: 'Squad voice channels', value: 'lfgvoice' },
               { name: 'Join-to-create voice', value: 'autovc' },
               { name: 'Event and LFG pings', value: 'pings' },
-              { name: 'Starboard', value: 'starboard' },
               { name: 'Birthdays', value: 'birthdays' },
               { name: 'Weekly reset post', value: 'weekly' },
             ),
@@ -264,9 +255,6 @@ export const setup: Command = {
           eventsRoleId: interaction.options.getRole('events_role')?.id ?? null,
           lfgRoleId: interaction.options.getRole('lfg_role')?.id ?? null,
         });
-        break;
-      case 'starboard':
-        settings = ctx.store.updateSettings(guildId, { starboardChannelId: channelId(), starboardThreshold: interaction.options.getInteger('stars') });
         break;
       case 'birthdays':
         settings = ctx.store.updateSettings(guildId, { birthdayChannelId: channelId() });
@@ -361,10 +349,6 @@ export const setup: Command = {
         }
         if (feature === 'pings') {
           settings = ctx.store.updateSettings(guildId, { eventsRoleId: null, lfgRoleId: null });
-          break;
-        }
-        if (feature === 'starboard') {
-          settings = ctx.store.updateSettings(guildId, { starboardChannelId: null, starboardThreshold: null });
           break;
         }
         if (feature === 'birthdays') {

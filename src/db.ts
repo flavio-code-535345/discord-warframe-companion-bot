@@ -45,10 +45,6 @@ export interface GuildSettings {
   eventsRoleId: string | null;
   /** Role pinged by /lfg when the activity has no role of its own. */
   lfgRoleId: string | null;
-  /** Starboard: messages with enough ⭐ reactions are re-posted here. */
-  starboardChannelId: string | null;
-  /** Stars a message needs for the starboard (default 3). */
-  starboardThreshold: number | null;
   /** Where birthdays are announced. */
   birthdayChannelId: string | null;
   /** Where the Monday reset post goes. */
@@ -132,12 +128,10 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['rivenChannelId', 'riven_channel_id'],
   ['eventsRoleId', 'events_role_id'],
   ['lfgRoleId', 'lfg_role_id'],
-  ['starboardChannelId', 'starboard_channel_id'],
-  ['starboardThreshold', 'starboard_threshold'],
   ['birthdayChannelId', 'birthday_channel_id'],
   ['weeklyChannelId', 'weekly_channel_id'],
 ];
-const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff', 'starboardThreshold']);
+const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
 
 /** One role in the self-assign menu (/roles), shown in its group's select menu. */
 export interface SelfRole {
@@ -166,17 +160,6 @@ export interface Birthday {
   userId: string;
   month: number;
   day: number;
-}
-
-/** A dojo research the clan is working on; done ones stay listed for a while. */
-export interface Research {
-  id: number;
-  name: string;
-  lab: string | null;
-  needs: string | null;
-  addedBy: string;
-  addedAt: number;
-  doneAt: number | null;
 }
 
 /** When a member last wrote or was in voice (null: not since tracking began). */
@@ -703,6 +686,13 @@ const MIGRATIONS: string[] = [
   );
   INSERT OR IGNORE INTO bot_meta (key, value) VALUES ('activity_since', CAST(strftime('%s', 'now') AS INTEGER) * 1000);
   `,
+  `
+  DROP TABLE IF EXISTS research;
+  DROP TABLE IF EXISTS starboard;
+  ALTER TABLE guild_settings DROP COLUMN starboard_channel_id;
+  ALTER TABLE guild_settings DROP COLUMN starboard_threshold;
+  DELETE FROM bot_meta WHERE key = 'research_board';
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -765,10 +755,6 @@ function toGiveaway(r: Row): Giveaway {
     ended: Number(r.ended) === 1,
     winnerIds,
   };
-}
-
-function toResearch(r: Row): Research {
-  return { id: Number(r.id), name: String(r.name), lab: str(r.lab), needs: str(r.needs), addedBy: String(r.added_by), addedAt: Number(r.added_at), doneAt: num(r.done_at) };
 }
 
 function toMember(r: Row): Member {
@@ -1517,7 +1503,7 @@ export class Store {
   // --- self-assign roles (see selfroles/) ---
 
   listSelfRoles(guildId: string): SelfRole[] {
-    const rows = this.db.prepare('SELECT * FROM self_roles WHERE guild_id = ? ORDER BY lower(grp), position, lower(label)').all(guildId) as Row[];
+    const rows = this.db.prepare('SELECT * FROM self_roles WHERE guild_id = ? ORDER BY position, lower(label)').all(guildId) as Row[];
     return rows.map((r) => ({ roleId: String(r.role_id), group: String(r.grp), label: String(r.label), emoji: str(r.emoji), description: str(r.description), position: Number(r.position) }));
   }
 
@@ -1532,22 +1518,6 @@ export class Store {
 
   deleteSelfRole(guildId: string, roleId: string): boolean {
     return this.db.prepare('DELETE FROM self_roles WHERE guild_id = ? AND role_id = ?').run(guildId, roleId).changes > 0;
-  }
-
-  // --- starboard ---
-
-  getStar(messageId: string): { starMessageId: string | null; stars: number } | null {
-    const r = this.db.prepare('SELECT * FROM starboard WHERE message_id = ?').get(messageId) as Row | undefined;
-    return r ? { starMessageId: str(r.star_message_id), stars: Number(r.stars) } : null;
-  }
-
-  putStar(e: { messageId: string; guildId: string; channelId: string; starMessageId: string | null; stars: number }, now = Date.now()): void {
-    this.db
-      .prepare(
-        `INSERT INTO starboard (message_id, guild_id, channel_id, star_message_id, stars, created_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (message_id) DO UPDATE SET star_message_id = excluded.star_message_id, stars = excluded.stars`,
-      )
-      .run(e.messageId, e.guildId, e.channelId, e.starMessageId, e.stars, now);
   }
 
   // --- giveaways ---
@@ -1605,38 +1575,6 @@ export class Store {
 
   listBirthdays(guildId: string): Birthday[] {
     return (this.db.prepare('SELECT * FROM birthdays WHERE guild_id = ? ORDER BY month, day').all(guildId) as Row[]).map((r) => ({ userId: String(r.user_id), month: Number(r.month), day: Number(r.day) }));
-  }
-
-  // --- dojo research ---
-
-  addResearch(guildId: string, r: Pick<Research, 'name' | 'lab' | 'needs' | 'addedBy'>, now = Date.now()): Research {
-    const res = this.db.prepare('INSERT INTO research (guild_id, name, lab, needs, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?)').run(guildId, r.name, r.lab, r.needs, r.addedBy, now);
-    return this.getResearch(guildId, Number(res.lastInsertRowid))!;
-  }
-
-  getResearch(guildId: string, id: number): Research | null {
-    const r = this.db.prepare('SELECT * FROM research WHERE guild_id = ? AND id = ?').get(guildId, id) as Row | undefined;
-    return r ? toResearch(r) : null;
-  }
-
-  updateResearch(guildId: string, id: number, patch: Partial<Pick<Research, 'needs' | 'lab' | 'doneAt'>>): Research | null {
-    const current = this.getResearch(guildId, id);
-    if (!current) return null;
-    const next = { ...current, ...patch };
-    this.db.prepare('UPDATE research SET needs = ?, lab = ?, done_at = ? WHERE guild_id = ? AND id = ?').run(next.needs, next.lab, next.doneAt, guildId, id);
-    return next;
-  }
-
-  removeResearch(guildId: string, id: number): boolean {
-    return this.db.prepare('DELETE FROM research WHERE guild_id = ? AND id = ?').run(guildId, id).changes > 0;
-  }
-
-  /** Open research plus what was finished after `doneSince`, open first. */
-  listResearch(guildId: string, doneSince: number): Research[] {
-    const rows = this.db
-      .prepare('SELECT * FROM research WHERE guild_id = ? AND (done_at IS NULL OR done_at >= ?) ORDER BY done_at IS NOT NULL, lower(lab), lower(name)')
-      .all(guildId, doneSince) as Row[];
-    return rows.map(toResearch);
   }
 
   // --- member activity (for the inactivity report) ---
