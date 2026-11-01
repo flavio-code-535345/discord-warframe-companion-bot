@@ -1,0 +1,60 @@
+import { EmbedBuilder } from 'discord.js';
+import type { AppContext } from '../context.js';
+import { type TrackerSpec, parseSpec, priceDecision } from '../trackers.js';
+import { priceCheck } from '../warframe/market.js';
+import { COLORS } from './embeds.js';
+import { brandIcon } from './identity.js';
+
+/**
+ * Price trackers (/track price): every half hour the cheapest online seller of each tracked item is read from warframe.market (one
+ * request per item, shared by everyone tracking it, through the shared API client) and the member is DM'd once when it is at or below
+ * their limit. Whether a tracker has already alerted is kept in bot_meta (`price_alert:<trackerId>`).
+ */
+
+export const PRICE_CHECK_MS = 30 * 60_000;
+/** At most this many different items are read per round, so a long list can't flood warframe.market. */
+const MAX_ITEMS_PER_ROUND = 30;
+const alertKey = (id: number) => `price_alert:${id}`;
+
+type PriceSpec = Extract<TrackerSpec, { kind: 'price' }>;
+
+export async function checkPriceTrackers(ctx: AppContext): Promise<void> {
+  const { store, config, client } = ctx;
+  const trackers = store
+    .listTrackers(config.DISCORD_GUILD_ID)
+    .map((t) => ({ t, spec: parseSpec(t.spec) }))
+    .filter((x): x is { t: typeof x.t; spec: PriceSpec } => x.spec?.kind === 'price');
+  if (!trackers.length) return;
+  const slugs = [...new Set(trackers.map((x) => x.spec.slug))].slice(0, MAX_ITEMS_PER_ROUND);
+  const cheapest = new Map<string, { price: number | null; seller: string | null; url: string }>();
+  for (const slug of slugs) {
+    try {
+      const r = await priceCheck(slug, config.WARFRAME_PLATFORM, 1);
+      // Old (stale) prices are not good enough to send someone to buy.
+      if (r.staleMs === undefined) cheapest.set(slug, { price: r.sell[0]?.platinum ?? null, seller: r.sell[0]?.user.ingameName ?? null, url: r.url });
+    } catch (err) {
+      console.warn(`[price-alerts] could not read ${slug}:`, (err as Error).message);
+    }
+  }
+  for (const { t, spec } of trackers) {
+    const now = cheapest.get(spec.slug);
+    if (!now) continue;
+    const decision = priceDecision(spec.below, now.price, store.getMeta(alertKey(t.id)) === '1');
+    if (decision === 'reset') store.setMeta(alertKey(t.id), '');
+    if (decision !== 'alert') continue;
+    store.setMeta(alertKey(t.id), '1');
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.success)
+      .setAuthor({ name: config.BOT_NAME, iconURL: brandIcon(ctx) })
+      .setTitle(`💰 ${spec.name} is at ${now.price}p`)
+      .setURL(now.url)
+      .setDescription(`Your limit was **${spec.below}p**. The cheapest online seller right now is **${now.seller ?? 'someone'}**.\n[Open on warframe.market](${now.url})`)
+      .setFooter({ text: `Tracker #${t.id} · Ordis tells you again once the price has gone back above your limit` });
+    try {
+      const user = await client.users.fetch(t.userId);
+      await user.send({ embeds: [embed] });
+    } catch (err) {
+      console.warn(`[price-alerts] could not DM ${t.userId} (DMs closed?):`, (err as Error).message);
+    }
+  }
+}

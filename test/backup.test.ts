@@ -55,6 +55,12 @@ function sampleBackup(): ServerBackup {
       lfgVoiceCategoryId: null,
       lfgVoiceGraceMinutes: null,
       autoVcHubChannelId: null,
+      eventsRoleId: null,
+      lfgRoleId: null,
+      starboardChannelId: null,
+      starboardThreshold: null,
+      birthdayChannelId: null,
+      weeklyChannelId: null,
     },
     includesMessages: true,
   };

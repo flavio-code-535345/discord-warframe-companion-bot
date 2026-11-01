@@ -41,6 +41,18 @@ export interface GuildSettings {
   statusChannelId: string | null;
   /** Riven scanning: members post riven screenshots here and Ordis grades them. */
   rivenChannelId: string | null;
+  /** Role pinged when a clan event is posted. */
+  eventsRoleId: string | null;
+  /** Role pinged by /lfg when the activity has no role of its own. */
+  lfgRoleId: string | null;
+  /** Starboard: messages with enough ⭐ reactions are re-posted here. */
+  starboardChannelId: string | null;
+  /** Stars a message needs for the starboard (default 3). */
+  starboardThreshold: number | null;
+  /** Where birthdays are announced. */
+  birthdayChannelId: string | null;
+  /** Where the Monday reset post goes. */
+  weeklyChannelId: string | null;
 }
 
 /** Where an answer came from: a quoted wiki sentence or a direct lookup (prices, drops, world state, wiki links...). Older rows may name removed sources ('local', 'cloud', 'correction'). */
@@ -118,8 +130,61 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['auditLogChannelId', 'audit_log_channel_id'],
   ['statusChannelId', 'status_channel_id'],
   ['rivenChannelId', 'riven_channel_id'],
+  ['eventsRoleId', 'events_role_id'],
+  ['lfgRoleId', 'lfg_role_id'],
+  ['starboardChannelId', 'starboard_channel_id'],
+  ['starboardThreshold', 'starboard_threshold'],
+  ['birthdayChannelId', 'birthday_channel_id'],
+  ['weeklyChannelId', 'weekly_channel_id'],
 ];
-const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
+const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff', 'starboardThreshold']);
+
+/** One role in the self-assign menu (/roles), shown in its group's select menu. */
+export interface SelfRole {
+  roleId: string;
+  group: string;
+  label: string;
+  emoji: string | null;
+  description: string | null;
+  position: number;
+}
+
+export interface Giveaway {
+  id: number;
+  guildId: string;
+  channelId: string;
+  messageId: string | null;
+  hostId: string;
+  prize: string;
+  winners: number;
+  endsAt: number;
+  ended: boolean;
+  winnerIds: string[];
+}
+
+export interface Birthday {
+  userId: string;
+  month: number;
+  day: number;
+}
+
+/** A dojo research the clan is working on; done ones stay listed for a while. */
+export interface Research {
+  id: number;
+  name: string;
+  lab: string | null;
+  needs: string | null;
+  addedBy: string;
+  addedAt: number;
+  doneAt: number | null;
+}
+
+/** When a member last wrote or was in voice (null: not since tracking began). */
+export interface MemberActivity {
+  userId: string;
+  lastMessageAt: number | null;
+  lastVoiceAt: number | null;
+}
 
 export interface Warning {
   id: number;
@@ -191,6 +256,8 @@ export interface ClanEvent {
   cancelled: boolean;
   /** True once the bot has re-rendered the event's post as ended. */
   ended: boolean;
+  /** The matching native Discord scheduled event, if one could be created. */
+  discordEventId: string | null;
 }
 
 export interface LfgPost {
@@ -567,6 +634,75 @@ const MIGRATIONS: string[] = [
   ALTER TABLE ai_log DROP COLUMN review;
   DELETE FROM bot_meta WHERE key = 'cfg_OPERATOR_IDS';
   `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN events_role_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN lfg_role_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN starboard_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN starboard_threshold INTEGER;
+  ALTER TABLE guild_settings ADD COLUMN birthday_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN weekly_channel_id TEXT;
+  ALTER TABLE events ADD COLUMN discord_event_id TEXT;
+  CREATE TABLE self_roles (
+    guild_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    grp TEXT NOT NULL,
+    label TEXT NOT NULL,
+    emoji TEXT,
+    description TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, role_id)
+  );
+  CREATE TABLE starboard (
+    message_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    star_message_id TEXT,
+    stars INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE giveaways (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT,
+    host_id TEXT NOT NULL,
+    prize TEXT NOT NULL,
+    winners INTEGER NOT NULL,
+    ends_at INTEGER NOT NULL,
+    ended INTEGER NOT NULL DEFAULT 0,
+    winner_ids TEXT
+  );
+  CREATE TABLE giveaway_entries (
+    giveaway_id INTEGER NOT NULL REFERENCES giveaways(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    PRIMARY KEY (giveaway_id, user_id)
+  );
+  CREATE TABLE birthdays (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    month INTEGER NOT NULL,
+    day INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  );
+  CREATE TABLE research (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    lab TEXT,
+    needs TEXT,
+    added_by TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    done_at INTEGER
+  );
+  CREATE TABLE member_activity (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    last_message_at INTEGER,
+    last_voice_at INTEGER,
+    PRIMARY KEY (guild_id, user_id)
+  );
+  INSERT OR IGNORE INTO bot_meta (key, value) VALUES ('activity_since', CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -603,7 +739,36 @@ function toEvent(r: Row): ClanEvent {
     reminded: Boolean(r.reminded),
     cancelled: Boolean(r.cancelled),
     ended: Boolean(r.ended),
+    discordEventId: str(r.discord_event_id),
   };
+}
+
+const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+function toGiveaway(r: Row): Giveaway {
+  let winnerIds: string[] = [];
+  try {
+    const w: unknown = JSON.parse(String(r.winner_ids ?? '[]'));
+    if (Array.isArray(w)) winnerIds = w.map(String);
+  } catch {
+    // Unreadable: treated as no winners drawn yet.
+  }
+  return {
+    id: Number(r.id),
+    guildId: String(r.guild_id),
+    channelId: String(r.channel_id),
+    messageId: str(r.message_id),
+    hostId: String(r.host_id),
+    prize: String(r.prize),
+    winners: Number(r.winners),
+    endsAt: Number(r.ends_at),
+    ended: Number(r.ended) === 1,
+    winnerIds,
+  };
+}
+
+function toResearch(r: Row): Research {
+  return { id: Number(r.id), name: String(r.name), lab: str(r.lab), needs: str(r.needs), addedBy: String(r.added_by), addedAt: Number(r.added_at), doneAt: num(r.done_at) };
 }
 
 function toMember(r: Row): Member {
@@ -758,6 +923,10 @@ export class Store {
 
   setEventMessage(id: number, channelId: string, messageId: string): void {
     this.db.prepare('UPDATE events SET channel_id = ?, message_id = ? WHERE id = ?').run(channelId, messageId, id);
+  }
+
+  setDiscordEventId(id: number, discordEventId: string | null): void {
+    this.db.prepare('UPDATE events SET discord_event_id = ? WHERE id = ?').run(discordEventId, id);
   }
 
   cancelEvent(id: number): void {
@@ -1343,6 +1512,143 @@ export class Store {
 
   deletePanelSession(id: string): void {
     this.db.prepare('DELETE FROM panel_sessions WHERE id = ?').run(id);
+  }
+
+  // --- self-assign roles (see selfroles/) ---
+
+  listSelfRoles(guildId: string): SelfRole[] {
+    const rows = this.db.prepare('SELECT * FROM self_roles WHERE guild_id = ? ORDER BY lower(grp), position, lower(label)').all(guildId) as Row[];
+    return rows.map((r) => ({ roleId: String(r.role_id), group: String(r.grp), label: String(r.label), emoji: str(r.emoji), description: str(r.description), position: Number(r.position) }));
+  }
+
+  upsertSelfRole(guildId: string, r: SelfRole): void {
+    this.db
+      .prepare(
+        `INSERT INTO self_roles (guild_id, role_id, grp, label, emoji, description, position) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (guild_id, role_id) DO UPDATE SET grp = excluded.grp, label = excluded.label, emoji = excluded.emoji, description = excluded.description, position = excluded.position`,
+      )
+      .run(guildId, r.roleId, r.group, r.label, r.emoji, r.description, r.position);
+  }
+
+  deleteSelfRole(guildId: string, roleId: string): boolean {
+    return this.db.prepare('DELETE FROM self_roles WHERE guild_id = ? AND role_id = ?').run(guildId, roleId).changes > 0;
+  }
+
+  // --- starboard ---
+
+  getStar(messageId: string): { starMessageId: string | null; stars: number } | null {
+    const r = this.db.prepare('SELECT * FROM starboard WHERE message_id = ?').get(messageId) as Row | undefined;
+    return r ? { starMessageId: str(r.star_message_id), stars: Number(r.stars) } : null;
+  }
+
+  putStar(e: { messageId: string; guildId: string; channelId: string; starMessageId: string | null; stars: number }, now = Date.now()): void {
+    this.db
+      .prepare(
+        `INSERT INTO starboard (message_id, guild_id, channel_id, star_message_id, stars, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (message_id) DO UPDATE SET star_message_id = excluded.star_message_id, stars = excluded.stars`,
+      )
+      .run(e.messageId, e.guildId, e.channelId, e.starMessageId, e.stars, now);
+  }
+
+  // --- giveaways ---
+
+  createGiveaway(g: Pick<Giveaway, 'guildId' | 'channelId' | 'hostId' | 'prize' | 'winners' | 'endsAt'>): Giveaway {
+    const res = this.db
+      .prepare('INSERT INTO giveaways (guild_id, channel_id, host_id, prize, winners, ends_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(g.guildId, g.channelId, g.hostId, g.prize, g.winners, g.endsAt);
+    return this.getGiveaway(Number(res.lastInsertRowid))!;
+  }
+
+  getGiveaway(id: number): Giveaway | null {
+    const r = this.db.prepare('SELECT * FROM giveaways WHERE id = ?').get(id) as Row | undefined;
+    return r ? toGiveaway(r) : null;
+  }
+
+  setGiveawayMessage(id: number, messageId: string): void {
+    this.db.prepare('UPDATE giveaways SET message_id = ? WHERE id = ?').run(messageId, id);
+  }
+
+  openGiveaways(guildId: string): Giveaway[] {
+    return (this.db.prepare('SELECT * FROM giveaways WHERE guild_id = ? AND ended = 0 ORDER BY ends_at').all(guildId) as Row[]).map(toGiveaway);
+  }
+
+  giveawaysDue(now: number): Giveaway[] {
+    return (this.db.prepare('SELECT * FROM giveaways WHERE ended = 0 AND ends_at <= ?').all(now) as Row[]).map(toGiveaway);
+  }
+
+  /** Enters a member, or takes them out again when they already entered. Returns true when they are now entered. */
+  toggleGiveawayEntry(id: number, userId: string): boolean {
+    if (this.db.prepare('DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?').run(id, userId).changes > 0) return false;
+    this.db.prepare('INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)').run(id, userId);
+    return true;
+  }
+
+  giveawayEntries(id: number): string[] {
+    return (this.db.prepare('SELECT user_id FROM giveaway_entries WHERE giveaway_id = ? ORDER BY rowid').all(id) as Row[]).map((r) => String(r.user_id));
+  }
+
+  endGiveaway(id: number, winnerIds: string[]): void {
+    this.db.prepare('UPDATE giveaways SET ended = 1, winner_ids = ? WHERE id = ?').run(JSON.stringify(winnerIds), id);
+  }
+
+  // --- birthdays ---
+
+  setBirthday(guildId: string, userId: string, month: number, day: number): void {
+    this.db
+      .prepare('INSERT INTO birthdays (guild_id, user_id, month, day) VALUES (?, ?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET month = excluded.month, day = excluded.day')
+      .run(guildId, userId, month, day);
+  }
+
+  removeBirthday(guildId: string, userId: string): boolean {
+    return this.db.prepare('DELETE FROM birthdays WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes > 0;
+  }
+
+  listBirthdays(guildId: string): Birthday[] {
+    return (this.db.prepare('SELECT * FROM birthdays WHERE guild_id = ? ORDER BY month, day').all(guildId) as Row[]).map((r) => ({ userId: String(r.user_id), month: Number(r.month), day: Number(r.day) }));
+  }
+
+  // --- dojo research ---
+
+  addResearch(guildId: string, r: Pick<Research, 'name' | 'lab' | 'needs' | 'addedBy'>, now = Date.now()): Research {
+    const res = this.db.prepare('INSERT INTO research (guild_id, name, lab, needs, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?)').run(guildId, r.name, r.lab, r.needs, r.addedBy, now);
+    return this.getResearch(guildId, Number(res.lastInsertRowid))!;
+  }
+
+  getResearch(guildId: string, id: number): Research | null {
+    const r = this.db.prepare('SELECT * FROM research WHERE guild_id = ? AND id = ?').get(guildId, id) as Row | undefined;
+    return r ? toResearch(r) : null;
+  }
+
+  updateResearch(guildId: string, id: number, patch: Partial<Pick<Research, 'needs' | 'lab' | 'doneAt'>>): Research | null {
+    const current = this.getResearch(guildId, id);
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    this.db.prepare('UPDATE research SET needs = ?, lab = ?, done_at = ? WHERE guild_id = ? AND id = ?').run(next.needs, next.lab, next.doneAt, guildId, id);
+    return next;
+  }
+
+  removeResearch(guildId: string, id: number): boolean {
+    return this.db.prepare('DELETE FROM research WHERE guild_id = ? AND id = ?').run(guildId, id).changes > 0;
+  }
+
+  /** Open research plus what was finished after `doneSince`, open first. */
+  listResearch(guildId: string, doneSince: number): Research[] {
+    const rows = this.db
+      .prepare('SELECT * FROM research WHERE guild_id = ? AND (done_at IS NULL OR done_at >= ?) ORDER BY done_at IS NOT NULL, lower(lab), lower(name)')
+      .all(guildId, doneSince) as Row[];
+    return rows.map(toResearch);
+  }
+
+  // --- member activity (for the inactivity report) ---
+
+  touchActivity(guildId: string, userId: string, kind: 'message' | 'voice', now = Date.now()): void {
+    const col = kind === 'message' ? 'last_message_at' : 'last_voice_at';
+    this.db.prepare(`INSERT INTO member_activity (guild_id, user_id, ${col}) VALUES (?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET ${col} = excluded.${col}`).run(guildId, userId, now);
+  }
+
+  memberActivity(guildId: string): Map<string, MemberActivity> {
+    const rows = this.db.prepare('SELECT * FROM member_activity WHERE guild_id = ?').all(guildId) as Row[];
+    return new Map(rows.map((r) => [String(r.user_id), { userId: String(r.user_id), lastMessageAt: num(r.last_message_at), lastVoiceAt: num(r.last_voice_at) }]));
   }
 
   // --- bot-wide key/value state ---

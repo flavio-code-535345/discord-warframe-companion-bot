@@ -78,6 +78,12 @@ test('settings: partial updates keep other fields', () => {
     lfgVoiceCategoryId: null,
     lfgVoiceGraceMinutes: null,
     autoVcHubChannelId: null,
+    eventsRoleId: null,
+    lfgRoleId: null,
+    starboardChannelId: null,
+    starboardThreshold: null,
+    birthdayChannelId: null,
+    weeklyChannelId: null,
   });
   store.updateSettings(G, { verifyMinAccountAgeDays: 7 });
   assert.equal(store.getSettings(G).verifyMinAccountAgeDays, 7);
@@ -172,9 +178,13 @@ test('the answer cache is dropped with its switch and settings, also from a data
     const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
     raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
     raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x')");
-    // Back to before the cache migration (four from the end). The review column it was followed by is gone again by now, the
-    // migrations after it are replayed as they come: add the column, clean the settings, drop the corrections and ratings.
-    raw.exec(`PRAGMA user_version = ${version - 4}`);
+    // Back to before the cache migration (five from the end). The review column it was followed by is gone again by now, the
+    // migrations after it are replayed as they come: add the column, clean the settings, drop the corrections and ratings, add the
+    // community tables (undone here first, so they can be added again).
+    raw.exec(`PRAGMA user_version = ${version - 5}`);
+    for (const col of ['events_role_id', 'lfg_role_id', 'starboard_channel_id', 'starboard_threshold', 'birthday_channel_id', 'weekly_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
+    raw.exec('ALTER TABLE events DROP COLUMN discord_event_id');
+    for (const t of ['self_roles', 'starboard', 'giveaway_entries', 'giveaways', 'birthdays', 'research', 'member_activity']) raw.exec(`DROP TABLE ${t}`);
     for (const col of ['message_id TEXT', 'rating TEXT', 'rated_by TEXT', 'rated_at INTEGER']) raw.exec(`ALTER TABLE ai_log ADD COLUMN ${col}`);
     raw.exec('CREATE INDEX ai_log_message ON ai_log (guild_id, message_id); CREATE TABLE corrections (id INTEGER PRIMARY KEY)');
     raw.close();

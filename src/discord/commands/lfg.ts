@@ -88,11 +88,13 @@ export const lfg: Command = {
     if (expiresAt) ctx.store.setLfgExpiry(post.id, expiresAt);
     const stored = ctx.store.getLfg(post.id)!;
 
+    // An activity's own role wins; otherwise the general squad-finder role from /setup pings, if there is one.
+    const pingRole = activity?.roleId ?? ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).lfgRoleId;
     try {
       const message = await channel.send({
         ...renderLfg(ctx, stored),
-        content: activity?.roleId ? `<@&${activity.roleId}>` : undefined,
-        allowedMentions: { parse: [], roles: activity?.roleId ? [activity.roleId] : [] },
+        content: pingRole ? `<@&${pingRole}>` : undefined,
+        allowedMentions: { parse: [], roles: pingRole ? [pingRole] : [] },
       });
       ctx.store.setLfgMessage(post.id, message.id);
     } catch (err) {

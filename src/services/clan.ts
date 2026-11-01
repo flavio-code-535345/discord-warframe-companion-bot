@@ -3,6 +3,8 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  GuildScheduledEventEntityType,
+  GuildScheduledEventPrivacyLevel,
   type MessageCreateOptions,
   type SendableChannels,
 } from 'discord.js';
@@ -136,9 +138,49 @@ export async function createClanEvent(ctx: AppContext, input: CreateEventInput):
     endsAt,
     createdBy: input.createdBy,
   });
-  const message = await channel.send(renderEvent(ctx, event));
+  const roleId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).eventsRoleId;
+  const message = await channel.send({
+    ...renderEvent(ctx, event),
+    content: roleId ? `<@&${roleId}>` : undefined,
+    allowedMentions: { parse: [], roles: roleId ? [roleId] : [] },
+  });
   ctx.store.setEventMessage(event.id, channel.id, message.id);
+  const link = `https://discord.com/channels/${ctx.config.DISCORD_GUILD_ID}/${channel.id}/${message.id}`;
+  ctx.store.setDiscordEventId(event.id, await createDiscordEvent(ctx, event, link));
   return ctx.store.getEvent(event.id)!;
+}
+
+/** Without an end, the native Discord event is shown as this long (Discord requires an end for events outside a voice channel). */
+const DEFAULT_DISCORD_EVENT_MS = 2 * 3_600_000;
+
+/**
+ * The same event as a native Discord scheduled event, so it shows at the top of the server with Discord's own "Interested" button and
+ * reminders. Our post with its RSVP buttons stays the main one; a failure here (missing Manage Events) only logs.
+ */
+async function createDiscordEvent(ctx: AppContext, event: ClanEvent, link: string): Promise<string | null> {
+  try {
+    const guild = await ctx.client.guilds.fetch(ctx.config.DISCORD_GUILD_ID);
+    const created = await guild.scheduledEvents.create({
+      name: event.title.slice(0, 100),
+      description: `${event.description ? `${event.description.slice(0, 800)}\n\n` : ''}RSVP and details: ${link}`.slice(0, 1000),
+      scheduledStartTime: new Date(event.startsAt),
+      scheduledEndTime: new Date(event.endsAt ?? event.startsAt + DEFAULT_DISCORD_EVENT_MS),
+      privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+      entityType: GuildScheduledEventEntityType.External,
+      entityMetadata: { location: 'In game' },
+      reason: `Clan event #${event.id}`,
+    });
+    return created.id;
+  } catch (err) {
+    console.warn(`[events] could not create the Discord event for #${event.id}:`, (err as Error).message);
+    return null;
+  }
+}
+
+async function deleteDiscordEvent(ctx: AppContext, event: ClanEvent): Promise<void> {
+  if (!event.discordEventId) return;
+  const guild = await ctx.client.guilds.fetch(ctx.config.DISCORD_GUILD_ID).catch(() => null);
+  await guild?.scheduledEvents.delete(event.discordEventId).catch(() => {});
 }
 
 /** Re-renders an event's Discord message after RSVPs or status changes. Missing messages are ignored. */
@@ -156,6 +198,7 @@ export async function cancelClanEvent(ctx: AppContext, eventId: number): Promise
   if (event.cancelled) throw new UserError(`Event #${eventId} is already cancelled.`);
   ctx.store.cancelEvent(eventId);
   await refreshEventMessage(ctx, eventId);
+  await deleteDiscordEvent(ctx, event);
   return ctx.store.getEvent(eventId)!;
 }
 

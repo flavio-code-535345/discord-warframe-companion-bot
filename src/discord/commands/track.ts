@@ -8,6 +8,7 @@ import {
   describeTracker,
   parseSpec,
 } from '../../trackers.js';
+import { getItemIndex, resolveItem, searchItems } from '../../warframe/market.js';
 import { FISSURE_TIERS } from '../../warframe/worldstate.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
@@ -57,6 +58,13 @@ export const track: Command = {
         .addStringOption((o) => o.setName('mission').setDescription('Mission type, e.g. Spy (empty = every sortie)').setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('archon').setDescription('The weekly Archon Hunt resetting'))
+    .addSubcommand((s) =>
+      s
+        .setName('price')
+        .setDescription('An item on warframe.market dropping to your price (checked every 30 minutes)')
+        .addStringOption((o) => o.setName('item').setDescription('Item, e.g. Arcane Energize').setRequired(true).setAutocomplete(true))
+        .addIntegerOption((o) => o.setName('below').setDescription('Tell me when someone online sells it for this many platinum or less').setRequired(true).setMinValue(1).setMaxValue(100000)),
+    )
     .addSubcommand((s) => s.setName('list').setDescription('Your trackers'))
     .addSubcommand((s) =>
       s
@@ -115,6 +123,11 @@ export const track: Command = {
       spec = { kind: 'sortie', mission: interaction.options.getString('mission')?.trim() || undefined };
     } else if (sub === 'archon') {
       spec = { kind: 'archon' };
+    } else if (sub === 'price') {
+      const query = interaction.options.getString('item', true);
+      const item = await resolveItem(query).catch(() => null);
+      if (!item) throw new UserError(`No tradable item on warframe.market matches "${query}".`);
+      spec = { kind: 'price', slug: item.slug, name: item.name, below: interaction.options.getInteger('below', true) };
     } else {
       spec = { kind: 'baro' };
     }
@@ -124,13 +137,19 @@ export const track: Command = {
     }
     const created = ctx.store.createTracker(guildId, userId, JSON.stringify(spec));
     await reply(
-      `Tracker **#${created.id}** set: ${describeTracker(spec)}. Ordis will DM you when it appears, including anything matching right now. ` +
+      `Tracker **#${created.id}** set: ${describeTracker(spec)}. Ordis will DM you when it appears${spec.kind === 'price' ? '' : ', including anything matching right now'}. ` +
         'Make sure Privacy Settings → Direct Messages from server members is on for this server.',
     );
   },
 
   async autocomplete(interaction) {
-    const q = interaction.options.getFocused().toLowerCase();
+    const focused = interaction.options.getFocused(true);
+    if (focused.name === 'item') {
+      const matches = searchItems(await getItemIndex(), focused.value);
+      await interaction.respond(matches.map((m) => ({ name: m.name.slice(0, 100), value: m.slug })));
+      return;
+    }
+    const q = focused.value.toLowerCase();
     await interaction.respond(MISSION_TYPES.filter((m) => m.toLowerCase().includes(q)).slice(0, 25).map((m) => ({ name: m, value: m })));
   },
 };

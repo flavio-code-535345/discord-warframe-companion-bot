@@ -10,6 +10,10 @@ describe('the welcome greeting', () => {
     assert.match(text, /`\/lfg`/);
   });
 
+  it('points at the role menu when there is one', () => {
+    assert.match(welcomeText('Ordis', { rules: null, guide: null, roles: 'ro1', ssRoles: null, chat: null }), /Pick your platform.*<#ro1>/);
+  });
+
   it('leaves out what is not set up', () => {
     const text = welcomeText('Ordis', { rules: null, guide: null, ssRoles: null, chat: 'c1' });
     assert.doesNotMatch(text, /rules|screenshot|ranks/);

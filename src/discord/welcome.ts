@@ -8,6 +8,8 @@ import { COLORS } from './embeds.js';
 export interface WelcomeChannels {
   rules: string | null;
   guide: string | null;
+  /** The self-assign role menu's channel. */
+  roles?: string | null;
   ssRoles: string | null;
   chat: string | null;
 }
@@ -17,6 +19,7 @@ export function welcomeText(botName: string, ch: WelcomeChannels): string {
   const steps = [
     ch.rules ? `📜 Read the <#${ch.rules}>, they're short` : null,
     ch.guide ? `👋 <#${ch.guide}> shows where everything lives, plus the clan ranks and levels` : null,
+    ch.roles ? `🎭 Pick your platform and which pings you want in <#${ch.roles}>` : null,
     ch.ssRoles ? `🖼️ Post your Warframe profile screenshot in <#${ch.ssRoles}> and ${botName} gives you your MR and clan roles` : null,
     ch.chat ? `📖 Ask ${botName} about prices, drops, Baro or anything on the wiki in <#${ch.chat}>` : null,
     '🔍 Find a squad with `/lfg`',
@@ -24,11 +27,11 @@ export function welcomeText(botName: string, ch: WelcomeChannels): string {
   return `${botName} is pleased to have you aboard, Tenno. To get settled:\n\n${steps.map((s) => `• ${s}`).join('\n')}`;
 }
 
-/** The rules and guide channels have no setting of their own, so they are found by name ("📜┃rules", "👋┃welcome"). */
+/** The rules, guide and role menu channels have no setting of their own, so they are found by name ("📜┃rules", "👋┃welcome", "🎭┃roles"). */
 function channelsOf(member: GuildMember, s: GuildSettings): WelcomeChannels {
   const byName = (re: RegExp) => member.guild.channels.cache.find((c) => c.type === ChannelType.GuildText && re.test(c.name))?.id ?? null;
   const guide = byName(/welcome/i);
-  return { rules: byName(/rules/i), guide: guide === s.welcomeChannelId ? null : guide, ssRoles: s.ssRolesChannelId, chat: s.chatChannelId };
+  return { rules: byName(/rules/i), roles: byName(/(^|┃)roles$/i), guide: guide === s.welcomeChannelId ? null : guide, ssRoles: s.ssRolesChannelId, chat: s.chatChannelId };
 }
 
 /** Greets a member in the /setup welcome channel, if one is set. Never throws; true when the greeting was posted. */

@@ -7,6 +7,10 @@ import { NOTABLE_REWARD, type WorldState, alertName, getWorldState, isBaroHere, 
 import { alertsComponents } from './alerts-panel.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
+import { PRICE_CHECK_MS, checkPriceTrackers } from './price-alerts.js';
+import { postWeeklyReset } from './weekly.js';
+import { postBirthdays } from '../birthdays/service.js';
+import { endDueGiveaways } from '../giveaways/service.js';
 import { summaryEmbeds, summaryHash } from './summary.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
@@ -184,6 +188,7 @@ export async function expireNote(ctx: AppContext, channel: SummaryChannel, now =
 export class Notifier {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private lastPriceCheck = 0;
 
   constructor(private readonly ctx: AppContext) {}
 
@@ -203,10 +208,18 @@ export class Notifier {
       // Reminders don't depend on the worldstate, so they still go out when the world state source is down.
       await this.sendEventReminders();
       await this.finishEvents();
+      // Giveaways, birthdays and price alerts don't need the world state either; each failure stays its own.
+      await endDueGiveaways(this.ctx);
+      await postBirthdays(this.ctx).catch((err) => console.error('[notifier] birthdays failed:', err));
+      if (Date.now() - this.lastPriceCheck >= PRICE_CHECK_MS) {
+        this.lastPriceCheck = Date.now();
+        await checkPriceTrackers(this.ctx).catch((err) => console.error('[notifier] price alerts failed:', err));
+      }
       if (!worldStateEnabled()) return;
       const ws = await getWorldState();
       await this.postWorldStateAlerts(ws);
       await this.notifyTrackers(ws);
+      await postWeeklyReset(this.ctx, ws).catch((err) => console.error('[notifier] weekly reset post failed:', err));
       this.ctx.store.pruneSeen(SEEN_RETENTION_MS);
     } catch (err) {
       console.error('[notifier] tick failed:', err);

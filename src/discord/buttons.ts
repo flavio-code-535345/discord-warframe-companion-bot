@@ -7,10 +7,12 @@ import { handleAlertsButton } from './alerts-panel.js';
 import { handleBackupButton } from './commands/backup.js';
 import { handlePurgeButton } from './commands/moderation.js';
 import { handleVerifyButton } from './verification.js';
+import { handleGiveawayButton } from '../giveaways/service.js';
+import { handleRoleButton } from '../selfroles/service.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
-/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
+/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
 export async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
   const [kind, rawId, action] = interaction.customId.split(':');
   const id = Number(rawId);
@@ -25,6 +27,14 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
   }
   if (kind === 'alerts') {
     await handleAlertsButton(interaction, ctx, rawId ?? '');
+    return;
+  }
+  if (kind === 'roles') {
+    await handleRoleButton(interaction, ctx, rawId ?? '');
+    return;
+  }
+  if (kind === 'giveaway') {
+    await handleGiveawayButton(interaction, ctx, rawId ?? '');
     return;
   }
   if (kind === 'verify') {

@@ -33,7 +33,7 @@ import { postWelcome } from './welcome.js';
 const attempts = new VerificationAttempts();
 
 /** Permissions a role handed out to strangers must never carry. */
-const DANGEROUS = [
+export const DANGEROUS = [
   PermissionFlagsBits.Administrator,
   PermissionFlagsBits.ManageGuild,
   PermissionFlagsBits.ManageRoles,

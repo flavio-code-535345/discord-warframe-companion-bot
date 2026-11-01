@@ -14,7 +14,8 @@ export type TrackerSpec =
   | { kind: 'baro' }
   | { kind: 'arbitration'; type?: string }
   | { kind: 'sortie'; mission?: string }
-  | { kind: 'archon' };
+  | { kind: 'archon' }
+  | { kind: 'price'; slug: string; name: string; below: number };
 
 export const MAX_TRACKERS_PER_USER = 15;
 
@@ -49,7 +50,7 @@ const normMission = (m: string) => {
 export interface Trackable {
   /** Stable identity: the same item keeps its key across polls, a new rotation gets a new one. */
   key: string;
-  kind: TrackerSpec['kind'];
+  kind: Exclude<TrackerSpec['kind'], 'price'>;
   title: string;
   /** Searchable reward text for reward trackers. */
   rewards?: string[];
@@ -172,6 +173,7 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
   return out;
 }
 
+/** Price trackers never match here: they are checked against warframe.market (discord/price-alerts.ts), and no trackable has that kind. */
 /** null when `t` doesn't match; otherwise the matching reward rows (empty for non-reward trackers). */
 export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
   if (spec.kind !== t.kind) return null;
@@ -202,6 +204,16 @@ export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
   }
 }
 
+/**
+ * What a price tracker does with the cheapest online seller: alert once when it reaches the limit, then stay quiet until the price has
+ * gone back above it, so a price hovering at the limit doesn't message every half hour.
+ */
+export function priceDecision(below: number, cheapest: number | null, alerted: boolean): 'alert' | 'reset' | 'none' {
+  if (cheapest === null) return 'none';
+  if (cheapest <= below) return alerted ? 'none' : 'alert';
+  return alerted ? 'reset' : 'none';
+}
+
 export function describeTracker(spec: TrackerSpec): string {
   switch (spec.kind) {
     case 'reward':
@@ -221,6 +233,8 @@ export function describeTracker(spec: TrackerSpec): string {
       return spec.mission ? `Daily sortie with ${spec.mission}` : 'Daily sortie (every reset)';
     case 'archon':
       return 'Weekly Archon Hunt';
+    case 'price':
+      return `${spec.name} at ${spec.below}p or less on warframe.market`;
   }
 }
 

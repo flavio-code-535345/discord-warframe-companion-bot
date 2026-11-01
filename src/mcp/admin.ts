@@ -23,6 +23,7 @@ import { planRoleMove } from './role-order.js';
 import { syncChatTopic } from '../discord/chat-topic.js';
 import { editOwnMessage } from '../discord/messages.js';
 import { postWelcome } from '../discord/welcome.js';
+import { skipCurrentWeek } from '../discord/weekly.js';
 import { own } from '../own.js';
 import { UserError, assertChannelFree } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -50,6 +51,9 @@ const SETTING_CHANNEL_KINDS: Record<string, { types: ChannelType[]; label: strin
   level_channel_id: TEXT_CHANNEL,
   honeypot_channel_id: TEXT_CHANNEL,
   riven_channel_id: TEXT_CHANNEL,
+  starboard_channel_id: TEXT_CHANNEL,
+  birthday_channel_id: TEXT_CHANNEL,
+  weekly_channel_id: TEXT_CHANNEL,
   lfg_voice_category_id: { types: [ChannelType.GuildCategory], label: 'a category' },
   auto_vc_hub_channel_id: { types: [ChannelType.GuildVoice], label: 'a voice channel' },
 };
@@ -473,8 +477,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'edit_server',
     {
       title: 'Edit server settings',
-      description: 'Sets the system channel (Discord join/boost messages) and the AFK voice channel.',
+      description: 'Sets the system channel (Discord join/boost messages), the AFK voice channel and the verification level (what a new member needs before they can write: 0 none, 1 verified email, 2 account older than 5 minutes, 3 member for 10 minutes, 4 verified phone).',
       inputSchema: {
+        verification_level: z.number().int().min(0).max(4).optional(),
         system_channel_id: snowflake.nullable().optional(),
         afk_channel_id: snowflake.nullable().optional(),
         afk_timeout_seconds: z.union([z.literal(60), z.literal(300), z.literal(900), z.literal(1800), z.literal(3600)]).optional(),
@@ -482,17 +487,18 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       },
       annotations: WRITE,
     },
-    tool(async ({ system_channel_id, afk_channel_id, afk_timeout_seconds, reason }) => {
+    tool(async ({ system_channel_id, afk_channel_id, afk_timeout_seconds, verification_level, reason }) => {
       const { guild, me } = await guildFor(ctx);
       requirePermission(me, 'ManageGuild');
       const edited = await guild.edit({
+        verificationLevel: verification_level,
         systemChannel: system_channel_id,
         afkChannel: afk_channel_id,
         afkTimeout: afk_timeout_seconds,
         reason: reasonFor(reason),
       });
       log('edited server settings');
-      return { systemChannel: edited.systemChannel?.name ?? null, afkChannel: edited.afkChannel?.name ?? null, afkTimeout: edited.afkTimeout };
+      return { systemChannel: edited.systemChannel?.name ?? null, afkChannel: edited.afkChannel?.name ?? null, afkTimeout: edited.afkTimeout, verificationLevel: edited.verificationLevel };
     }),
   );
 
@@ -737,7 +743,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action) and the riven scanning channel. null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the starboard (+ stars needed), the birthday channel and the weekly reset post channel. null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
@@ -754,6 +760,12 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
         auto_vc_hub_channel_id: snowflake.nullable().optional().describe('Join-to-create lobby: a voice channel that gives whoever joins it their own temporary room next to it; null turns it off'),
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
+        events_role_id: snowflake.nullable().optional().describe('Role pinged when a clan event is posted'),
+        lfg_role_id: snowflake.nullable().optional().describe('Role pinged by /lfg when the activity has no role of its own'),
+        starboard_channel_id: snowflake.nullable().optional().describe('Messages with enough ⭐ reactions (from channels everyone can read) are re-posted here'),
+        starboard_threshold: z.number().int().min(1).max(50).nullable().optional().describe('Stars a message needs for the starboard (default 3)'),
+        birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
+        weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -761,7 +773,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       const { guild } = await guildFor(ctx);
       for (const [key, id] of Object.entries(args)) {
         if (typeof id !== 'string' || !id || key === 'honeypot_action') continue;
-        if (key === 'alerts_role_id') {
+        if (key.endsWith('_role_id')) {
           if (!guild.roles.cache.has(id)) throw new UserError(`${key}: ${id} not found in the server.`);
           continue;
         }
@@ -785,6 +797,12 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.lfg_voice_category_id !== undefined ? { lfgVoiceCategoryId: args.lfg_voice_category_id } : {}),
         ...(args.auto_vc_hub_channel_id !== undefined ? { autoVcHubChannelId: args.auto_vc_hub_channel_id } : {}),
         ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
+        ...(args.events_role_id !== undefined ? { eventsRoleId: args.events_role_id } : {}),
+        ...(args.lfg_role_id !== undefined ? { lfgRoleId: args.lfg_role_id } : {}),
+        ...(args.starboard_channel_id !== undefined ? { starboardChannelId: args.starboard_channel_id } : {}),
+        ...(args.starboard_threshold !== undefined ? { starboardThreshold: args.starboard_threshold } : {}),
+        ...(args.birthday_channel_id !== undefined ? { birthdayChannelId: args.birthday_channel_id } : {}),
+        ...(args.weekly_channel_id !== undefined ? { weeklyChannelId: args.weekly_channel_id } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
       // The two channels that get a notice posted in them go first: if the bot can't post there nothing else has been saved yet.
@@ -800,6 +818,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       } else if (args.riven_channel_id === null) {
         disableRivenChannel(ctx);
       }
+      if (args.weekly_channel_id) skipCurrentWeek(ctx);
       const saved = ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
       if (args.chat_channel_id) void syncChatTopic(ctx);
       return saved;
