@@ -31,10 +31,10 @@ function channelsOf(member: GuildMember, s: GuildSettings): WelcomeChannels {
   return { rules: byName(/rules/i), guide: guide === s.welcomeChannelId ? null : guide, ssRoles: s.ssRolesChannelId, chat: s.chatChannelId };
 }
 
-/** Greets a member in the /setup welcome channel, if one is set. Never throws. */
-export async function postWelcome(ctx: AppContext, member: GuildMember): Promise<void> {
+/** Greets a member in the /setup welcome channel, if one is set. Never throws; true when the greeting was posted. */
+export async function postWelcome(ctx: AppContext, member: GuildMember): Promise<boolean> {
   const settings = ctx.store.getSettings(member.guild.id);
-  if (!settings.welcomeChannelId) return;
+  if (!settings.welcomeChannelId) return false;
   try {
     const channel = await getSendableChannel(ctx, settings.welcomeChannelId);
     const embed = new EmbedBuilder()
@@ -43,7 +43,9 @@ export async function postWelcome(ctx: AppContext, member: GuildMember): Promise
       .setDescription(welcomeText(ctx.config.BOT_NAME, channelsOf(member, settings)))
       .setThumbnail(member.displayAvatarURL());
     await channel.send({ content: `${member}`, embeds: [embed], allowedMentions: { users: [member.id] } });
+    return true;
   } catch (err) {
     console.error('[discord] welcome message failed:', err);
+    return false;
   }
 }

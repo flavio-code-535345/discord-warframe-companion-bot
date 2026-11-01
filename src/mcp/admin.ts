@@ -22,6 +22,7 @@ import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
 import { syncChatTopic } from '../discord/chat-topic.js';
 import { editOwnMessage } from '../discord/messages.js';
+import { postWelcome } from '../discord/welcome.js';
 import { own } from '../own.js';
 import { UserError, assertChannelFree } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -684,6 +685,25 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       if (!ctx.store.removeActivity(name)) throw new UserError(`"${name}" has no settings.`);
       log(`activity removed: ${name}`);
       return { removed: name };
+    }),
+  );
+
+  server.registerTool(
+    'test_welcome',
+    {
+      title: 'Send a test welcome greeting',
+      description: 'Posts the greeting a new member gets, for an existing member, in the welcome channel (the same code as a real join). Visible to everyone there and pings that member: confirm with the user first.',
+      inputSchema: { user_id: snowflake },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    tool(async ({ user_id }) => {
+      const { guild } = await guildFor(ctx);
+      const member = await guild.members.fetch(user_id).catch(() => null);
+      if (!member) throw new UserError('That user is not a member of the clan server.');
+      const channelId = ctx.store.getSettings(guild.id).welcomeChannelId;
+      if (!channelId) throw new UserError('No welcome channel is set: set welcome_channel_id with update_bot_settings first.');
+      if (!(await postWelcome(ctx, member))) throw new UserError('The greeting could not be posted (see the bot log): check that Ordis can write in the welcome channel.');
+      return { sent: true, channelId, member: member.displayName };
     }),
   );
 
