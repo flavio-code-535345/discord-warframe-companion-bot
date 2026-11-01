@@ -444,6 +444,32 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
   );
 
   server.registerTool(
+    'delete_role',
+    {
+      title: 'Delete role',
+      description:
+        'PERMANENTLY deletes a role (members lose it; a server backup still has it). Refuses @everyone, roles managed by an integration, roles at or above the bot, and roles Ordis itself uses (the alerts ping role, the verification role). Get the user to confirm first. Requires confirm: true.',
+      inputSchema: { role_id: snowflake, confirm: z.literal(true), reason: z.string().max(200).optional() },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    tool(async ({ role_id, reason }) => {
+      const { guild, me } = await guildFor(ctx);
+      requirePermission(me, 'ManageRoles');
+      const role = guild.roles.cache.get(role_id);
+      if (!role) throw new UserError(`Role ${role_id} does not exist.`);
+      if (role.id === guild.id) throw new UserError("@everyone can't be deleted.");
+      if (role.managed) throw new UserError(`${role.name} is managed by an integration and can't be deleted.`);
+      if (role.position >= me.roles.highest.position) throw new UserError(`${role.name} is at or above the bot's highest role.`);
+      const s = ctx.store.getSettings(guild.id);
+      if (role.id === s.alertsRoleId || role.id === s.verifyRoleId) throw new UserError(`Ordis uses ${role.name} (alerts ping or verification): change that setting first.`);
+      const gone = { id: role.id, name: role.name, members: role.members.size };
+      await role.delete(reasonFor(reason));
+      log(`deleted role ${gone.name}`);
+      return { deleted: gone };
+    }),
+  );
+
+  server.registerTool(
     'edit_server',
     {
       title: 'Edit server settings',
