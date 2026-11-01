@@ -21,7 +21,9 @@ import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
 import { syncChatTopic } from '../discord/chat-topic.js';
-import { editOwnMessage } from '../discord/messages.js';
+import { cardEmbed, editOwnMessage, editOwnMessageCard } from '../discord/messages.js';
+import { COLORS } from '../discord/embeds.js';
+import { brandIcon } from '../discord/identity.js';
 import { postWelcome } from '../discord/welcome.js';
 import { skipCurrentWeek } from '../discord/weekly.js';
 import { own } from '../own.js';
@@ -574,15 +576,32 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Edit a bot message',
       description:
-        'Replaces the text of a message the bot wrote earlier (a rules post, a role guide, a notice), keeping its embeds. Discord only lets the bot edit its own messages: find the message_id with read_messages (bot: true), and anything written by a person is refused. Visible to everyone in that channel: confirm the new text with the user first. Mentions never ping.',
-      inputSchema: { channel_id: snowflake, message_id: snowflake, content: z.string().min(1).max(2000) },
+        'Replaces the text of a message the bot wrote earlier (a rules post, a role guide, a notice), keeping its embeds. With `embed`, the message becomes an embed in the same look as Ordis panels (brand colour, optional clan logo and footer) and `content` is an optional line above it (empty removes the old text). Discord only lets the bot edit its own messages: find the message_id with read_messages (bot: true), and anything written by a person is refused. Visible to everyone in that channel: confirm the new text with the user first. Mentions never ping.',
+      inputSchema: {
+        channel_id: snowflake,
+        message_id: snowflake,
+        content: z.string().max(2000).optional(),
+        embed: z
+          .object({
+            title: z.string().min(1).max(256),
+            description: z.string().max(4096).optional(),
+            fields: z.array(z.object({ name: z.string().min(1).max(256), value: z.string().min(1).max(1024), inline: z.boolean().optional() })).max(25).optional(),
+            logo: z.boolean().optional().describe('Show the clan logo in the corner'),
+            footer: z.string().max(2048).optional(),
+          })
+          .optional(),
+      },
       annotations: WRITE,
     },
-    tool(async ({ channel_id, message_id, content }) => {
+    tool(async ({ channel_id, message_id, content, embed }) => {
       const { guild } = await guildFor(ctx);
       const channel = await getChannel(guild, channel_id);
       if (!channel.isTextBased()) throw new UserError(`#${channel.name} is not a text channel.`);
-      const message = await editOwnMessage(channel, message_id, content, ctx.client.user?.id ?? '');
+      const botId = ctx.client.user?.id ?? '';
+      if (!embed && !content?.trim()) throw new UserError('Give the new text (content), an embed, or both.');
+      const message = embed
+        ? await editOwnMessageCard(channel, message_id, cardEmbed(embed, { color: COLORS.brand, icon: brandIcon(ctx) }), botId, content ?? '')
+        : await editOwnMessage(channel, message_id, content ?? '', botId);
       log(`edited a bot message in #${channel.name}`);
       return { messageId: message.id, link: message.url };
     }),

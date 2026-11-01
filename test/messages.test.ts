@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Message } from 'discord.js';
-import { MAX_MESSAGE_CHARS, editOwnMessage, ownMessages } from '../src/discord/messages.js';
+import { MAX_MESSAGE_CHARS, cardEmbed, editOwnMessage, editOwnMessageCard, ownMessages } from '../src/discord/messages.js';
 
 const BOT = 'bot';
 function channel(messages: Record<string, { author: string; content: string }>) {
@@ -41,5 +41,31 @@ describe('editing the bot\'s own messages', () => {
     await assert.rejects(editOwnMessage(ch, 'b', '   ', BOT), /cannot be empty/);
     await assert.rejects(editOwnMessage(ch, 'b', 'x'.repeat(MAX_MESSAGE_CHARS + 1), BOT), /Discord allows 2000/);
     assert.deepEqual(edited, []);
+  });
+});
+
+describe('turning a bot message into an embed', () => {
+  it('builds the embed in the brand look, with the logo and footer when asked', () => {
+    const e = cardEmbed({ title: 'Rules', description: 'Be nice.\r\nUse common sense.', fields: [{ name: 'Staff', value: 'Final say', inline: true }], logo: true, footer: 'The Rats Den 69' }, { color: 0x3b9ac7, icon: 'https://cdn/x.png' }).toJSON();
+    assert.equal(e.color, 0x3b9ac7);
+    assert.equal(e.description, 'Be nice.\nUse common sense.');
+    assert.deepEqual(e.fields, [{ name: 'Staff', value: 'Final say', inline: true }]);
+    assert.equal(e.thumbnail?.url, 'https://cdn/x.png');
+    assert.equal(e.footer?.text, 'The Rats Den 69');
+  });
+
+  it("refuses an embed over Discord's total limit", () => {
+    const fields = Array.from({ length: 7 }, (_, i) => ({ name: `f${i}`, value: 'x'.repeat(1000) }));
+    assert.throws(() => cardEmbed({ title: 't', fields }, { color: 1 }), /Discord allows 6000/);
+  });
+
+  it("replaces the old text with the embed, and refuses someone else's message", async () => {
+    const { ch, edited } = channel({ a: { author: BOT, content: 'old text' }, b: { author: '5', content: 'theirs' } });
+    const embed = cardEmbed({ title: 'Welcome' }, { color: 1 });
+    await editOwnMessageCard(ch, 'a', embed, BOT);
+    assert.equal(edited.length, 1);
+    assert.equal(edited[0]!.content, '');
+    assert.deepEqual((edited[0] as unknown as { embeds: unknown[] }).embeds, [embed]);
+    await assert.rejects(editOwnMessageCard(ch, 'b', embed, BOT), /only edit messages he wrote/);
   });
 });
