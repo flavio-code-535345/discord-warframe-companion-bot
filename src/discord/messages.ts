@@ -29,6 +29,14 @@ export async function editOwnMessage(channel: MessageChannel, messageId: string,
   return message.edit({ content: text, allowedMentions: { parse: [] } });
 }
 
+/** Deletes one of the bot's own messages (an outdated notice or post); anything someone else wrote is refused. */
+export async function deleteOwnMessage(channel: MessageChannel, messageId: string, botId: string): Promise<void> {
+  const message = await channel.messages.fetch(messageId).catch(() => null);
+  if (!message) throw new UserError('That message no longer exists in that channel.');
+  if (message.author.id !== botId) throw new UserError('Ordis only deletes messages he wrote himself.');
+  await message.delete();
+}
+
 /** An embed for one of Ordis's own posts (the welcome guide, the rules), in the same look as his panels. */
 export interface EmbedCard {
   title: string;

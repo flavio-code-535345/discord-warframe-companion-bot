@@ -7,7 +7,7 @@ import { assertValidBirthday, birthdaysOn, daysUntil } from '../src/birthdays/se
 import { drawWinners, renderGiveaway } from '../src/giveaways/service.js';
 import { rolesPanel } from '../src/selfroles/service.js';
 import { describeTracker, priceDecision } from '../src/trackers.js';
-import { postWeeklyReset, weekStart, weeklyDue, weeklyEmbeds } from '../src/discord/weekly.js';
+import { handleWeeklyButton, postWeeklyReset, weekStart, weeklyDue, weeklyEmbeds } from '../src/discord/weekly.js';
 import type { WorldState } from '../src/warframe/worldstate.js';
 
 const G = '111111111111111111';
@@ -231,5 +231,39 @@ describe('weekly reset DMs', () => {
 
   it('describes the subscription', () => {
     assert.equal(describeTracker({ kind: 'weekly' }), 'The weekly reset summary (Mondays)');
+  });
+});
+
+describe('the Weeklies by DM button', () => {
+  function tap(store: Store, opts: { roleId?: string; hasRole?: boolean } = {}) {
+    const replies: string[] = [];
+    if (opts.roleId) store.updateSettings(G, { weeklyRoleId: opts.roleId });
+    const interaction = {
+      user: { id: 'u1' },
+      inCachedGuild: () => true,
+      member: { roles: { cache: new Set(opts.hasRole && opts.roleId ? [opts.roleId] : []) } },
+      reply: async (p: { content: string }) => replies.push(p.content),
+    };
+    const c = { config: { DISCORD_GUILD_ID: G }, store } as unknown as AppContext;
+    return { run: () => handleWeeklyButton(interaction as never, c), replies };
+  }
+
+  it('subscribes on the first tap and unsubscribes on the second', async () => {
+    const store = new Store(':memory:');
+    const { run, replies } = tap(store);
+    await run();
+    assert.deepEqual(store.listTrackers(G, 'u1').map((t) => JSON.parse(t.spec).kind), ['weekly']);
+    await run();
+    assert.equal(store.listTrackers(G, 'u1').length, 0);
+    assert.match(replies[0]!, /every Monday/);
+    assert.match(replies[1]!, /No more weekly DMs\.$/);
+  });
+
+  it('tells a member with the role that the role keeps the DMs coming', async () => {
+    const store = new Store(':memory:');
+    store.createTracker(G, 'u1', JSON.stringify({ kind: 'weekly' }));
+    const { run, replies } = tap(store, { roleId: 'weeklies', hasRole: true });
+    await run();
+    assert.match(replies[0]!, /role menu/);
   });
 });

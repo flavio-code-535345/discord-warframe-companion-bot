@@ -21,7 +21,7 @@ import { runPurge } from '../moderation/purge.js';
 import { requestUpdate, scheduleRestart } from '../selfupdate.js';
 import { planRoleMove } from './role-order.js';
 import { syncChatTopic } from '../discord/chat-topic.js';
-import { cardEmbed, editOwnMessage, editOwnMessageCard } from '../discord/messages.js';
+import { cardEmbed, deleteOwnMessage, editOwnMessage, editOwnMessageCard } from '../discord/messages.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { postWelcome } from '../discord/welcome.js';
@@ -604,6 +604,25 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         : await editOwnMessage(channel, message_id, content ?? '', botId);
       log(`edited a bot message in #${channel.name}`);
       return { messageId: message.id, link: message.url };
+    }),
+  );
+
+  server.registerTool(
+    'delete_message',
+    {
+      title: 'Delete one bot message',
+      description:
+        'Permanently deletes ONE message the bot wrote itself (an outdated post or notice); anything a person wrote is refused. Find the message_id with read_messages (bot: true) and confirm with the user first: it cannot be undone.',
+      inputSchema: { channel_id: snowflake, message_id: snowflake, confirm: z.literal(true) },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    },
+    tool(async ({ channel_id, message_id }) => {
+      const { guild } = await guildFor(ctx);
+      const channel = await getChannel(guild, channel_id);
+      if (!channel.isTextBased()) throw new UserError(`#${channel.name} is not a text channel.`);
+      await deleteOwnMessage(channel, message_id, ctx.client.user?.id ?? '');
+      log(`deleted a bot message in #${channel.name}`);
+      return { deleted: message_id };
     }),
   );
 

@@ -1,8 +1,8 @@
-import { EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, type ButtonInteraction, ButtonStyle, EmbedBuilder, MessageFlags } from 'discord.js';
 import type { AppContext } from '../context.js';
-import { getSendableChannel } from '../services/clan.js';
+import { UserError, getSendableChannel } from '../services/clan.js';
 import { toMs } from '../time.js';
-import { parseSpec } from '../trackers.js';
+import { MAX_TRACKERS_PER_USER, parseSpec } from '../trackers.js';
 import type { WorldState } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, steelPathEmbed } from './embeds.js';
 import { footer } from './style.js';
@@ -51,6 +51,37 @@ export function weeklyEmbeds(ws: WorldState, week: number): EmbedBuilder[] {
   return [overview, archonEmbed(ws), steelPathEmbed(ws)];
 }
 
+/** The button under the channel post and on the alerts summary: `weekly:toggle` turns the member's DM subscription on or off. */
+export function weeklyButton(): ButtonBuilder {
+  return new ButtonBuilder().setCustomId('weekly:toggle').setLabel('Weeklies by DM').setEmoji('🗓️').setStyle(ButtonStyle.Secondary);
+}
+
+/**
+ * A tap on `weekly:toggle`: adds or removes the member's `/track weekly` subscription (ephemeral answer). Someone who also holds the
+ * Weeklies role is told the role keeps the DMs coming, since only the role menu takes that away.
+ */
+export async function handleWeeklyButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  const guildId = ctx.config.DISCORD_GUILD_ID;
+  const userId = interaction.user.id;
+  const mine = ctx.store.listTrackers(guildId, userId);
+  const existing = mine.find((t) => parseSpec(t.spec)?.kind === 'weekly');
+  const roleId = ctx.store.getSettings(guildId).weeklyRoleId;
+  const member = interaction.inCachedGuild() ? interaction.member : null;
+  const hasRole = Boolean(roleId && member?.roles.cache.has(roleId));
+  if (existing) {
+    ctx.store.deleteTracker(guildId, userId, existing.id);
+    const note = hasRole ? ` You still have the <@&${roleId}> role, which keeps them coming: drop it in the role menu to stop them completely.` : '';
+    await interaction.reply({ content: `No more weekly DMs.${note}`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    return;
+  }
+  if (mine.length >= MAX_TRACKERS_PER_USER) throw new UserError(`You already have ${MAX_TRACKERS_PER_USER} notifications. Remove one with /track remove first.`);
+  ctx.store.createTracker(guildId, userId, JSON.stringify({ kind: 'weekly' }));
+  await interaction.reply({
+    content: 'Done: every Monday Ordis DMs you what the reset brought. Tap the button again to stop. Make sure Direct Messages from server members are on for this server.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 /** Called when the channel is set: the week already under way is not posted halfway through, the first post is the next Monday. */
 export function skipCurrentWeek(ctx: Pick<AppContext, 'store'>, now = Date.now()): void {
   ctx.store.setMeta('weekly_posted', String(weekStart(now)));
@@ -79,7 +110,8 @@ export async function sendWeekly(ctx: AppContext, ws: WorldState, week: number):
   let posted = false;
   if (channelId) {
     const channel = await getSendableChannel(ctx, channelId);
-    await channel.send({ embeds, allowedMentions: { parse: [] } });
+    // The button only goes under the channel post: in a DM a tap would not reach the clan server's interactions.
+    await channel.send({ embeds, components: [new ActionRowBuilder<ButtonBuilder>().addComponents(weeklyButton())], allowedMentions: { parse: [] } });
     posted = true;
   }
   let dms = 0;

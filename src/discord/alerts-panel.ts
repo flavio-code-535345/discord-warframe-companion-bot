@@ -14,6 +14,7 @@ import { discordTime } from '../time.js';
 import { MAX_TRACKERS_PER_USER, type TrackerSpec, describeTracker, parseSpec } from '../trackers.js';
 import { activeArbitration, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { COLORS, archonEmbed, baroEmbed, fissuresEmbed, sortieEmbed } from './embeds.js';
+import { weeklyButton } from './weekly.js';
 
 /**
  * The buttons and the "notify me" menu under the alerts channel's summary message. Custom IDs: `alerts:<fissures|sortie|archon|arbitration|baro|mine>`
@@ -62,6 +63,7 @@ export function alertsComponents(): (ActionRowBuilder<ButtonBuilder> | ActionRow
   );
   const mine = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId('alerts:mine').setLabel('My notifications').setEmoji('📋').setStyle(ButtonStyle.Primary),
+    weeklyButton(),
   );
   return [buttons, menu, mine];
 }

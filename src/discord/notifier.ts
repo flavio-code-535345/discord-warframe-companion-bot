@@ -124,7 +124,7 @@ export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChan
   const link = (id: string) => `https://discord.com/channels/${channel.guildId}/${channel.id}/${id}`;
   const embeds = summaryEmbeds(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
   // The suffix versions the layout and buttons of the message, so a message saved with an older one is edited once to get the new.
-  const hash = `${summaryHash(embeds)}:c3`;
+  const hash = `${summaryHash(embeds)}:c4`;
   const saved = readRecord(store.getMeta(key));
   // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
   const gone = (err: unknown) => {

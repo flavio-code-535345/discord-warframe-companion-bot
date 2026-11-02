@@ -1,13 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Message } from 'discord.js';
-import { MAX_MESSAGE_CHARS, cardEmbed, editOwnMessage, editOwnMessageCard, ownMessages } from '../src/discord/messages.js';
+import { MAX_MESSAGE_CHARS, cardEmbed, deleteOwnMessage, editOwnMessage, editOwnMessageCard, ownMessages } from '../src/discord/messages.js';
 
 const BOT = 'bot';
 function channel(messages: Record<string, { author: string; content: string }>) {
   const edited: { id: string; content: string; allowedMentions: unknown }[] = [];
+  const deleted: string[] = [];
   const make = (id: string): Message =>
-    ({ id, author: { id: messages[id]!.author }, content: messages[id]!.content, edit: async (o: { content: string; allowedMentions: unknown }) => { edited.push({ id, ...o }); return make(id); } }) as unknown as Message;
+    ({
+      id,
+      author: { id: messages[id]!.author },
+      content: messages[id]!.content,
+      edit: async (o: { content: string; allowedMentions: unknown }) => {
+        edited.push({ id, ...o });
+        return make(id);
+      },
+      delete: async () => deleted.push(id),
+    }) as unknown as Message;
   const ch = {
     messages: {
       fetch: async (o: string | { limit: number }) => {
@@ -19,7 +29,7 @@ function channel(messages: Record<string, { author: string; content: string }>) 
       },
     },
   } as never;
-  return { ch, edited };
+  return { ch, edited, deleted };
 }
 
 describe('editing the bot\'s own messages', () => {
@@ -67,5 +77,15 @@ describe('turning a bot message into an embed', () => {
     assert.equal(edited[0]!.content, '');
     assert.deepEqual((edited[0] as unknown as { embeds: unknown[] }).embeds, [embed]);
     await assert.rejects(editOwnMessageCard(ch, 'b', embed, BOT), /only edit messages he wrote/);
+  });
+});
+
+describe("deleting one of the bot's messages", () => {
+  it("deletes its own message and refuses someone else's or a missing one", async () => {
+    const { ch, deleted } = channel({ a: { author: BOT, content: 'old post' }, b: { author: '5', content: 'theirs' } });
+    await deleteOwnMessage(ch, 'a', BOT);
+    await assert.rejects(deleteOwnMessage(ch, 'b', BOT), /only deletes messages he wrote/);
+    await assert.rejects(deleteOwnMessage(ch, 'zzz', BOT), /no longer exists/);
+    assert.deepEqual(deleted, ['a']);
   });
 });
