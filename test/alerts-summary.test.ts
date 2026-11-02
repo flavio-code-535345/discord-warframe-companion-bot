@@ -109,6 +109,20 @@ describe('the summary message', () => {
     const inline = Object.fromEntries(embeds.flatMap((e) => e.fields ?? []).map((f) => [f.name, !!f.inline]));
     assert.equal(inline['🌍 Cycles'], true);
     assert.equal(inline['🌀 Void fissures'], false);
+    assert.equal(inline['⚔️ Daily sortie — Vor'], false, 'the sortie has the full width, its lines are long');
+    assert.equal(inline['🗡️ Archon Hunt — Archon Amar'], true);
+    assert.equal(inline['🔱 Steel Path honors'], true);
+  });
+
+  it('names the planet of the Archon Hunt once when all its missions are on it', () => {
+    const missions = [
+      { type: 'Mobile Defense', node: 'Cambria (Earth)' },
+      { type: 'Interception', node: 'Everest (Earth)' },
+      { type: 'Assassination', node: 'Oro (Earth)' },
+    ];
+    const fields = fieldsOf(summaryEmbeds(world({ archonHunt: { id: 'a2', boss: 'Archon Boreal', expiry: at(3000), missions } }), opts, now));
+    const hunt = fields['🗡️ Archon Hunt — Archon Boreal']!;
+    assert.match(hunt, /\*\*1\.\*\* Mobile Defense — Cambria\n\*\*2\.\*\* Interception — Everest\n\*\*3\.\*\* Assassination — Oro\nOn \*\*Earth\*\* · resets <t:/);
   });
 
   it('folds an event\'s repeated resource missions into one line', () => {

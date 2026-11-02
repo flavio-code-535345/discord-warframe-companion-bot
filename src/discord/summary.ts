@@ -112,7 +112,7 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
       open.some((f) => f.isHard) ? `🔱 ${open.filter((f) => f.isHard).length} Steel Path` : '',
       open.some((f) => f.isStorm) ? `☄️ ${open.filter((f) => f.isStorm).length} Void Storm${open.filter((f) => f.isStorm).length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
-    return `${counts.map(([t, n]) => `**${t}** ${n}`).join(' · ')}${extra.length ? `\n${extra.join(' · ')}` : ''}\n-# 🔱 Steel Path = hard mode · ☄️ Void Storm = Railjack fissure · tap **Fissures** below for the full list`;
+    return `${counts.map(([t, n]) => `**${t}** ${n}`).join(' · ')}${extra.length ? `\n${extra.join(' · ')}` : ''}\n-# 🔱 hard mode · ☄️ Railjack · **Fissures** below lists them all`;
   });
 
   section(by.void, '⚖️ Arbitration', () => {
@@ -122,18 +122,24 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
     return `**${a.type ?? 'Unknown'}** — ${a.node}${a.enemy ? ` · ${a.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}\nEnds ${discordTime(a.expiry)}\n-# Endless mission that changes every hour and drops Vitus Essence`;
   });
 
+  // Full width: three missions with their modifiers wrap into a tall, narrow block as a column. The Archon Hunt and Steel Path honors
+  // below share the next row, half the width each.
   section(by.resets, `⚔️ Daily sortie${ws.sortie?.boss ? ` — ${ws.sortie.boss}` : ''}`, () => {
     const s = ws.sortie;
     if (!s || !live(s.expiry)) return null;
     const lines = (s.variants ?? []).map((v, i) => `**${i + 1}.** ${v.missionType} — ${v.node} · ${v.modifier}`);
     return `${clampLines(lines, FIELD_LIMIT - 60)}\nResets ${discordTime(s.expiry)}`;
-  }, true);
+  });
 
   section(by.resets, `🗡️ Archon Hunt${ws.archonHunt?.boss ? ` — ${ws.archonHunt.boss}` : ''}`, () => {
     const a = ws.archonHunt;
     if (!a || !live(a.expiry)) return null;
-    const lines = (a.missions ?? []).map((m, i) => `**${i + 1}.** ${m.type} — ${m.node}`);
-    return `${clampLines(lines, FIELD_LIMIT - 60)}\nResets ${discordTime(a.expiry)}`;
+    const missions = a.missions ?? [];
+    // The hunt's missions are usually all on one planet: then it is named once instead of on every line.
+    const planets = new Set(missions.map((m) => planetOf(m.node)));
+    const planet = planets.size === 1 ? [...planets][0] : null;
+    const lines = missions.map((m, i) => `**${i + 1}.** ${m.type} — ${planet ? m.node.replace(/\s*\([^)]*\)\s*$/, '') : m.node}`);
+    return `${clampLines(lines, FIELD_LIMIT - 60)}\n${planet ? `On **${planet}** · resets` : 'Resets'} ${discordTime(a.expiry)}`;
   }, true);
 
   section(by.resets, '🔱 Steel Path honors', () => {
