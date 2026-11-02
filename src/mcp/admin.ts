@@ -782,6 +782,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         lfg_role_id: snowflake.nullable().optional().describe('Role pinged by /lfg when the activity has no role of its own'),
         birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
         weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
+        weekly_role_id: snowflake.nullable().optional().describe('Members with this role get the Monday reset post as a DM (as do /track weekly subscribers)'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -817,6 +818,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.lfg_role_id !== undefined ? { lfgRoleId: args.lfg_role_id } : {}),
         ...(args.birthday_channel_id !== undefined ? { birthdayChannelId: args.birthday_channel_id } : {}),
         ...(args.weekly_channel_id !== undefined ? { weeklyChannelId: args.weekly_channel_id } : {}),
+        ...(args.weekly_role_id !== undefined ? { weeklyRoleId: args.weekly_role_id } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
       // The two channels that get a notice posted in them go first: if the bot can't post there nothing else has been saved yet.

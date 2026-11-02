@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { inactivityReport } from '../activity/service.js';
 import type { AppContext } from '../context.js';
 import { addSelfRole, postRolesPanel, removeSelfRole } from '../selfroles/service.js';
+import { sendWeekly, weekStart } from '../discord/weekly.js';
+import { getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
 import { UserError } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
@@ -48,6 +50,24 @@ export function registerCommunityTools(server: McpServer, ctx: AppContext): void
       annotations: WRITE,
     },
     tool(async ({ channel_id }) => ({ url: await postRolesPanel(ctx, channel_id) })),
+  );
+
+  server.registerTool(
+    'send_weekly_now',
+    {
+      title: 'Send the weekly reset post now',
+      description:
+        "Sends this week's reset summary right away: posted in the weekly channel (when set) and DM'd to everyone with the Weeklies role or a /track weekly subscription. The Monday post still goes out by itself; this is for a new channel or a test. Visible to the clan: confirm with the user first.",
+      inputSchema: {},
+      annotations: WRITE,
+    },
+    tool(async () => {
+      if (!worldStateEnabled()) throw new UserError('The world state is switched off, so there is nothing to summarise.');
+      const week = weekStart(Date.now());
+      const result = await sendWeekly(ctx, await getWorldState(), week);
+      ctx.store.setMeta('weekly_posted', String(week));
+      return result;
+    }),
   );
 
   server.registerTool(

@@ -59,6 +59,7 @@ function sampleBackup(): ServerBackup {
       lfgRoleId: null,
       birthdayChannelId: null,
       weeklyChannelId: null,
+      weeklyRoleId: null,
     },
     includesMessages: true,
   };

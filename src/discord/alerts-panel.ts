@@ -34,6 +34,7 @@ export const TRACK_OPTIONS: { value: string; label: string; description: string;
   { value: 'arbitration-survival', label: 'Survival Arbitrations', description: 'Only Survival Arbitrations', spec: { kind: 'arbitration', type: 'Survival' } },
   { value: 'arbitration-defense', label: 'Defense Arbitrations', description: 'Only Defense Arbitrations', spec: { kind: 'arbitration', type: 'Defense' } },
   { value: 'sortie', label: 'Daily sortie', description: 'A DM when the new sortie starts', spec: { kind: 'sortie' } },
+  { value: 'weekly', label: 'Weekly reset summary', description: 'Circuit, Nightwave, Archon Hunt and Steel Path every Monday', spec: { kind: 'weekly' } },
   { value: 'archon', label: 'Archon Hunt', description: 'A DM when the weekly hunt resets', spec: { kind: 'archon' } },
   { value: 'baro', label: "Baro Ki'Teer", description: 'A DM when Baro arrives at a relay', spec: { kind: 'baro' } },
   { value: 'cetus-night', label: 'Cetus night', description: 'Night falls on the Plains (Eidolons)', spec: { kind: 'cycle', cycle: 'cetus', state: 'night' } },

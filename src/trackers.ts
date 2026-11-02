@@ -15,7 +15,8 @@ export type TrackerSpec =
   | { kind: 'arbitration'; type?: string }
   | { kind: 'sortie'; mission?: string }
   | { kind: 'archon' }
-  | { kind: 'price'; slug: string; name: string; below: number };
+  | { kind: 'price'; slug: string; name: string; below: number }
+  | { kind: 'weekly' };
 
 export const MAX_TRACKERS_PER_USER = 15;
 
@@ -50,7 +51,7 @@ const normMission = (m: string) => {
 export interface Trackable {
   /** Stable identity: the same item keeps its key across polls, a new rotation gets a new one. */
   key: string;
-  kind: Exclude<TrackerSpec['kind'], 'price'>;
+  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly'>;
   title: string;
   /** Searchable reward text for reward trackers. */
   rewards?: string[];
@@ -173,7 +174,7 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
   return out;
 }
 
-/** Price trackers never match here: they are checked against warframe.market (discord/price-alerts.ts), and no trackable has that kind. */
+/** Price and weekly trackers never match here: prices are checked against warframe.market (discord/price-alerts.ts), the weekly post is sent by discord/weekly.ts, and no trackable has either kind. */
 /** null when `t` doesn't match; otherwise the matching reward rows (empty for non-reward trackers). */
 export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
   if (spec.kind !== t.kind) return null;
@@ -235,6 +236,8 @@ export function describeTracker(spec: TrackerSpec): string {
       return 'Weekly Archon Hunt';
     case 'price':
       return `${spec.name} at ${spec.below}p or less on warframe.market`;
+    case 'weekly':
+      return 'The weekly reset summary (Mondays)';
   }
 }
 

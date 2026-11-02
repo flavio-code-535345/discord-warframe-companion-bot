@@ -58,6 +58,7 @@ export const track: Command = {
         .addStringOption((o) => o.setName('mission').setDescription('Mission type, e.g. Spy (empty = every sortie)').setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('archon').setDescription('The weekly Archon Hunt resetting'))
+    .addSubcommand((s) => s.setName('weekly').setDescription('A DM every Monday with what the reset brought (Circuit, Nightwave, Archon Hunt, Steel Path)'))
     .addSubcommand((s) =>
       s
         .setName('price')
@@ -123,6 +124,9 @@ export const track: Command = {
       spec = { kind: 'sortie', mission: interaction.options.getString('mission')?.trim() || undefined };
     } else if (sub === 'archon') {
       spec = { kind: 'archon' };
+    } else if (sub === 'weekly') {
+      if (ctx.store.listTrackers(guildId, userId).some((t) => parseSpec(t.spec)?.kind === 'weekly')) throw new UserError('You already get the weekly summary.');
+      spec = { kind: 'weekly' };
     } else if (sub === 'price') {
       const query = interaction.options.getString('item', true);
       const item = await resolveItem(query).catch(() => null);
@@ -137,7 +141,7 @@ export const track: Command = {
     }
     const created = ctx.store.createTracker(guildId, userId, JSON.stringify(spec));
     await reply(
-      `Tracker **#${created.id}** set: ${describeTracker(spec)}. Ordis will DM you when it appears${spec.kind === 'price' ? '' : ', including anything matching right now'}. ` +
+      `Tracker **#${created.id}** set: ${describeTracker(spec)}. Ordis will DM you when it appears${spec.kind === 'price' || spec.kind === 'weekly' ? '' : ', including anything matching right now'}. ` +
         'Make sure Privacy Settings → Direct Messages from server members is on for this server.',
     );
   },

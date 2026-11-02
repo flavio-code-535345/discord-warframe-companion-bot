@@ -49,6 +49,8 @@ export interface GuildSettings {
   birthdayChannelId: string | null;
   /** Where the Monday reset post goes. */
   weeklyChannelId: string | null;
+  /** Members with this role get the Monday reset post as a DM. */
+  weeklyRoleId: string | null;
 }
 
 /** Where an answer came from: a quoted wiki sentence or a direct lookup (prices, drops, world state, wiki links...). Older rows may name removed sources ('local', 'cloud', 'correction'). */
@@ -130,6 +132,7 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['lfgRoleId', 'lfg_role_id'],
   ['birthdayChannelId', 'birthday_channel_id'],
   ['weeklyChannelId', 'weekly_channel_id'],
+  ['weeklyRoleId', 'weekly_role_id'],
 ];
 const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
 
@@ -692,6 +695,9 @@ const MIGRATIONS: string[] = [
   ALTER TABLE guild_settings DROP COLUMN starboard_channel_id;
   ALTER TABLE guild_settings DROP COLUMN starboard_threshold;
   DELETE FROM bot_meta WHERE key = 'research_board';
+  `,
+  `
+  ALTER TABLE guild_settings ADD COLUMN weekly_role_id TEXT;
   `,
 ];
 

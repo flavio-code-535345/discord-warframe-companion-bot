@@ -262,7 +262,7 @@ export async function restoreBackup(
       const current = live[key];
       if (mapped && (opts.mode === 'sync' || !current || !guild.channels.cache.has(current))) patch[key] = mapped;
     }
-    for (const key of ['alertsRoleId', 'verifyRoleId', 'eventsRoleId', 'lfgRoleId'] as const) {
+    for (const key of ['alertsRoleId', 'verifyRoleId', 'eventsRoleId', 'lfgRoleId', 'weeklyRoleId'] as const) {
       const role = backup.botSettings[key] ? (roleMap.get(backup.botSettings[key]!) ?? null) : null;
       if (role && (opts.mode === 'sync' || !live[key] || !guild.roles.cache.has(live[key]!))) patch[key] = role;
     }

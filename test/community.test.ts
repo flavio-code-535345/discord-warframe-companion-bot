@@ -7,7 +7,7 @@ import { assertValidBirthday, birthdaysOn, daysUntil } from '../src/birthdays/se
 import { drawWinners, renderGiveaway } from '../src/giveaways/service.js';
 import { rolesPanel } from '../src/selfroles/service.js';
 import { describeTracker, priceDecision } from '../src/trackers.js';
-import { weekStart, weeklyDue, weeklyEmbeds } from '../src/discord/weekly.js';
+import { postWeeklyReset, weekStart, weeklyDue, weeklyEmbeds } from '../src/discord/weekly.js';
 import type { WorldState } from '../src/warframe/worldstate.js';
 
 const G = '111111111111111111';
@@ -177,5 +177,59 @@ describe('birthdays', () => {
     const now = Date.UTC(2026, 11, 30, 15);
     assert.equal(daysUntil({ userId: 'a', month: 12, day: 30 }, now), 0);
     assert.equal(daysUntil({ userId: 'a', month: 1, day: 2 }, now), 3);
+  });
+});
+
+describe('weekly reset DMs', () => {
+  const monday = Date.UTC(2026, 10, 2);
+  const ws = {
+    archonHunt: { id: 'a', boss: 'Archon Boreal', activation: new Date(monday).toISOString(), expiry: new Date(monday + 7 * DAY).toISOString(), missions: [] },
+    steelPath: { currentReward: { name: 'Umbra Forma Blueprint', cost: 150 }, rotation: [], expiry: new Date(monday + 7 * DAY).toISOString() },
+  } as unknown as WorldState;
+
+  /** A guild with members by role, a weekly channel and DMs that are recorded. */
+  function setup(roleMembers: { id: string; roles: string[]; bot?: boolean }[]) {
+    const store = new Store(':memory:');
+    const posted: unknown[] = [];
+    const dms: string[] = [];
+    const members = new Map(roleMembers.map((m) => [m.id, { id: m.id, user: { bot: m.bot ?? false }, roles: { cache: new Set(m.roles) } }]));
+    const channel = { isSendable: () => true, guildId: G, id: 'weekly', send: async (p: unknown) => posted.push(p) };
+    const client = {
+      user: null,
+      guilds: { fetch: async () => ({ members: { fetch: async () => members, cache: members } }) },
+      channels: { fetch: async () => channel },
+      users: { fetch: async (id: string) => ({ send: async () => dms.push(id) }) },
+    };
+    const c = { config: { CLAN_NAME: 'The Rats Den 69', BOT_NAME: 'Cephalon Ordis', DISCORD_GUILD_ID: G }, store, client } as unknown as AppContext;
+    return { c, store, posted, dms };
+  }
+
+  it('DMs everyone with the role or a subscription once, besides the channel post', async () => {
+    const { c, store, posted, dms } = setup([
+      { id: 'roled', roles: ['weeklies'] },
+      { id: 'both', roles: ['weeklies'] },
+      { id: 'other', roles: ['pc'] },
+      { id: 'bot', roles: ['weeklies'], bot: true },
+    ]);
+    store.updateSettings(G, { weeklyChannelId: 'weekly', weeklyRoleId: 'weeklies' });
+    store.createTracker(G, 'both', JSON.stringify({ kind: 'weekly' }));
+    store.createTracker(G, 'subscriber', JSON.stringify({ kind: 'weekly' }));
+    await postWeeklyReset(c, ws, monday + 600_000);
+    assert.equal(posted.length, 1);
+    assert.deepEqual(dms.sort(), ['both', 'roled', 'subscriber']);
+    await postWeeklyReset(c, ws, monday + 3_600_000);
+    assert.equal(dms.length, 3, 'once per week');
+  });
+
+  it('sends the DMs even without a channel', async () => {
+    const { c, store, posted, dms } = setup([]);
+    store.createTracker(G, 'subscriber', JSON.stringify({ kind: 'weekly' }));
+    await postWeeklyReset(c, ws, monday + 600_000);
+    assert.equal(posted.length, 0);
+    assert.deepEqual(dms, ['subscriber']);
+  });
+
+  it('describes the subscription', () => {
+    assert.equal(describeTracker({ kind: 'weekly' }), 'The weekly reset summary (Mondays)');
   });
 });

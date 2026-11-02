@@ -43,7 +43,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
       { name: 'Pings', value: [s.alertsRoleId ? `alerts <@&${s.alertsRoleId}>` : null, s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
-      { name: 'Weekly reset post', value: ch(s.weeklyChannelId), inline: true },
+      { name: 'Weekly reset post', value: `${ch(s.weeklyChannelId)}${s.weeklyRoleId ? ` · DMs <@&${s.weeklyRoleId}>` : ''}`, inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Verification',
@@ -186,7 +186,8 @@ export const setup: Command = {
       s
         .setName('weekly')
         .setDescription('Where Ordis posts what the Monday reset brought (Archon Hunt, Circuit, Nightwave, Steel Path)')
-        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
+        .addRoleOption((o) => o.setName('dm_role').setDescription('Members with this role also get it as a DM')),
     )
     .addSubcommand((s) =>
       s
@@ -261,7 +262,7 @@ export const setup: Command = {
         break;
       case 'weekly':
         skipCurrentWeek(ctx);
-        settings = ctx.store.updateSettings(guildId, { weeklyChannelId: channelId() });
+        settings = ctx.store.updateSettings(guildId, { weeklyChannelId: channelId(), weeklyRoleId: interaction.options.getRole('dm_role')?.id ?? null });
         break;
       case 'auditlog':
         settings = ctx.store.updateSettings(guildId, { auditLogChannelId: channelId() });
@@ -356,7 +357,7 @@ export const setup: Command = {
           break;
         }
         if (feature === 'weekly') {
-          settings = ctx.store.updateSettings(guildId, { weeklyChannelId: null });
+          settings = ctx.store.updateSettings(guildId, { weeklyChannelId: null, weeklyRoleId: null });
           break;
         }
         if (feature === 'levels') {
