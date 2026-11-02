@@ -48,10 +48,37 @@ function section(fields: Field[], name: string, build: () => string | null, inli
   }
 }
 
-/** Alerts as lines; an event's endless resource missions share one reward, so they are folded into a single line. */
-function alertLines(alerts: NonNullable<WorldState['alerts']>): string[] {
-  return foldAlerts(alerts).map((g) => `**${g.name}** — ${g.where.join('; ')} · ${g.reward} · ${g.count > 1 ? 'first ends' : 'ends'} ${discordTime(g.endsAt)}`);
+/** "Isos (Eris)" → "Eris". */
+const planetOf = (node: string): string | null => /\(([^)]+)\)\s*$/.exec(node)?.[1] ?? null;
+
+/**
+ * Alerts as lines; an event's endless resource missions share one reward, so they are folded into a single line. When they are all on one
+ * planet that line names the planet once and only the mission types ("3 event missions on Eris: Hive, Mobile Defense, Survival").
+ */
+export function alertLines(alerts: NonNullable<WorldState['alerts']>): string[] {
+  return foldAlerts(alerts).map((g) => {
+    const planets = new Set((g.missions ?? []).map((m) => planetOf(m.node)));
+    if (g.missions && planets.size === 1 && !planets.has(null)) {
+      const types = [...new Set(g.missions.map((m) => m.type))].join(', ');
+      return `**${g.name}** on ${[...planets][0]}: ${types} · ${g.reward} each · first ends ${discordTime(g.endsAt)}`;
+    }
+    return `**${g.name}** — ${g.where.join('; ')} · ${g.reward} · ${g.count > 1 ? 'first ends' : 'ends'} ${discordTime(g.endsAt)}`;
+  });
 }
+
+/** One emoji per state, so every cycle reads the same way at a glance. */
+const CYCLE_EMOJI: Record<string, string> = {
+  fass: '🟠',
+  vome: '🔵',
+  corpus: '💠',
+  grineer: '🪖',
+  joy: '😄',
+  anger: '😠',
+  envy: '😒',
+  sorrow: '😢',
+  fear: '😨',
+};
+const stateText = (state: string) => `${CYCLE_EMOJI[state.toLowerCase()] ?? ''} ${state.toLowerCase()}`.trim();
 
 export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.now()): EmbedBuilder[] {
   const live = (expiry: Parameters<typeof toMs>[0]) => toMs(expiry) > now;
@@ -62,10 +89,11 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
     const lines = [
       `**Cetus** ${p.cetus.isDay ? '☀️ day' : '🌙 night'} · ${discordTime(p.cetus.expiry)}`,
       `**Orb Vallis** ${p.vallis.isWarm ? '🔥 warm' : '❄️ cold'} · ${discordTime(p.vallis.expiry)}`,
-      `**Cambion Drift** ${cap(p.cambion.state)} · ${discordTime(p.cambion.expiry)}`,
-      `**Zariman** ${cap(p.zariman.state)} · ${discordTime(p.zariman.expiry)}`,
+      `**Cambion Drift** ${stateText(p.cambion.state)} · ${discordTime(p.cambion.expiry)}`,
+      `**Zariman** ${stateText(p.zariman.state)} · ${discordTime(p.zariman.expiry)}`,
+      `**Earth** ${p.earth.isDay ? '☀️ day' : '🌙 night'} · ${discordTime(p.earth.expiry)}`,
     ];
-    if (p.duviri) lines.push(`**Duviri** ${cap(p.duviri.state)} · ${discordTime(p.duviri.expiry)}`);
+    if (p.duviri) lines.push(`**Duviri** ${stateText(p.duviri.state)} · ${discordTime(p.duviri.expiry)}`);
     return lines.join('\n');
   }, true);
 
@@ -82,9 +110,9 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
     const counts = TIERS.map((t) => [t, open.filter((f) => f.tier === t).length] as const).filter(([, n]) => n > 0);
     const extra = [
       open.some((f) => f.isHard) ? `🔱 ${open.filter((f) => f.isHard).length} Steel Path` : '',
-      open.some((f) => f.isStorm) ? `🌀 ${open.filter((f) => f.isStorm).length} Void Storm${open.filter((f) => f.isStorm).length === 1 ? '' : 's'}` : '',
+      open.some((f) => f.isStorm) ? `☄️ ${open.filter((f) => f.isStorm).length} Void Storm${open.filter((f) => f.isStorm).length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
-    return `${counts.map(([t, n]) => `**${t}** ${n}`).join(' · ')}${extra.length ? `\n${extra.join(' · ')}` : ''}\n-# 🔱 Steel Path = hard mode · 🌀 Void Storm = Railjack fissure · tap **Fissures** below for the full list`;
+    return `${counts.map(([t, n]) => `**${t}** ${n}`).join(' · ')}${extra.length ? `\n${extra.join(' · ')}` : ''}\n-# 🔱 Steel Path = hard mode · ☄️ Void Storm = Railjack fissure · tap **Fissures** below for the full list`;
   });
 
   section(by.void, '⚖️ Arbitration', () => {
@@ -140,7 +168,7 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
   const stale = worldStateStaleNote(now) ? 'Live data may be outdated: the world state source is lagging or not answering.' : null;
   embeds[0]!.setTitle('🌌 Warframe right now');
   if (!empty) {
-    embeds[0]!.setDescription(`Live overview for ${opts.clanName}, edited as things change.\n**Tap a button** for details, or **pick something in the menu** to get a DM from ${opts.botName} when it shows up.`);
+    embeds[0]!.setDescription('Live overview, kept up to date. **Buttons** for details, the **menu** for DM alerts.');
   }
   embeds[embeds.length - 1]!.setFooter({ text: stale ?? `${opts.botName} · ${opts.clanName}`, iconURL: opts.iconURL });
   return embeds;

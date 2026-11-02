@@ -40,7 +40,7 @@ test('reward trackers match keywords across invasions and deals, case-insensitiv
   assert.deepEqual(keysFor({ kind: 'reward', keyword: 'Mire' }), ['deal:d1']);
   assert.deepEqual(keysFor({ kind: 'reward', keyword: 'Nitain' }), []);
   const hit = collectTrackables(ws, now).find((t) => t.key === 'invasion:i1')!;
-  assert.deepEqual(matchTracker({ kind: 'reward', keyword: 'catalyst' }, hit), ['1x Orokin Catalyst Blueprint']);
+  assert.deepEqual(matchTracker({ kind: 'reward', keyword: 'catalyst' }, hit), ['Orokin Catalyst Blueprint']);
 });
 
 test('fissure trackers combine tier, mission (with aliases) and Steel Path filters', () => {

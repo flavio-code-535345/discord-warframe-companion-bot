@@ -310,6 +310,8 @@ export interface AlertGroup {
   count: number;
   /** One place for a single alert; "Type at Node" for each of a folded group. */
   where: string[];
+  /** A folded group's missions one by one, so a display can say them more briefly than `where`. */
+  missions?: { type: string; node: string }[];
   reward: string;
   /** The soonest end of the group. */
   endsAt: TimeInput;
@@ -332,7 +334,14 @@ export function foldAlerts(alerts: WorldState['alerts']): AlertGroup[] {
     groups.push(
       list.length === 1
         ? { name: alertName(first), count: 1, where: [first.mission.node], reward, endsAt: first.expiry }
-        : { name: `${list.length} event missions`, count: list.length, where: list.map((a) => `${a.mission.type ?? 'Mission'} at ${a.mission.node}`), reward, endsAt: first.expiry },
+        : {
+            name: `${list.length} event missions`,
+            count: list.length,
+            where: list.map((a) => `${a.mission.type ?? 'Mission'} at ${a.mission.node}`),
+            missions: list.map((a) => ({ type: a.mission.type ?? 'Mission', node: a.mission.node })),
+            reward,
+            endsAt: first.expiry,
+          },
     );
   }
   return groups;
@@ -365,7 +374,8 @@ export function rewardText(r: RewardLike | undefined | null): string {
   // Event rewards list most items twice: once counted, once plain. Keep the counted form.
   const counted = new Set((r.countedItems ?? []).map((c) => c.type.toLowerCase()));
   const parts = [
-    ...(r.countedItems ?? []).map((c) => `${c.count}x ${c.type}`),
+    // "500,000 Kuva", and a single item without a count: "1x Orokin Catalyst" reads worse than the name alone.
+    ...(r.countedItems ?? []).map((c) => (c.count === 1 ? c.type : `${Number(c.count).toLocaleString('en-US')} ${c.type}`)),
     ...(r.items ?? []).filter((i) => !counted.has(i.toLowerCase())),
     ...(r.credits ? [`${r.credits.toLocaleString('en-US')} cr`] : []),
   ];

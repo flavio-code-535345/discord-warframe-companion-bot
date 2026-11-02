@@ -61,8 +61,8 @@ describe('the summary message', () => {
     const fields = fieldsOf(summaryEmbeds(world(), opts, now));
     const names = Object.keys(fields);
     assert.deepEqual(names, ['🌍 Cycles', "👑 Baro Ki'Teer", '🌀 Void fissures', '⚔️ Daily sortie — Vor', '🗡️ Archon Hunt — Archon Amar', '🔱 Steel Path honors', '⚠️ Alerts', '🎯 Invasions worth running']);
-    assert.match(fields['🌍 Cycles']!, /Cetus\*\* ☀️ day.*\n.*Orb Vallis\*\* 🔥 warm.*\n.*Cambion Drift\*\* Fass.*\n.*Zariman\*\* Grineer.*\n.*Duviri\*\* Joy/);
-    assert.match(fields['🌀 Void fissures']!, /^\*\*Lith\*\* 2 · \*\*Neo\*\* 1\n🔱 1 Steel Path · 🌀 1 Void Storm\n/, 'the expired Axi fissure is not counted');
+    assert.match(fields['🌍 Cycles']!, /Cetus\*\* ☀️ day.*\n.*Orb Vallis\*\* 🔥 warm.*\n.*Cambion Drift\*\* 🟠 fass.*\n.*Zariman\*\* 🪖 grineer.*\n.*Earth\*\* (☀️ day|🌙 night).*\n.*Duviri\*\* 😄 joy/);
+    assert.match(fields['🌀 Void fissures']!, /^\*\*Lith\*\* 2 · \*\*Neo\*\* 1\n🔱 1 Steel Path · ☄️ 1 Void Storm\n/, 'the expired Axi fissure is not counted');
     assert.match(fields['⚔️ Daily sortie — Vor']!, /Capture — Pluto · Eximus Stronghold\nResets <t:/);
     assert.match(fields["👑 Baro Ki'Teer"]!, /At \*\*Kronia Relay\*\*, leaves <t:\d+:R>\n2 items/);
     assert.match(fields['🔱 Steel Path honors']!, /Umbra Forma — 150 Steel Essence/);
@@ -115,8 +115,19 @@ describe('the summary message', () => {
     const event = (id: string, type: string, node: string) => ({ id, expiry: at(30), mission: { description: 'Event Alert Title', type, node, faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }] } } });
     const fields = fieldsOf(summaryEmbeds(world({ alerts: [event('e1', 'Survival', 'Naeglar (Eris)'), event('e2', 'Mobile Defense', 'Saxis (Eris)'), event('e3', 'Extermination', 'Xini (Eris)')] }), opts, now));
     const alerts = fields['⚠️ Alerts']!;
-    assert.match(alerts, /\*\*3 event missions\*\* — Survival at Naeglar \(Eris\); Mobile Defense at Saxis/);
+    assert.match(alerts, /\*\*3 event missions\*\* on Eris: Survival, Mobile Defense, Extermination · 50 Road To Tau Event Resource each/);
     assert.equal(alerts.match(/Road To Tau/g)!.length, 1);
+  });
+
+  it('names each place when the event missions are spread over several planets', () => {
+    const event = (id: string, type: string, node: string) => ({ id, expiry: at(30), mission: { description: 'Event Alert Title', type, node, faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }] } } });
+    const fields = fieldsOf(summaryEmbeds(world({ alerts: [event('e1', 'Survival', 'Naeglar (Eris)'), event('e2', 'Defense', 'Hydron (Sedna)')] }), opts, now));
+    assert.match(fields['⚠️ Alerts']!, /\*\*2 event missions\*\* — Survival at Naeglar \(Eris\); Defense at Hydron \(Sedna\)/);
+  });
+
+  it('writes counted rewards as people say them', () => {
+    const fields = fieldsOf(summaryEmbeds(world({ alerts: [{ id: 'g', expiry: at(60), mission: { description: 'Gift From The Lotus', type: 'Survival', node: 'Palus (Pluto)', faction: 'Corpus', reward: { countedItems: [{ count: 500000, type: 'Kuva' }, { count: 1, type: 'Raw Rifle Random Mod' }], credits: 10000 } } }] }), opts, now));
+    assert.match(fields['⚠️ Alerts']!, /500,000 Kuva, Raw Rifle Random Mod, 10,000 cr/);
   });
 });
 
