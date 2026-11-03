@@ -19,6 +19,8 @@ const TRY_META = 'promo_try';
 /** After a failure the next try is this much later, not on the next minute's tick. */
 const RETRY_MS = 3_600_000;
 const REDEEM_URL = 'https://warframe.com/promocode';
+/** Part of the daily stamp: bump it when the message's wording or layout changes, so the live message is updated at once. */
+const PANEL_VERSION = 2;
 
 export interface PromoCode {
   code: string;
@@ -60,7 +62,7 @@ export function promoPanel(ctx: AppContext, codes: PromoCode[], now = Date.now()
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)
     .setTitle('🎟️ Promo codes')
-    .setDescription(`Free items. Tap **Redeem**, or enter the code in the in-game Market.\n\n${lines.join('\n')}`.slice(0, 4000))
+    .setDescription(`Free items. In the in-game Market, press **Redeem Code** and type in the code, or use the **Redeem** link here.\n\n${lines.join('\n')}`.slice(0, 4000))
     .setFooter({ text: `From the Warframe wiki, checked daily · ${ctx.config.CLAN_NAME}`, ...(icon ? { iconURL: icon } : {}) })
     .setTimestamp(now);
   if (icon) embed.setThumbnail(icon);
@@ -71,7 +73,7 @@ export function promoPanel(ctx: AppContext, codes: PromoCode[], now = Date.now()
 export async function updatePromoCodes(ctx: AppContext, now = Date.now()): Promise<void> {
   const channelId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).promoChannelId;
   if (!channelId) return;
-  const done = `${new Date(now).toISOString().slice(0, 10)}:${channelId}`;
+  const done = `${new Date(now).toISOString().slice(0, 10)}:${channelId}:v${PANEL_VERSION}`;
   if (ctx.store.getMeta(DONE_META) === done || now - (Number(ctx.store.getMeta(TRY_META)) || 0) < RETRY_MS) return;
   const page = await readWikiPage(PAGE).catch(() => null);
   const codes = page ? parseActiveCodes(page.extract, now) : [];
