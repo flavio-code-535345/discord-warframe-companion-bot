@@ -8,6 +8,7 @@ import { alertsComponents } from './alerts-panel.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
 import { PRICE_CHECK_MS, checkPriceTrackers } from './price-alerts.js';
+import { updatePromoCodes } from './promo-codes.js';
 import { postWeeklyReset } from './weekly.js';
 import { postBirthdays } from '../birthdays/service.js';
 import { endDueGiveaways } from '../giveaways/service.js';
@@ -211,6 +212,7 @@ export class Notifier {
       // Giveaways, birthdays and price alerts don't need the world state either; each failure stays its own.
       await endDueGiveaways(this.ctx);
       await postBirthdays(this.ctx).catch((err) => console.error('[notifier] birthdays failed:', err));
+      await updatePromoCodes(this.ctx).catch((err) => console.error('[notifier] promo codes failed:', err));
       if (Date.now() - this.lastPriceCheck >= PRICE_CHECK_MS) {
         this.lastPriceCheck = Date.now();
         await checkPriceTrackers(this.ctx).catch((err) => console.error('[notifier] price alerts failed:', err));

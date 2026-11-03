@@ -43,6 +43,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
       { name: 'Pings', value: [s.alertsRoleId ? `alerts <@&${s.alertsRoleId}>` : null, s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
+      { name: 'Promo codes', value: ch(s.promoChannelId), inline: true },
       { name: 'Weekly reset post', value: `${ch(s.weeklyChannelId)}${s.weeklyRoleId ? ` · DMs <@&${s.weeklyRoleId}>` : ''}`, inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
@@ -191,6 +192,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('promos')
+        .setDescription('Channel with the active promo codes from the wiki, updated once a day')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('off')
         .setDescription('Turn a feature off')
         .addStringOption((o) =>
@@ -216,6 +223,7 @@ export const setup: Command = {
               { name: 'Event and LFG pings', value: 'pings' },
               { name: 'Birthdays', value: 'birthdays' },
               { name: 'Weekly reset post', value: 'weekly' },
+              { name: 'Promo codes', value: 'promos' },
             ),
         ),
     )
@@ -259,6 +267,9 @@ export const setup: Command = {
         break;
       case 'birthdays':
         settings = ctx.store.updateSettings(guildId, { birthdayChannelId: channelId() });
+        break;
+      case 'promos':
+        settings = ctx.store.updateSettings(guildId, { promoChannelId: channelId() });
         break;
       case 'weekly':
         skipCurrentWeek(ctx);
@@ -354,6 +365,10 @@ export const setup: Command = {
         }
         if (feature === 'birthdays') {
           settings = ctx.store.updateSettings(guildId, { birthdayChannelId: null });
+          break;
+        }
+        if (feature === 'promos') {
+          settings = ctx.store.updateSettings(guildId, { promoChannelId: null });
           break;
         }
         if (feature === 'weekly') {

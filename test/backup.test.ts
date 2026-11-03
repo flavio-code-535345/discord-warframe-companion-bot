@@ -60,6 +60,7 @@ function sampleBackup(): ServerBackup {
       birthdayChannelId: null,
       weeklyChannelId: null,
       weeklyRoleId: null,
+      promoChannelId: null,
     },
     includesMessages: true,
   };

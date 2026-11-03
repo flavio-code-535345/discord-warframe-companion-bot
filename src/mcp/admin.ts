@@ -55,6 +55,7 @@ const SETTING_CHANNEL_KINDS: Record<string, { types: ChannelType[]; label: strin
   riven_channel_id: TEXT_CHANNEL,
   birthday_channel_id: TEXT_CHANNEL,
   weekly_channel_id: TEXT_CHANNEL,
+  promo_channel_id: TEXT_CHANNEL,
   lfg_voice_category_id: { types: [ChannelType.GuildCategory], label: 'a category' },
   auto_vc_hub_channel_id: { types: [ChannelType.GuildVoice], label: 'a voice channel' },
 };
@@ -780,7 +781,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the birthday channel and the weekly reset post channel. null turns one off.',
+      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the birthday channel, the weekly reset post channel and the promo codes channel. null turns one off.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional(),
         alerts_role_id: snowflake.nullable().optional(),
@@ -802,6 +803,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
         weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
         weekly_role_id: snowflake.nullable().optional().describe('Members with this role get the Monday reset post as a DM (as do /track weekly subscribers)'),
+        promo_channel_id: snowflake.nullable().optional().describe('Channel with the active promo codes from the wiki, updated once a day; the list appears within a minute'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -838,6 +840,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.birthday_channel_id !== undefined ? { birthdayChannelId: args.birthday_channel_id } : {}),
         ...(args.weekly_channel_id !== undefined ? { weeklyChannelId: args.weekly_channel_id } : {}),
         ...(args.weekly_role_id !== undefined ? { weeklyRoleId: args.weekly_role_id } : {}),
+        ...(args.promo_channel_id !== undefined ? { promoChannelId: args.promo_channel_id } : {}),
       };
       log(`bot settings: ${JSON.stringify(patch)}`);
       // The two channels that get a notice posted in them go first: if the bot can't post there nothing else has been saved yet.
