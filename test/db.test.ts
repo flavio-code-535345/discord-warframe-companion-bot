@@ -84,6 +84,7 @@ test('settings: partial updates keep other fields', () => {
     weeklyChannelId: null,
     weeklyRoleId: null,
     promoChannelId: null,
+    newsChannelId: null,
   });
   store.updateSettings(G, { verifyMinAccountAgeDays: 7 });
   assert.equal(store.getSettings(G).verifyMinAccountAgeDays, 7);
@@ -178,11 +179,11 @@ test('the answer cache is dropped with its switch and settings, also from a data
     const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
     raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
     raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x')");
-    // Back to before the cache migration (eight from the end). The review column it was followed by is gone again by now, the
+    // Back to before the cache migration (nine from the end). The review column it was followed by is gone again by now, the
     // migrations after it are replayed as they come: add the column, clean the settings, drop the corrections and ratings, add the
     // community tables (undone here first, so they can be added again) and drop the research board and starboard again.
-    raw.exec(`PRAGMA user_version = ${version - 8}`);
-    for (const col of ['events_role_id', 'lfg_role_id', 'birthday_channel_id', 'weekly_channel_id', 'weekly_role_id', 'promo_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
+    raw.exec(`PRAGMA user_version = ${version - 9}`);
+    for (const col of ['events_role_id', 'lfg_role_id', 'birthday_channel_id', 'weekly_channel_id', 'weekly_role_id', 'promo_channel_id', 'news_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
     raw.exec('ALTER TABLE events DROP COLUMN discord_event_id');
     for (const t of ['self_roles', 'giveaway_entries', 'giveaways', 'birthdays', 'member_activity']) raw.exec(`DROP TABLE ${t}`);
     for (const col of ['message_id TEXT', 'rating TEXT', 'rated_by TEXT', 'rated_at INTEGER']) raw.exec(`ALTER TABLE ai_log ADD COLUMN ${col}`);

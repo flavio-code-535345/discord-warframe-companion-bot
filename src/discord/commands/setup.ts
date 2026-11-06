@@ -44,6 +44,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Pings', value: [s.alertsRoleId ? `alerts <@&${s.alertsRoleId}>` : null, s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
       { name: 'Promo codes', value: ch(s.promoChannelId), inline: true },
+      { name: 'Game news', value: ch(s.newsChannelId), inline: true },
       { name: 'Weekly reset post', value: `${ch(s.weeklyChannelId)}${s.weeklyRoleId ? ` · DMs <@&${s.weeklyRoleId}>` : ''}`, inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
@@ -192,6 +193,12 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
+        .setName('news')
+        .setDescription('Channel for new game news: in-game news (updates, Prime Access, Devstreams) and Steam announcements')
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('promos')
         .setDescription('Channel with the active promo codes from the wiki, updated once a day')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -224,6 +231,7 @@ export const setup: Command = {
               { name: 'Birthdays', value: 'birthdays' },
               { name: 'Weekly reset post', value: 'weekly' },
               { name: 'Promo codes', value: 'promos' },
+              { name: 'Game news', value: 'news' },
             ),
         ),
     )
@@ -270,6 +278,9 @@ export const setup: Command = {
         break;
       case 'promos':
         settings = ctx.store.updateSettings(guildId, { promoChannelId: channelId() });
+        break;
+      case 'news':
+        settings = ctx.store.updateSettings(guildId, { newsChannelId: channelId() });
         break;
       case 'weekly':
         skipCurrentWeek(ctx);
@@ -365,6 +376,10 @@ export const setup: Command = {
         }
         if (feature === 'birthdays') {
           settings = ctx.store.updateSettings(guildId, { birthdayChannelId: null });
+          break;
+        }
+        if (feature === 'news') {
+          settings = ctx.store.updateSettings(guildId, { newsChannelId: null });
           break;
         }
         if (feature === 'promos') {

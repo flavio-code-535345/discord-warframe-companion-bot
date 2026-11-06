@@ -61,6 +61,7 @@ function sampleBackup(): ServerBackup {
       weeklyChannelId: null,
       weeklyRoleId: null,
       promoChannelId: null,
+      newsChannelId: null,
     },
     includesMessages: true,
   };
