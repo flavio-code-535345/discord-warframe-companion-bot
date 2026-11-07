@@ -85,3 +85,12 @@ test('collectAlerts announces a 200,000 Kuva alert but not a resource one', () =
   } as unknown as WorldState;
   assert.deepEqual(collectAlerts(ws, now).map((a) => a.key), ['alert:k1']);
 });
+
+test('the ping note for an alert says what the reward is', () => {
+  const now = Date.now();
+  const ws = {
+    alerts: [{ id: 'k1', activation: new Date(now - 1000), expiry: new Date(now + 3_600_000), expired: false, mission: { description: 'Gift From The Lotus', type: 'Mobile Defense', node: 'Larissa (Neptune)', reward: { countedItems: [{ count: 200000, type: 'Kuva' }], credits: 10000 } } }],
+    invasions: [{ id: 'i1', completed: false, node: 'Titan (Saturn)', desc: 'D', vsInfestation: false, completion: 10, attacker: { faction: 'Corpus', reward: { items: ['Snipetron Vandal Blueprint'] } }, defender: { faction: 'Grineer', reward: { countedItems: [{ count: 3, type: 'Fieldron' }] } } }],
+  } as unknown as WorldState;
+  assert.deepEqual(collectAlerts(ws, now).map((a) => a.note), ['⚠️ Gift From The Lotus: **200,000 Kuva, 10,000 cr** (Larissa (Neptune))', '🎯 Invasion at Titan (Saturn): **Snipetron Vandal Blueprint**']);
+});

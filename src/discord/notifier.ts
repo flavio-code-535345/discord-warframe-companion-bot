@@ -24,6 +24,8 @@ export interface WorldStateAlert {
   /** Stable identity used to post each alert only once, across restarts. */
   key: string;
   embed: EmbedBuilder;
+  /** What the ping says about it when the title alone is not enough (the reward). */
+  note?: string;
 }
 
 /** Everything currently in the worldstate that deserves an alert; the caller filters out what was already posted. */
@@ -47,6 +49,7 @@ export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert
     if (!isNotableReward(rewardText(a.mission.reward))) continue;
     alerts.push({
       key: `alert:${a.id}`,
+      note: `⚠️ ${alertName(a)}: **${rewardText(a.mission.reward)}** (${a.mission.node})`,
       embed: new EmbedBuilder()
         .setColor(COLORS.warn)
         .setTitle(`⚠️ Alert: ${alertName(a)}`)
@@ -62,6 +65,7 @@ export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert
     if (!rewards.some((r) => isNotableReward(r))) continue;
     alerts.push({
       key: `invasion:${inv.id}`,
+      note: `🎯 Invasion at ${inv.node}: **${rewards.filter((r) => isNotableReward(r)).join(" / ")}**`,
       embed: new EmbedBuilder()
         .setColor(COLORS.warn)
         .setTitle(`🎯 Invasion worth running: ${inv.node}`)
@@ -251,7 +255,7 @@ export class Notifier {
         const roleId = settings.alertsRoleId;
         if (notify && roleId) {
           await postNote(this.ctx, target, {
-            content: newItemsText(fresh.map((a) => a.embed.data.title ?? 'Something new'), url, roleId),
+            content: newItemsText(fresh.map((a) => a.note ?? a.embed.data.title ?? 'Something new'), url, roleId),
             allowedMentions: { roles: [roleId] },
           });
         } else await expireNote(this.ctx, target, Date.now(), !roleId);

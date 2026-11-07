@@ -270,7 +270,7 @@ describe('the notifier', () => {
     await notifier.postWorldStateAlerts(base({ alerts: [alert] }));
     assert.equal(sent.length, 2);
     assert.deepEqual(edits, ['m1'], 'the summary was brought up to date first');
-    assert.match(sent[1]!.content!, /^<@&role1> 🔔 \*\*New:\*\* ⚠️ Alert: Mutalist\n\[Everything right now\]\(<https:\/\/discord\.com\/channels\/g\/chan\/m1>\)$/);
+    assert.match(sent[1]!.content!, /^<@&role1> 🔔 \*\*New:\*\* ⚠️ Mutalist: \*\*Orokin Catalyst Blueprint\*\* \(Eris\)\n\[Everything right now\]\(<https:\/\/discord\.com\/channels\/g\/chan\/m1>\)$/);
     assert.deepEqual(sent[1]!.allowedMentions.roles, ['role1']);
     assert.equal(sent[1]!.embeds, undefined, 'the ping is a short text, not another pile of embeds');
 
