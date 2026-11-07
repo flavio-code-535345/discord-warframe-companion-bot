@@ -5,7 +5,7 @@ import { formatDuration, relative, toMs } from '../time.js';
 import { STATUS_CSS } from './theme.js';
 import {
   FISSURE_TIERS,
-  NOTABLE_REWARD,
+  isNotableReward,
   type WorldState,
   activeArbitration,
   archimedeaName,
@@ -154,7 +154,7 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
           .filter((i) => !i.completed)
           .map((i) => {
             const rewards = (i.vsInfestation ? [i.defender] : [i.attacker, i.defender]).map((side) => rewardText(side.reward)).filter((r) => r !== '—').join(' / ');
-            return { node: i.node, rewards, completion: Math.round(i.completion), notable: NOTABLE_REWARD.test(rewards) };
+            return { node: i.node, rewards, completion: Math.round(i.completion), notable: isNotableReward(rewards) };
           })
           .sort((a, b) => Number(b.notable) - Number(a.notable)),
       [],

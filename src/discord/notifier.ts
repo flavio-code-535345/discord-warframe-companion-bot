@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 import { getSendableChannel, refreshEventMessage } from '../services/clan.js';
 import { type TimeInput, discordTime, toMs } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
-import { NOTABLE_REWARD, type WorldState, alertName, getWorldState, isBaroHere, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
+import { type WorldState, alertName, getWorldState, isBaroHere, isNotableReward, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
 import { alertsComponents } from './alerts-panel.js';
 import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
 import { brandIcon } from './identity.js';
@@ -44,7 +44,7 @@ export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert
     if (!live(a.expiry)) continue;
     // Only an alert with something worth a detour is announced (like invasions below); the rest, such as an event's endless resource
     // nodes that appear every half hour, is still listed in the summary.
-    if (!NOTABLE_REWARD.test(rewardText(a.mission.reward))) continue;
+    if (!isNotableReward(rewardText(a.mission.reward))) continue;
     alerts.push({
       key: `alert:${a.id}`,
       embed: new EmbedBuilder()
@@ -59,7 +59,7 @@ export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert
   for (const inv of ws.invasions ?? []) {
     if (inv.completed) continue;
     const rewards = [rewardText(inv.attacker.reward), rewardText(inv.defender.reward)];
-    if (!rewards.some((r) => NOTABLE_REWARD.test(r))) continue;
+    if (!rewards.some((r) => isNotableReward(r))) continue;
     alerts.push({
       key: `invasion:${inv.id}`,
       embed: new EmbedBuilder()

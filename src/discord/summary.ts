@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { EmbedBuilder } from 'discord.js';
 import { discordTime, toMs } from '../time.js';
 import { projectCycles } from '../warframe/cycles.js';
-import { NOTABLE_REWARD, type WorldState, activeArbitration, foldAlerts, isBaroHere, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
+import { type WorldState, activeArbitration, foldAlerts, isBaroHere, isNotableReward, rewardText, worldStateStaleNote } from '../warframe/worldstate.js';
 import { COLORS, clampLines } from './embeds.js';
 
 /**
@@ -160,7 +160,7 @@ export function summaryEmbeds(ws: WorldState, opts: SummaryOptions, now = Date.n
       if (inv.completed) continue;
       const attacker = rewardText(inv.attacker.reward);
       const defender = rewardText(inv.defender.reward);
-      if (![attacker, defender].some((r) => NOTABLE_REWARD.test(r))) continue;
+      if (![attacker, defender].some((r) => isNotableReward(r))) continue;
       lines.push(`**${inv.node}** · ${inv.vsInfestation ? '' : `${attacker} vs `}${defender} · ${Math.round(inv.completion)}%`);
     }
     return lines.length ? clampLines(lines, FIELD_LIMIT) : null;

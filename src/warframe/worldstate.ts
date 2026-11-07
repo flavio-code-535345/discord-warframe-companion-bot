@@ -293,7 +293,17 @@ export async function getWorldState(): Promise<WorldState> {
 export const FISSURE_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'] as const;
 
 /** Invasion/alert rewards worth a clan's attention. */
-export const NOTABLE_REWARD = /orokin (catalyst|reactor)|forma|exilus|wraith|vandal|umbra|aura/i;
+export const NOTABLE_REWARD = /orokin (catalyst|reactor)|forma|exilus|wraith|vandal|umbra|aura|nitain|riven/i;
+
+/** Kuva is worth a detour from this amount on (the big alerts pay 200,000; a few thousand from a Lich is not news). */
+export const NOTABLE_KUVA = 100_000;
+
+/** Whether a reward line ("200,000 Kuva, 10,000 cr", "3 Forma") is worth announcing and pinging for: a named item, or a big Kuva payout. */
+export function isNotableReward(text: string): boolean {
+  if (NOTABLE_REWARD.test(text)) return true;
+  for (const m of text.matchAll(/([\d,]+)\s+Kuva\b/gi)) if (Number((m[1] ?? '').replace(/,/g, '')) >= NOTABLE_KUVA) return true;
+  return false;
+}
 
 /**
  * What an alert is called. Event alerts (a recurring event's mission nodes) come with the feed's placeholder title "Event Alert Title",

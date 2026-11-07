@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { collectAlerts } from '../src/discord/notifier.js';
 import { groupDrops } from '../src/warframe/drops.js';
 import { searchItems } from '../src/warframe/market.js';
-import { type Fissure, type WorldState, filterFissures, rewardText } from '../src/warframe/worldstate.js';
+import { type Fissure, type WorldState, filterFissures, isNotableReward, rewardText } from '../src/warframe/worldstate.js';
 
 test('searchItems ranks exact, prefix, word-prefix, then substring matches', () => {
   const items = [
@@ -63,4 +63,25 @@ test('collectAlerts emits stable keys for sortie, Baro and notable invasions onl
     ],
   } as unknown as WorldState;
   assert.deepEqual(collectAlerts(ws, now).map((a) => a.key), ['sortie:s1', `baro:b1:${now - 1000}`, 'invasion:i1']);
+});
+
+test('a big Kuva payout is worth an alert, a small one is not', () => {
+  assert.equal(isNotableReward('200,000 Kuva, 10,000 cr'), true);
+  assert.equal(isNotableReward('100,000 Kuva'), true);
+  assert.equal(isNotableReward('20,000 Kuva, 10,000 cr'), false);
+  assert.equal(isNotableReward('Kuva Brakk Blueprint'), false);
+  assert.equal(isNotableReward('3 Forma, 10,000 cr'), true);
+  assert.equal(isNotableReward('Nitain Extract'), true);
+  assert.equal(isNotableReward('50 Moonflesh, 17,000 cr'), false);
+});
+
+test('collectAlerts announces a 200,000 Kuva alert but not a resource one', () => {
+  const now = Date.now();
+  const later = new Date(now + 3_600_000);
+  const alert = (id: string, reward: object) => ({ id, activation: new Date(now - 1000), expiry: later, expired: false, mission: { description: 'Gift From The Lotus', type: 'Mobile Defense', node: 'Larissa (Neptune)', reward } });
+  const ws = {
+    alerts: [alert('k1', { countedItems: [{ count: 200000, type: 'Kuva' }], credits: 10000 }), alert('m1', { countedItems: [{ count: 50, type: 'Moonflesh' }], credits: 17000 })],
+    invasions: [],
+  } as unknown as WorldState;
+  assert.deepEqual(collectAlerts(ws, now).map((a) => a.key), ['alert:k1']);
 });
