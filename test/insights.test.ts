@@ -77,7 +77,7 @@ describe('bot health tool', () => {
     const out = await setup(store).call('get_bot_health');
     assert.equal(out.discord.ready, true);
     assert.equal(out.lifecycle.state, 'running');
-    assert.equal(out.ai.localModel, 'gemma');
+    assert.equal(out.screenshotReaders.localModel, 'gemma');
     assert.deepEqual(out.answersLast24h, { excerpt: 1 });
     assert.equal(out.features.leveling, true);
   });

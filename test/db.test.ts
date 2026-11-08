@@ -63,10 +63,6 @@ test('settings: partial updates keep other fields', () => {
     welcomeChannelId: null,
     chatChannelId: null,
     modLogChannelId: null,
-    verifyChannelId: null,
-    verifyPanelMessageId: null,
-    verifyRoleId: null,
-    verifyMinAccountAgeDays: null,
     honeypotChannelId: null,
     honeypotAction: null,
     ssRolesChannelId: null,
@@ -86,8 +82,8 @@ test('settings: partial updates keep other fields', () => {
     promoChannelId: null,
     newsChannelId: null,
   });
-  store.updateSettings(G, { verifyMinAccountAgeDays: 7 });
-  assert.equal(store.getSettings(G).verifyMinAccountAgeDays, 7);
+  store.updateSettings(G, { lfgVoiceGraceMinutes: 7 });
+  assert.equal(store.getSettings(G).lfgVoiceGraceMinutes, 7);
 });
 
 test('bot meta values round-trip and overwrite', () => {
@@ -178,12 +174,16 @@ test('the answer cache is dropped with its switch and settings, also from a data
     const raw = new DatabaseSync(file);
     const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
     raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
-    raw.exec("INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x')");
-    // Back to before the cache migration (nine from the end). The review column it was followed by is gone again by now, the
+    raw.exec(
+      "INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x'), ('cfg_LOCAL_AI_MODEL', 'v:old-model'), ('ai_toggle_local', 'on'), ('cfg_WORLDSTATE_URL', 'v:https://docs.warframestat.us/'), ('avatar_sha256', 'abc')",
+    );
+    // Back to before the cache migration (ten from the end). The review column it was followed by is gone again by now, the
     // migrations after it are replayed as they come: add the column, clean the settings, drop the corrections and ratings, add the
-    // community tables (undone here first, so they can be added again) and drop the research board and starboard again.
-    raw.exec(`PRAGMA user_version = ${version - 9}`);
+    // community tables (undone here first, so they can be added again), drop the research board and starboard again, and drop
+    // verification and the AI switches (their columns put back first).
+    raw.exec(`PRAGMA user_version = ${version - 10}`);
     for (const col of ['events_role_id', 'lfg_role_id', 'birthday_channel_id', 'weekly_channel_id', 'weekly_role_id', 'promo_channel_id', 'news_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
+    for (const col of ['verify_channel_id TEXT', 'verify_panel_message_id TEXT', 'verify_role_id TEXT', 'verify_min_account_age_days INTEGER']) raw.exec(`ALTER TABLE guild_settings ADD COLUMN ${col}`);
     raw.exec('ALTER TABLE events DROP COLUMN discord_event_id');
     for (const t of ['self_roles', 'giveaway_entries', 'giveaways', 'birthdays', 'member_activity']) raw.exec(`DROP TABLE ${t}`);
     for (const col of ['message_id TEXT', 'rating TEXT', 'rated_by TEXT', 'rated_at INTEGER']) raw.exec(`ALTER TABLE ai_log ADD COLUMN ${col}`);
@@ -195,9 +195,15 @@ test('the answer cache is dropped with its switch and settings, also from a data
     assert.equal(store.getMeta('cfg_ANSWER_REFRESH_MAX'), null);
     assert.equal(store.getMeta('brain_settings'), null, 'and the settings of the removed agent and reranking');
     assert.equal(store.getMeta('cfg_EMBED_MODEL'), null);
-    assert.equal(store.getMeta('local_ai_model'), 'gemma4:e4b', 'other settings stay');
+    assert.equal(store.getMeta('avatar_sha256'), 'abc', 'other settings stay');
+    assert.equal(store.getMeta('local_ai_model'), null, 'the /ai model choice is gone...');
+    assert.equal(store.getMeta('cfg_LOCAL_AI_MODEL'), 'v:gemma4:e4b', '...and became the Config value, so the same model stays in use');
+    assert.equal(store.getMeta('ai_toggle_local'), null, 'the AI switches are gone');
+    assert.equal(store.getMeta('cfg_WORLDSTATE_URL'), null, 'a world state URL pointing at the docs site is dropped');
     store.close();
     const check = new DatabaseSync(file);
+    const settingCols = (check.prepare('PRAGMA table_info(guild_settings)').all() as { name: string }[]).map((c) => c.name);
+    assert.ok(!settingCols.some((c) => c.startsWith('verify_')), 'the verification columns are gone');
     assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'answer_cache'").get(), undefined);
     assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'corrections'").get(), undefined, 'the corrections are gone too');
     const cols = (check.prepare('PRAGMA table_info(ai_log)').all() as { name: string }[]).map((c) => c.name);

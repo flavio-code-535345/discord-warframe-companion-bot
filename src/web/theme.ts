@@ -41,7 +41,6 @@ p{margin:0 0 10px}
 .flush{margin:0}
 .inline{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
 .mt{margin-top:14px}
-.mono{font-family:var(--mono);font-size:13px}
 `;
 
 const COMPONENTS = `
@@ -78,7 +77,6 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 input[type=file]{padding:7px 9px}
 input[type=range]{padding:0;accent-color:var(--accent)}
 textarea{min-height:130px;resize:vertical;line-height:1.5}
-textarea.mono{min-height:360px}
 textarea.chatq{min-height:68px}
 .check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--muted)}
 .check input{width:auto;accent-color:var(--accent)}
@@ -111,22 +109,6 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--input);border:1p
 details{margin:4px 0}
 summary{cursor:pointer;color:var(--muted)}
 summary:hover{color:var(--text)}
-meter{flex:1;min-width:160px;height:14px}
-`;
-
-/** Pieces that only the AI pages use (chat transcript, reasoning steps, speed meter). */
-const AI = `
-.chatlog{max-height:560px;overflow:auto;padding-right:4px}
-.msg{margin:12px 0;padding:11px 13px;border-radius:var(--r);white-space:pre-wrap;overflow-wrap:anywhere}
-.msg.user{background:var(--accent-soft);margin-left:12%}
-.msg.bot{background:var(--surface-2);border:1px solid var(--line)}
-.think{font-size:13px;color:var(--muted)}
-.think pre.reason{opacity:.85}
-.answer{white-space:pre-wrap;background:var(--accent-soft);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:12px 14px}
-.answer.error{color:#fca5a5;background:var(--bad-soft)}
-.step{border-left:2px solid var(--line-2);padding-left:12px;margin:12px 0}
-.tpsbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.tpsnum{font-size:30px;font-weight:700;min-width:3.2ch;text-align:right;font-variant-numeric:tabular-nums}
 `;
 
 /** Phones and small tablets: touch-sized controls, 16px fields (iOS zooms into anything smaller), one-column layouts, notch-safe edges. */
@@ -144,8 +126,6 @@ const MOBILE = `
   h1{font-size:21px}
   .stat{font-size:22px}
   pre{font-size:11.5px}
-  textarea.mono{min-height:240px}
-  .chatlog{max-height:60vh}
 }
 @media (max-width:420px){.grid{grid-template-columns:minmax(0,1fr)}}
 `;
@@ -264,5 +244,5 @@ footer a{color:var(--accent-2)}
   .r{align-items:flex-start}
 }`;
 
-export const ADMIN_CSS = TOKENS + BASE + COMPONENTS + MOBILE + AI + ADMIN_SHELL;
+export const ADMIN_CSS = TOKENS + BASE + COMPONENTS + MOBILE + ADMIN_SHELL;
 export const STATUS_CSS = TOKENS + BASE + COMPONENTS + MOBILE + STATUS_SHELL;

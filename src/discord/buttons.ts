@@ -6,7 +6,6 @@ import { UserError, renderEvent, renderLfg } from '../services/clan.js';
 import { handleAlertsButton } from './alerts-panel.js';
 import { handleBackupButton } from './commands/backup.js';
 import { handlePurgeButton } from './commands/moderation.js';
-import { handleVerifyButton } from './verification.js';
 import { handleGiveawayButton } from '../giveaways/service.js';
 import { handleRoleButton } from '../selfroles/service.js';
 import { handleWeeklyButton } from './weekly.js';
@@ -40,10 +39,6 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
   }
   if (kind === 'giveaway') {
     await handleGiveawayButton(interaction, ctx, rawId ?? '');
-    return;
-  }
-  if (kind === 'verify') {
-    await handleVerifyButton(interaction, ctx, rawId ?? '');
     return;
   }
 

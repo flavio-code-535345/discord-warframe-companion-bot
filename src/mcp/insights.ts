@@ -1,10 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { chooseModel, setToggle } from '../ai/control.js';
-import { localModelOf } from '../ai/ollama.js';
-import { TOGGLE_KEYS, TOGGLES, aiToggle } from '../ai/settings.js';
-import { localAvailable } from '../ai/local.js';
 import { smartAnswer } from '../answers/smart.js';
+import { localAvailable } from '../ssroles/vision.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
 import { levelOf, xpForLevel } from '../leveling/xp.js';
@@ -120,7 +117,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Bot health',
       description:
-        'One-call health check: uptime, Discord connection, last start/stop reports, the Warframe API pacing state, which AI models are configured (and whether the local one is currently being skipped after a failure), the wiki index size, and how many questions were answered in the last 24 hours by source. Use ollama_status to probe the Ollama server itself.',
+        'One-call health check: uptime, Discord connection, last start/stop reports, the Warframe API pacing state, which screenshot-reading models are configured (and whether the local one is currently being skipped after a failure), the wiki index size, how many questions were answered in the last 24 hours by source, every bot setting and every Config page value that differs from its default.',
       annotations: READ_ONLY,
     },
     tool(async () => {
@@ -139,12 +136,11 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
         warframeApi: { enabled: ws.enabled, everySeconds: ws.intervalSeconds, lastCall: iso(ws.lastCallAt), lastOk: ws.lastOk, detail: ws.lastDetail },
         queues: { screenshots: { ...screenshotQueue.snapshot(), ...screenshotQueue.stats, concurrency: screenshotQueue.config.concurrency } },
         apiClient: { ...api.stats, limits: api.limits, pausedHosts: api.cooldowns().map((c) => ({ host: c.host, until: new Date(c.until).toISOString(), reason: c.reason })) },
-        ai: {
-          localModel: config.LOCAL_AI_URL ? (localModelOf(config) ?? null) : null,
+        screenshotReaders: {
+          localModel: config.LOCAL_AI_URL ? (config.LOCAL_AI_MODEL ?? null) : null,
           localSkippedAfterFailure: config.LOCAL_AI_URL ? !localAvailable() : null,
           cloudModel: config.FREE_AI_KEY ? config.FREE_AI_MODEL : null,
           cloudDailyLimit: config.FREE_AI_KEY ? config.FREE_AI_DAILY_LIMIT : null,
-          switches: Object.fromEntries(TOGGLE_KEYS.map((k) => [k, aiToggle(k)])),
         },
         wikiIndex: wiki && { pages: wiki.pages, chunks: wiki.chunks, refreshedAt: iso(wiki.refreshedAt) },
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
@@ -153,7 +149,6 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           auditLog: Boolean(s.auditLogChannelId ?? s.modLogChannelId),
           leveling: s.levelingOff !== 1,
           screenshotRoles: Boolean(s.ssRolesChannelId),
-          verification: Boolean(s.verifyRoleId),
           honeypot: Boolean(s.honeypotChannelId),
           chatChannel: Boolean(s.chatChannelId),
         },
@@ -171,7 +166,6 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
         config: settingStates(config, store)
           .filter((c) => c.source !== 'default')
           .map((c) => ({ key: c.def.key, value: c.value, source: c.source, pendingRestart: c.pendingRestart })),
-        allowCodeEdit: config.ALLOW_CODE_EDIT,
       };
     }),
   );
@@ -240,27 +234,5 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
       if (!results.length) throw new UserError('No members given.');
       return { results };
     }),
-  );
-
-  server.registerTool(
-    'set_ai_switch',
-    {
-      title: 'AI switches',
-      description: 'Turns an AI feature on or off at runtime, the same switches as /ai toggle and the admin panel AI page: local (the self-hosted model that reads screenshots OCR cannot), thinking (let a thinking-capable local model reason first), websearch (SearXNG results for search_web), log (the question log).',
-      inputSchema: { feature: z.enum(TOGGLE_KEYS as [string, ...string[]]), on: z.boolean() },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    tool(async ({ feature, on }) => ({ message: await setToggle(ctx, feature as (typeof TOGGLE_KEYS)[number], on), switches: Object.fromEntries(TOGGLE_KEYS.map((k) => [TOGGLES[k].label, aiToggle(k)])) })),
-  );
-
-  server.registerTool(
-    'choose_ai_model',
-    {
-      title: 'Choose the AI model',
-      description: 'Chooses which installed Ollama model reads the screenshots OCR cannot (same as /ai model and the panel). Use "-" to go back to the bot\'s LOCAL_AI_MODEL. Install new models with ollama_pull.',
-      inputSchema: { name: z.string().min(1).max(120) },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    tool(async ({ name }) => ({ message: await chooseModel(ctx, name) })),
   );
 }

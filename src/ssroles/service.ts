@@ -3,6 +3,7 @@ import { EmbedBuilder, type Guild, type GuildMember, type Message, PermissionFla
 import type { AppContext } from '../context.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
+import { DANGEROUS } from '../discord/permissions.js';
 import { modLog } from '../moderation/service.js';
 import { normalizeImage } from '../imaging/sniff.js';
 import { UserError, assertChannelFree, getSendableChannel } from '../services/clan.js';
@@ -31,19 +32,6 @@ const FOOTER = 'Your screenshot and this message are removed in a minute. Ordis 
 const MAX_IMAGES = 2;
 /** Mastery points on the example card in assets/ss-roles-example.png (normalized, no separators). */
 const EXAMPLE_POINTS = '2692721';
-
-const DANGEROUS = [
-  PermissionFlagsBits.Administrator,
-  PermissionFlagsBits.ManageGuild,
-  PermissionFlagsBits.ManageRoles,
-  PermissionFlagsBits.ManageChannels,
-  PermissionFlagsBits.ManageMessages,
-  PermissionFlagsBits.ManageWebhooks,
-  PermissionFlagsBits.KickMembers,
-  PermissionFlagsBits.BanMembers,
-  PermissionFlagsBits.ModerateMembers,
-  PermissionFlagsBits.MentionEveryone,
-];
 
 const lastTry = new Map<string, number>();
 

@@ -257,17 +257,14 @@ export async function restoreBackup(
   if (backup.botSettings) {
     const live = store.getSettings(guild.id);
     const patch: Partial<Omit<GuildSettings, 'guildId'>> = {};
-    for (const key of ['alertsChannelId', 'announcementsChannelId', 'welcomeChannelId', 'chatChannelId', 'modLogChannelId', 'verifyChannelId', 'honeypotChannelId', 'lfgVoiceCategoryId', 'autoVcHubChannelId', 'ssRolesChannelId', 'levelChannelId', 'auditLogChannelId', 'statusChannelId', 'rivenChannelId', 'birthdayChannelId', 'weeklyChannelId', 'promoChannelId', 'newsChannelId'] as const) {
+    for (const key of ['alertsChannelId', 'announcementsChannelId', 'welcomeChannelId', 'chatChannelId', 'modLogChannelId', 'honeypotChannelId', 'lfgVoiceCategoryId', 'autoVcHubChannelId', 'ssRolesChannelId', 'levelChannelId', 'auditLogChannelId', 'statusChannelId', 'rivenChannelId', 'birthdayChannelId', 'weeklyChannelId', 'promoChannelId', 'newsChannelId'] as const) {
       const mapped = mapCh(backup.botSettings[key]);
       const current = live[key];
       if (mapped && (opts.mode === 'sync' || !current || !guild.channels.cache.has(current))) patch[key] = mapped;
     }
-    for (const key of ['alertsRoleId', 'verifyRoleId', 'eventsRoleId', 'lfgRoleId', 'weeklyRoleId'] as const) {
+    for (const key of ['alertsRoleId', 'eventsRoleId', 'lfgRoleId', 'weeklyRoleId'] as const) {
       const role = backup.botSettings[key] ? (roleMap.get(backup.botSettings[key]!) ?? null) : null;
       if (role && (opts.mode === 'sync' || !live[key] || !guild.roles.cache.has(live[key]!))) patch[key] = role;
-    }
-    if (backup.botSettings.verifyMinAccountAgeDays !== undefined && (opts.mode === 'sync' || live.verifyMinAccountAgeDays === null)) {
-      patch.verifyMinAccountAgeDays = backup.botSettings.verifyMinAccountAgeDays;
     }
     if (Object.keys(patch).length) store.updateSettings(guild.id, patch);
   }

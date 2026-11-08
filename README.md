@@ -47,7 +47,7 @@ set `ENABLE_MESSAGE_CONTENT=true`).
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
 | `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; pings everyone when full. With squad voice on, it also gets its own voice channel |
 | `/activity set · clear · list` | (Manage Server) a picture, ping role and fixed channel for each LFG activity |
-| `/setup alerts · announcements · welcome · chat · modlog · honeypot · verification · off · show` | (Manage Server) choose channels and the alert ping role |
+| `/setup alerts · announcements · welcome · chat · modlog · honeypot · off · show` | (Manage Server) choose channels and the alert ping role |
 
 ### Moderation
 
@@ -107,21 +107,8 @@ here" notice, and anyone who then writes in the channel has their message delete
 removed. `action` is `softban` (default: ban that clears the last hour of their messages in every channel, then unban, so
 a real member can rejoin), `ban`, or `kick`. Staff (Administrator, Manage Server, Manage Messages, Moderate, Kick or Ban
 Members), the owner and anyone at or above Ordis's role are never trapped. Every catch goes to the mod log. Make the
-channel visible to everyone, including unverified members, or bots that can't see it won't fall in. It works without the
+channel visible to everyone, or bots that can't see it won't fall in. It works without the
 Message Content intent. `/setup off feature:Honeypot` turns it off.
-
-### Verification (Captcha.bot-style)
-
-`/setup verification channel role [min_account_age_days]` posts a **Verify** panel. A newcomer presses it and gets a
-private captcha image: a distorted 6-character code drawn by Ordis itself, with no outside service. They type the code
-into a pop-up, and if it's right they get the role.
-
-- **Who sees what:** the server's channel permissions still decide this. Unverified members see only the verify channel; the role unlocks the rest.
-- **Wrong answers:** three in a row lock the member out for 5 minutes, even if they ask for a new picture in between.
-- **Account age:** optionally, accounts younger than N days are refused, to stop fresh raid accounts.
-- **Role safety:** Ordis refuses to hand out a role with moderator or admin permissions.
-- **Logging and welcome:** every pass and every refusal goes to the mod log. If a welcome channel is set, members are greeted once they've verified.
-- **Turning it off:** `/setup off feature:Verification` removes the panel.
 
 ### Server backups (Xenon-style)
 
@@ -171,23 +158,6 @@ Slash commands are registered to that server automatically on startup. Then run 
 `assets/clan-logo.png` as its avatar. It only sends a change when something differs, because Discord allows just
 a couple of changes per hour. To change the logo, replace that file and ship a new image. The application name in
 the Developer Portal (General Information → Name) is separate: set it to `Cephalon Ordis` there too.
-
-### Optional: Claude-powered chat
-
-The free answers above handle the common questions. To get real conversations instead (follow-up questions,
-explaining builds and mechanics in its own words), set `ANTHROPIC_API_KEY` to a Claude API key from
-<https://platform.claude.com>. This is billed per question by Anthropic and is separate from a Claude subscription.
-Leave it empty to stay free.
-
-- **Model:** Claude Opus 5.5 by default. Set `AI_MODEL` to `claude-sonnet-5-5` or `claude-haiku-5-5` for cheaper answers.
-- **Refusal fallbacks:** on Opus and Sonnet, the bot sends Anthropic's server-side refusal fallback (`fallbacks: "default"`), so a
-  declined request is retried on a suitable model instead of failing.
-- **Spend limits:** `AI_USER_HOURLY_LIMIT` (default 20 questions per member per hour) and `AI_DAILY_LIMIT` (default 300 per UTC day).
-  The system prompt and tools are prompt-cached. Every answer logs its token use (`[ai] … in= cache_read= out=`) in the container log.
-- **Privileged intents:** none needed. Discord gives bots the text of messages that mention them and of DMs. For a `/setup chat`
-  channel where Ordis reads *every* message, enable **Message Content Intent** in the Developer Portal and set
-  `ENABLE_MESSAGE_CONTENT=true`.
-- **DMs:** only clan server members can DM Ordis questions.
 
 ## 2. Configure
 
@@ -250,7 +220,7 @@ npm run dev
 | Page | What you can do |
 | --- | --- |
 | Overview | Bot status, ping, members, events, latest backup, where the bot posts |
-| Settings | Alert, announcement, mod-log, welcome and chat channels; the alert ping role; captcha verification (channel, role, minimum account age) |
+| Settings | Alert, announcement, mod-log, welcome and chat channels; the alert ping role |
 | Announce | Write and post an announcement, optionally pinging a role |
 | Events | Create clan events (posted with RSVP buttons) and cancel them |
 | Members | Roster and warnings: remove members, clear warnings |

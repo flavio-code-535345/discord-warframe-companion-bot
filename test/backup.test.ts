@@ -37,13 +37,9 @@ function sampleBackup(): ServerBackup {
       alertsChannelId: null,
       alertsRoleId: null,
       announcementsChannelId: 'c-news',
-      welcomeChannelId: null,
+      welcomeChannelId: 'c-general',
       chatChannelId: null,
       modLogChannelId: null,
-      verifyChannelId: 'c-general',
-      verifyPanelMessageId: null,
-      verifyRoleId: 'r-verified',
-      verifyMinAccountAgeDays: 3,
       honeypotChannelId: null,
       honeypotAction: null,
       ssRolesChannelId: null,
@@ -55,7 +51,7 @@ function sampleBackup(): ServerBackup {
       lfgVoiceCategoryId: null,
       lfgVoiceGraceMinutes: null,
       autoVcHubChannelId: null,
-      eventsRoleId: null,
+      eventsRoleId: 'r-verified',
       lfgRoleId: null,
       birthdayChannelId: null,
       weeklyChannelId: null,
@@ -169,8 +165,8 @@ test('restoreBackup recreates missing roles and channels with mapped parents, ov
   assert.equal(result.emojisCreated, 1);
   assert.equal(result.bansAdded, 1);
   assert.equal(store.getSettings('g-new').announcementsChannelId, result.channelMap.get('c-news'));
-  assert.equal(store.getSettings('g-new').verifyChannelId, result.channelMap.get('c-general'));
-  assert.equal(store.getSettings('g-new').verifyRoleId, verifiedId);
+  assert.equal(store.getSettings('g-new').welcomeChannelId, result.channelMap.get('c-general'));
+  assert.equal(store.getSettings('g-new').eventsRoleId, verifiedId);
   // Existing channels are left alone in "missing" mode.
   assert.equal(calls.filter((c) => c.op === 'channel.edit').length, 0);
 });

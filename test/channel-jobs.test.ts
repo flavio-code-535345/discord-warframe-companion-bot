@@ -22,7 +22,6 @@ describe('one message-reading job per channel', () => {
     const ctx = storeWith({ ssRolesChannelId: 'ss', chatChannelId: 'chat' });
     assert.throws(() => assertChannelFree(ctx, { rivenChannelId: 'ss' }), (err) => err instanceof UserError && /screenshot roles.*riven scanning/.test(err.message));
     assert.throws(() => assertChannelFree(ctx, { honeypotChannelId: 'chat' }), /the Ordis chat/);
-    assert.throws(() => assertChannelFree(ctx, { verifyChannelId: 'ss' }), /screenshot roles/);
     assert.throws(() => assertChannelFree(ctx, { chatChannelId: 'ss' }), /screenshot roles/);
   });
 

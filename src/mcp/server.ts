@@ -12,10 +12,8 @@ import { priceCheck } from '../warframe/market.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { webSearch } from '../warframe/websearch.js';
 import { registerAdminTools } from './admin.js';
-import { registerCodeTools } from './code.js';
 import { registerCommunityTools } from './community.js';
 import { registerInsightTools } from './insights.js';
-import { registerOllamaTools } from './ollama.js';
 import { registerRivenTools } from './rivens.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
@@ -346,8 +344,6 @@ export function createMcpServer(ctx: AppContext): McpServer {
   );
 
   registerAdminTools(server, ctx);
-  if (ctx.config.ALLOW_CODE_EDIT) registerCodeTools(server, ctx);
-  registerOllamaTools(server, ctx);
   registerInsightTools(server, ctx);
   registerRivenTools(server, ctx);
   registerCommunityTools(server, ctx);

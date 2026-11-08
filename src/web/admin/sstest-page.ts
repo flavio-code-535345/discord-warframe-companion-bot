@@ -1,6 +1,5 @@
 import express, { type Request, type Response, type Router } from 'express';
 import { normalizeImage } from '../../imaging/sniff.js';
-import { localModelOf } from '../../ai/ollama.js';
 import type { AppContext } from '../../context.js';
 import { readWithOcr, visionRead } from '../../ssroles/service.js';
 import { type CardReading, checkClan, earnedNames, masteryRank } from '../../ssroles/roles.js';
@@ -100,7 +99,7 @@ export function registerSsTestRoutes({ router, ctx, pc, html }: Deps): void {
   router.get('/sstest', (req, res) => {
     const p = pc(res, 'sstest', req);
     const reference = store.getSsReference(config.DISCORD_GUILD_ID);
-    const localModel = localModelOf(config);
+    const localModel = config.LOCAL_AI_MODEL;
     const skip = localSkipReason(config);
     const info = {
       ocr: 'tesseract.js in the bot itself, plus the clan emblem fingerprint. PNG and JPEG only. Free and fast.',

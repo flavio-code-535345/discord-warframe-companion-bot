@@ -2,9 +2,6 @@ import { join } from 'node:path';
 import { BackupScheduler } from './backup/service.js';
 import { LfgVoiceSweeper } from './lfg/voice.js';
 import { configureWorldState } from './warframe/worldstate.js';
-import { SAFE_BOOT_MS, markOverlayHealthy } from './overlay.js';
-import { LOCAL_MODEL_META, setChosenModel } from './ai/ollama.js';
-import { loadAiToggles } from './ai/settings.js';
 import { reportStart, reportStop } from './lifecycle.js';
 import { RivenCrawler } from './rivens/crawler.js';
 import { LevelVoiceTicker } from './leveling/service.js';
@@ -58,8 +55,6 @@ const applyWorldState = () =>
     cacheFile: join(config.DATA_DIR, 'worldstate.cache'),
   });
 applyWorldState();
-setChosenModel(store.getMeta(LOCAL_MODEL_META) || null);
-loadAiToggles(store);
 const ctx: AppContext = { config, store, client };
 // A few settings need more than a changed value when they change at runtime.
 onSettingChange((key) => {
@@ -88,8 +83,6 @@ client.once('clientReady', () => {
   rivenCrawler.start();
   wikiCrawler?.start();
   void reportStart(ctx);
-  // A start with live code patches counts as good once it has stayed up this long (see overlay.ts).
-  setTimeout(() => markOverlayHealthy(config.DATA_DIR), SAFE_BOOT_MS).unref();
 });
 
 const http = startHttpServer(ctx);

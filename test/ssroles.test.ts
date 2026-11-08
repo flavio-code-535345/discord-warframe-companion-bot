@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resetLocalAi } from '../src/ai/local.js';
 import { Store } from '../src/db.js';
 import { type CardReading, type RoleInfo, checkClan, earnedNames, masteryRank, planRoles } from '../src/ssroles/roles.js';
-import { localSkipReason, parseReading, readCloud, readLocal, readProfileCardVia } from '../src/ssroles/vision.js';
+import { localSkipReason, parseReading, readCloud, readLocal, readProfileCardVia, resetLocalAi } from '../src/ssroles/vision.js';
 
 /** The reading alone, as the screenshot handler uses it. */
 const readProfileCard = async (...args: Parameters<typeof readProfileCardVia>) => (await readProfileCardVia(...args)).reading;

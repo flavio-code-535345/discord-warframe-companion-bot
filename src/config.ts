@@ -33,7 +33,7 @@ export const EnvSchema = z.object({
   ENABLE_MESSAGE_CONTENT: bool.default(false),
   /** Keep a local searchable copy of the Warframe wiki so Ordis can answer most questions from it. */
   WIKI_INDEX: bool.default(true),
-  /** Optional free-tier LLM (any OpenAI-compatible API) that words wiki answers. Off without a key. */
+  /** Optional free-tier vision model (any OpenAI-compatible API) that reads profile screenshots OCR can't. Off without a key. */
   FREE_AI_KEY: z.string().min(8).optional(),
   FREE_AI_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
   FREE_AI_MODEL: z.string().default('gemini-flash-latest'),
@@ -44,8 +44,6 @@ export const EnvSchema = z.object({
   LOCAL_AI_MODEL: z.string().optional(),
   LOCAL_AI_KEY: z.string().optional(),
   LOCAL_AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
-  /** Lets the MCP patch the bot's compiled code live (overlay in the data volume). Remote code execution for whoever holds MCP_AUTH_TOKEN: off by default. */
-  ALLOW_CODE_EDIT: bool.default(false),
   /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
   WATCHTOWER_URL: z.string().url().optional(),
   WATCHTOWER_TOKEN: z.string().min(8).optional(),

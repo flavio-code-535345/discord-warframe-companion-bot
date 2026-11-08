@@ -11,7 +11,7 @@ import {
 } from 'discord.js';
 import type { AppContext } from '../context.js';
 import type { SelfRole } from '../db.js';
-import { DANGEROUS } from '../discord/verification.js';
+import { DANGEROUS } from '../discord/permissions.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
 import { levelTier } from '../leveling/xp.js';

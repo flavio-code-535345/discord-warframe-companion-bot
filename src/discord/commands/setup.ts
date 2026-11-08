@@ -5,7 +5,6 @@ import { disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation
 import { disableRivenChannel, setupRivenChannel } from '../../rivens/channel.js';
 import { UserError, assertChannelFree } from '../../services/clan.js';
 import { disableSsRoles, resetSsClaims, setupSsRoles } from '../../ssroles/service.js';
-import { disableVerification, setupVerification } from '../verification.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 import { syncChatTopic } from '../chat-topic.js';
@@ -48,12 +47,6 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Weekly reset post', value: `${ch(s.weeklyChannelId)}${s.weeklyRoleId ? ` · DMs <@&${s.weeklyRoleId}>` : ''}`, inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
-        name: 'Verification',
-        value: s.verifyRoleId
-          ? `panel in ${ch(s.verifyChannelId)} · grants <@&${s.verifyRoleId}>${s.verifyMinAccountAgeDays ? ` · accounts older than ${s.verifyMinAccountAgeDays} days` : ''}`
-          : '*off*',
-      },
-      {
         name: 'Ordis chat channel',
         value: `${ch(s.chatChannelId)} · Ordis answers questions written there from lookups and the wiki; mentions, replies, /ask and DMs work everywhere${chatWarnings.length ? `
 ⚠️ ${chatWarnings.join('; ')}` : ''}`,
@@ -84,14 +77,6 @@ export const setup: Command = {
         .setName('welcome')
         .setDescription('Channel that greets new server members')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('verification')
-        .setDescription('Captcha verification: posts a Verify panel that gives a role on success')
-        .addChannelOption((o) => o.setName('channel').setDescription('Where newcomers verify').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addRoleOption((o) => o.setName('role').setDescription('Role to give verified members').setRequired(true))
-        .addIntegerOption((o) => o.setName('min_account_age_days').setDescription('Refuse Discord accounts younger than this (default: no limit)').setMinValue(0).setMaxValue(365)),
     )
     .addSubcommand((s) =>
       s
@@ -220,7 +205,6 @@ export const setup: Command = {
               { name: 'Moderation log', value: 'modlog' },
               { name: 'Audit log', value: 'auditlog' },
               { name: 'Status reports', value: 'status' },
-              { name: 'Verification', value: 'verification' },
               { name: 'Honeypot', value: 'honeypot' },
               { name: 'Screenshot roles', value: 'ssroles' },
               { name: 'Riven scanning', value: 'rivens' },
@@ -292,17 +276,6 @@ export const setup: Command = {
       case 'status':
         settings = ctx.store.updateSettings(guildId, { statusChannelId: channelId() });
         break;
-      case 'verification': {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const url = await setupVerification(
-          ctx,
-          channelId(),
-          interaction.options.getRole('role', true).id,
-          interaction.options.getInteger('min_account_age_days') || null,
-        );
-        await interaction.editReply({ content: `🛡️ Verification panel posted: ${url}`, embeds: [settingsEmbed(ctx.store.getSettings(guildId), ctx.config)] });
-        return;
-      }
       case 'autovc':
         settings = ctx.store.updateSettings(guildId, { autoVcHubChannelId: channelId('lobby') });
         break;
@@ -357,11 +330,6 @@ export const setup: Command = {
       }
       case 'off': {
         const feature = interaction.options.getString('feature', true);
-        if (feature === 'verification') {
-          await disableVerification(ctx);
-          settings = ctx.store.getSettings(guildId);
-          break;
-        }
         if (feature === 'autovc') {
           settings = ctx.store.updateSettings(guildId, { autoVcHubChannelId: null });
           break;

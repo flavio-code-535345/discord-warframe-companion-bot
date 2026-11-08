@@ -1,17 +1,17 @@
-import { localModelOf } from '../ai/ollama.js';
-import { aiToggle } from '../ai/settings.js';
-import { localAvailable, markLocalDown } from '../ai/local.js';
 import { UserError } from '../services/clan.js';
 import type { CardReading } from './roles.js';
 
-/** Reads a Warframe profile card with the free-tier vision model (the same OpenAI-compatible endpoint as chat answers). */
+/**
+ * The vision fallback of the screenshot roles: when OCR can't read a profile card, the self-hosted model (Gemma on Ollama, any
+ * OpenAI-compatible server at LOCAL_AI_URL) is asked first, then the free cloud model (FREE_AI_*).
+ */
 
 export interface VisionConfig {
   FREE_AI_KEY?: string | undefined;
   FREE_AI_URL: string;
   FREE_AI_MODEL: string;
   FREE_AI_FALLBACK_MODEL?: string | undefined;
-  /** Self-hosted vision-capable model (Ollama), tried first; the free cloud model is the backup. See ai/local.ts. */
+  /** Self-hosted vision-capable model (Ollama), tried first; the free cloud model is the backup. */
   LOCAL_AI_URL?: string | undefined;
   LOCAL_AI_MODEL?: string | undefined;
   LOCAL_AI_KEY?: string | undefined;
@@ -19,7 +19,19 @@ export interface VisionConfig {
 }
 
 /** True when some model is configured to read screenshots. */
-export const visionEnabled = (c: Pick<VisionConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>): boolean => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && localModelOf(c)));
+export const visionEnabled = (c: Pick<VisionConfig, 'FREE_AI_KEY' | 'LOCAL_AI_URL' | 'LOCAL_AI_MODEL'>): boolean => Boolean(c.FREE_AI_KEY || (c.LOCAL_AI_URL && c.LOCAL_AI_MODEL));
+
+/** After the self-hosted server failed or timed out it is skipped this long, so a sleeping host doesn't slow every screenshot. */
+export const LOCAL_COOLDOWN_MS = 3 * 60_000;
+let localDownUntil = 0;
+
+/** False for a few minutes after the self-hosted server failed. */
+export const localAvailable = (now = Date.now()): boolean => now >= localDownUntil;
+
+/** Test hook: forget a recorded failure of the self-hosted server. */
+export const resetLocalAi = (): void => {
+  localDownUntil = 0;
+};
 
 export interface ImageData {
   mime: string;
@@ -156,11 +168,10 @@ export interface VisionAttempt {
   unreachable: boolean;
 }
 
-/** Why the self-hosted reader would not be asked right now, or null when it would. `force` ignores the switch and the pause (the test page). */
+/** Why the self-hosted reader would not be asked right now, or null when it would. `force` ignores the pause after a failure (the test page). */
 export function localSkipReason(config: VisionConfig, opts: { now?: number; force?: boolean } = {}): string | null {
-  if (!config.LOCAL_AI_URL || !localModelOf(config)) return 'not configured (LOCAL_AI_URL and a model)';
+  if (!config.LOCAL_AI_URL || !config.LOCAL_AI_MODEL) return 'not configured (LOCAL_AI_URL and LOCAL_AI_MODEL)';
   if (opts.force) return null;
-  if (!aiToggle('local')) return 'switched off (the Local model switch on the AI page)';
   if (!localAvailable(opts.now)) return 'paused for a few minutes after failing to answer';
   return null;
 }
@@ -173,7 +184,7 @@ export async function readLocal(
   opts: { now?: number; force?: boolean } = {},
 ): Promise<VisionAttempt | null> {
   if (localSkipReason(config, opts)) return null;
-  const model = localModelOf(config)!;
+  const model = config.LOCAL_AI_MODEL!;
   const timeoutMs = Math.max(120, config.LOCAL_AI_TIMEOUT_SECONDS ?? 60) * 1000;
   const t0 = Date.now();
   const out = await readWith({ url: config.LOCAL_AI_URL!, key: config.LOCAL_AI_KEY || 'ollama', models: [model], timeoutMs, local: true }, [imagePart(submission)], fetcher);
@@ -199,7 +210,7 @@ const imagePart = (i: ImageData) => ({ type: 'image_url', image_url: { url: data
 
 /**
  * The vision readers, in order: the self-hosted model first (no limit, no cost, but slow on a CPU), then the free cloud model
- * when the self-hosted one is missing, switched off, down or could not read the image.
+ * when the self-hosted one is missing, paused after a failure or could not read the image.
  */
 export async function readProfileCardVia(
   config: VisionConfig,
@@ -212,7 +223,7 @@ export async function readProfileCardVia(
 
   const local = await readLocal(config, submission, fetcher, { now });
   if (local?.reading) return { reading: local.reading, via: 'local', model: local.model };
-  if (local?.unreachable) markLocalDown(now);
+  if (local?.unreachable) localDownUntil = now + LOCAL_COOLDOWN_MS;
 
   const cloud = await readCloud(config, submission, fetcher, dailyLimit);
   if (cloud && !cloud.overLimit && cloud.reading) return { reading: cloud.reading, via: 'cloud', model: cloud.model };

@@ -75,7 +75,7 @@ services:
   # One-shot: a tuned copy of the model for this CPU (same weights, nothing is downloaded again): the thread count and context
   # length are model parameters. The defaults are for an Intel Core i9-13900HK (6 performance cores + 8 efficiency cores, 20
   # threads): token generation runs best on the performance cores only, one thread each, so 6; try 8 or 12 and keep the fastest.
-  # Then point the bot at it with /ai model name:ordis-tuned (or the AI page). Other CPUs: set OLLAMA_THREADS to the number of
+  # Then point the bot at it: LOCAL_AI_MODEL=ordis-tuned (or the admin panel's Config page). Other CPUs: set OLLAMA_THREADS to the number of
   # physical (performance) cores.
   tune-model:
     image: ollama/ollama:latest

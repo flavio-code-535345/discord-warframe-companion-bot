@@ -1,4 +1,3 @@
-import { aiToggle } from '../ai/settings.js';
 import type { WikiResult } from './wiki.js';
 
 /**
@@ -44,7 +43,7 @@ export interface WebResult extends WikiResult {
 export const withWarframe = (q: string): string => (/warframe/i.test(q) ? q : `warframe ${q}`);
 
 export async function webSearch(baseUrl: string | undefined, query: string, limit = 3, fetcher: Fetcher = fetch): Promise<WebResult[]> {
-  if (!baseUrl || !query.trim() || !aiToggle('websearch')) return [];
+  if (!baseUrl || !query.trim()) return [];
   try {
     const q = query.trim().slice(0, 200);
     const params = new URLSearchParams({ q: withWarframe(q), format: 'json', language: 'en', categories: 'general,news', safesearch: '0' });

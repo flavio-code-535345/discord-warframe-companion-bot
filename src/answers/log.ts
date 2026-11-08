@@ -1,4 +1,3 @@
-import { aiToggle } from '../ai/settings.js';
 import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
 import type { SmartAnswer } from './smart.js';
@@ -15,9 +14,8 @@ export interface LoggedAsker {
   via: AiLogEntry['via'];
 }
 
-/** Records the answer and returns its log id (null when logging is off or failed). */
+/** Records the answer and returns its log id (null when that failed). */
 export function logAnswer(ctx: Pick<AppContext, 'store' | 'config'>, who: LoggedAsker, question: string, answer: SmartAnswer): number | null {
-  if (!aiToggle('log')) return null;
   try {
     return ctx.store.addAiLog(ctx.config.DISCORD_GUILD_ID, {
       at: Date.now(),

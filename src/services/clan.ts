@@ -37,7 +37,6 @@ export async function getSendableChannel(ctx: AppContext, channelId: string): Pr
 const MESSAGE_JOBS = [
   ['chatChannelId', 'the Ordis chat'],
   ['honeypotChannelId', 'the honeypot'],
-  ['verifyChannelId', 'verification'],
   ['ssRolesChannelId', 'screenshot roles'],
   ['rivenChannelId', 'riven scanning'],
 ] as const;

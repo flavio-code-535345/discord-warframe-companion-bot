@@ -46,7 +46,7 @@ export const SETTINGS: SettingDef[] = [
   { key: 'BOT_NAME', group: 'Identity', kind: 'text', label: 'Bot name', help: "The bot's Discord username and the name it uses for itself." },
 
   { key: 'LOCAL_AI_URL', group: 'Local AI (Ollama)', kind: 'text', label: 'Ollama URL', help: 'OpenAI-compatible endpoint, e.g. http://192.168.178.45:11434/v1. Empty = no local model.' },
-  { key: 'LOCAL_AI_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Default local model', help: 'Used unless a model was chosen on the AI page or with /ai model.' },
+  { key: 'LOCAL_AI_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Local model', help: "The Ollama model that reads the profile screenshots OCR can't (the exact name from ollama list, e.g. gemma4:e4b)." },
   { key: 'LOCAL_AI_TIMEOUT_SECONDS', group: 'Local AI (Ollama)', kind: 'int', label: 'Local model timeout (seconds)', help: 'How long one request to the local model may wait (5 to 300).' },
 
 
@@ -74,7 +74,7 @@ export const ENV_ONLY: { names: string[]; why: string }[] = [
   { names: ['DISCORD_TOKEN', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET'], why: 'Secrets: never stored in the database or shown in the panel.' },
   { names: ['DISCORD_GUILD_ID', 'DATA_DIR', 'HTTP_HOST', 'HTTP_PORT'], why: 'Needed before the bot (and its database) can start.' },
   { names: ['PUBLIC_URL', 'PANEL_OWNER_IDS'], why: 'The panel login depends on them; a wrong value here could lock you out.' },
-  { names: ['MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL', 'ALLOW_CODE_EDIT'], why: 'Security and infrastructure switches (ALLOW_CODE_EDIT lets the MCP patch the bot\'s code): deliberately not changeable from a web page.' },
+  { names: ['MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL'], why: 'Security and infrastructure switches: deliberately not changeable from a web page.' },
 ];
 
 const byKey = new Map(SETTINGS.map((s) => [s.key, s]));

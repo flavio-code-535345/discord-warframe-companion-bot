@@ -12,7 +12,6 @@ import {
 } from 'discord.js';
 import { z } from 'zod';
 import { summaryOf, takeBackup } from '../backup/service.js';
-import { setupVerification } from '../discord/verification.js';
 import type { AppContext } from '../context.js';
 import { validImageUrl } from '../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../moderation/honeypot.js';
@@ -458,7 +457,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Delete role',
       description:
-        'PERMANENTLY deletes a role (members lose it; a server backup still has it). Refuses @everyone, roles managed by an integration, roles at or above the bot, and roles Ordis itself uses (the alerts ping role, the verification role). Get the user to confirm first. Requires confirm: true.',
+        'PERMANENTLY deletes a role (members lose it; a server backup still has it). Refuses @everyone, roles managed by an integration, roles at or above the bot, and roles one of Ordis\'s settings uses (the ping roles, the Weeklies role). Get the user to confirm first. Requires confirm: true.',
       inputSchema: { role_id: snowflake, confirm: z.literal(true), reason: z.string().max(200).optional() },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
@@ -470,8 +469,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       if (role.id === guild.id) throw new UserError("@everyone can't be deleted.");
       if (role.managed) throw new UserError(`${role.name} is managed by an integration and can't be deleted.`);
       if (role.position >= me.roles.highest.position) throw new UserError(`${role.name} is at or above the bot's highest role.`);
-      const s = ctx.store.getSettings(guild.id);
-      if (role.id === s.alertsRoleId || role.id === s.verifyRoleId) throw new UserError(`Ordis uses ${role.name} (alerts ping or verification): change that setting first.`);
+      const usedBy = Object.entries(ctx.store.getSettings(guild.id)).find(([key, value]) => key.endsWith('RoleId') && value === role.id)?.[0];
+      if (usedBy) throw new UserError(`Ordis uses ${role.name} (setting ${usedBy}): change that setting first.`);
       const gone = { id: role.id, name: role.name, members: role.members.size };
       await role.delete(reasonFor(reason));
       log(`deleted role ${gone.name}`);
@@ -629,18 +628,6 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       log(`deleted a bot message in #${channel.name}`);
       return { deleted: message_id };
     }),
-  );
-
-  server.registerTool(
-    'setup_verification',
-    {
-      title: 'Set up captcha verification',
-      description:
-        'Posts the Verify panel in a channel and sets the role members get after solving the captcha (refuses roles with moderator/admin permissions). Re-running moves or refreshes the panel.',
-      inputSchema: { channel_id: snowflake, role_id: snowflake, min_account_age_days: z.number().int().min(0).max(365).optional() },
-      annotations: WRITE,
-    },
-    tool(async ({ channel_id, role_id, min_account_age_days }) => ({ panel: await setupVerification(ctx, channel_id, role_id, min_account_age_days || null) })),
   );
 
   server.registerTool(

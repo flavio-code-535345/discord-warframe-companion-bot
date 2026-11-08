@@ -24,7 +24,6 @@ import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { handleChatMessage } from './chat.js';
 import { syncChatTopic } from './chat-topic.js';
-import { handleVerifyModal } from './verification.js';
 import { postWelcome } from './welcome.js';
 import { syncIdentity } from './identity.js';
 import type { Command } from './command.js';
@@ -37,7 +36,6 @@ import { event } from './commands/event.js';
 import { lfg } from './commands/lfg.js';
 import { MODERATION_COMMANDS } from './commands/moderation.js';
 import { item, wiki } from './commands/lookup.js';
-import { ai as aiCommand } from './commands/ai.js';
 import { ailog } from './commands/ailog.js';
 import { LEVEL_COMMANDS } from './commands/levels.js';
 import { setup } from './commands/setup.js';
@@ -47,7 +45,7 @@ import { vc } from './commands/vc.js';
 import { riven } from './commands/riven.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, riven, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, aiCommand, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [wf, item, price, riven, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ENABLE_MEMBER_LOGGING'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
@@ -77,7 +75,7 @@ async function replyError(interaction: ChatInputCommandInteraction | ButtonInter
 
 /** Wires interaction routing, command registration and welcome messages onto the client. */
 export function attachHandlers(ctx: AppContext): void {
-  const { client, config, store } = ctx;
+  const { client, config } = ctx;
   const byName = new Map(COMMANDS.map((c) => [c.data.name, c]));
 
   client.once(Events.ClientReady, async (ready) => {
@@ -162,23 +160,12 @@ export function attachHandlers(ctx: AppContext): void {
       } catch (err) {
         await replyError(interaction, err);
       }
-      return;
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === 'verify:modal') {
-      try {
-        await handleVerifyModal(interaction, ctx);
-      } catch (err) {
-        await replyError(interaction, err);
-      }
     }
   });
 
   if (config.ENABLE_WELCOME) {
     client.on(Events.GuildMemberAdd, async (member) => {
       if (member.guild.id !== config.DISCORD_GUILD_ID || member.user.bot) return;
-      // With verification on, members are welcomed once they pass it instead of on join.
-      if (store.getSettings(member.guild.id).verifyRoleId) return;
       await postWelcome(ctx, member);
     });
   }

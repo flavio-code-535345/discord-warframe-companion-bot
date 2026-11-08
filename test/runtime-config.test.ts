@@ -101,9 +101,9 @@ describe('runtime settings', () => {
 
   it('covers no secret and no setting the panel login or the network binding depends on', () => {
     const covered = new Set<string>(SETTINGS.map((x) => x.key));
-    for (const name of ['DISCORD_TOKEN', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET', 'PUBLIC_URL', 'PANEL_OWNER_IDS', 'HTTP_PORT', 'HTTP_HOST', 'DATA_DIR', 'DISCORD_GUILD_ID', 'ALLOW_CODE_EDIT', 'MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL']) {
+    for (const name of ['DISCORD_TOKEN', 'FREE_AI_KEY', 'LOCAL_AI_KEY', 'MCP_AUTH_TOKEN', 'WATCHTOWER_TOKEN', 'DISCORD_CLIENT_SECRET', 'PUBLIC_URL', 'PANEL_OWNER_IDS', 'HTTP_PORT', 'HTTP_HOST', 'DATA_DIR', 'DISCORD_GUILD_ID', 'MCP_ALLOWED_HOSTS', 'WATCHTOWER_URL']) {
       assert.ok(!covered.has(name), `${name} must stay environment-only`);
     }
-    assert.ok(ENV_ONLY.flatMap((o) => o.names).includes('ALLOW_CODE_EDIT'));
+    assert.ok(ENV_ONLY.flatMap((o) => o.names).includes('MCP_ALLOWED_HOSTS'));
   });
 });

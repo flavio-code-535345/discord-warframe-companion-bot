@@ -15,11 +15,6 @@ export interface GuildSettings {
   chatChannelId: string | null;
   /** Channel where moderation actions are logged. */
   modLogChannelId: string | null;
-  /** Verification: the panel's channel and message, the role it grants, and the minimum account age in days. */
-  verifyChannelId: string | null;
-  verifyPanelMessageId: string | null;
-  verifyRoleId: string | null;
-  verifyMinAccountAgeDays: number | null;
   /** Honeypot: anyone without moderator powers who posts here is removed. Action is 'ban', 'softban' or 'kick'. */
   honeypotChannelId: string | null;
   honeypotAction: string | null;
@@ -117,10 +112,6 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['welcomeChannelId', 'welcome_channel_id'],
   ['chatChannelId', 'chat_channel_id'],
   ['modLogChannelId', 'mod_log_channel_id'],
-  ['verifyChannelId', 'verify_channel_id'],
-  ['verifyPanelMessageId', 'verify_panel_message_id'],
-  ['verifyRoleId', 'verify_role_id'],
-  ['verifyMinAccountAgeDays', 'verify_min_account_age_days'],
   ['honeypotChannelId', 'honeypot_channel_id'],
   ['honeypotAction', 'honeypot_action'],
   ['lfgVoiceCategoryId', 'lfg_voice_category_id'],
@@ -140,7 +131,7 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['promoChannelId', 'promo_channel_id'],
   ['newsChannelId', 'news_channel_id'],
 ];
-const NUMERIC_SETTINGS = new Set(['verifyMinAccountAgeDays', 'lfgVoiceGraceMinutes', 'levelingOff']);
+const NUMERIC_SETTINGS = new Set(['lfgVoiceGraceMinutes', 'levelingOff']);
 
 /** One role in the self-assign menu (/roles), shown in its group's select menu. */
 export interface SelfRole {
@@ -710,6 +701,18 @@ const MIGRATIONS: string[] = [
   `,
   `
   ALTER TABLE guild_settings ADD COLUMN news_channel_id TEXT;
+  `,
+  // Captcha verification, the AI switches and the /ai model choice are gone. The chosen model was the one in use, so it becomes the
+  // Config page's LOCAL_AI_MODEL; a WORLDSTATE_URL that points at the docs site (no JSON there) is dropped.
+  `
+  INSERT INTO bot_meta (key, value) SELECT 'cfg_LOCAL_AI_MODEL', 'v:' || value FROM bot_meta WHERE key = 'local_ai_model' AND value <> ''
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value;
+  DELETE FROM bot_meta WHERE key = 'local_ai_model' OR key LIKE 'ai\\_toggle\\_%' ESCAPE '\\';
+  DELETE FROM bot_meta WHERE key = 'cfg_WORLDSTATE_URL' AND value LIKE 'v:https://docs.warframestat.us%';
+  ALTER TABLE guild_settings DROP COLUMN verify_channel_id;
+  ALTER TABLE guild_settings DROP COLUMN verify_panel_message_id;
+  ALTER TABLE guild_settings DROP COLUMN verify_role_id;
+  ALTER TABLE guild_settings DROP COLUMN verify_min_account_age_days;
   `,
 ];
 

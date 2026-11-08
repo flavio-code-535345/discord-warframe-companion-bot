@@ -4,7 +4,6 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import { summaryOf, takeBackup } from '../../backup/service.js';
 import type { AppContext } from '../../context.js';
 import type { GuildSettings, PanelSession } from '../../db.js';
-import { disableVerification, setupVerification } from '../../discord/verification.js';
 import { validImageUrl } from '../../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { modLog } from '../../moderation/service.js';
@@ -27,7 +26,6 @@ import {
   sign,
   unsign,
 } from './auth.js';
-import { registerAiRoutes } from './ai-page.js';
 import { syncChatTopic } from '../../discord/chat-topic.js';
 import { registerMessagesRoutes } from './messages-page.js';
 import { registerRivenRoutes } from './riven-page.js';
@@ -204,7 +202,6 @@ ${statCard('Latest backup', latest ? `#${latest.id}` : '—', latest ? utc(lates
 <tr><td>Moderation log</td><td>${ch(settings.modLogChannelId)}</td></tr>
 <tr><td>Welcome</td><td>${ch(settings.welcomeChannelId)}</td></tr>
 <tr><td>Honeypot</td><td>${settings.honeypotChannelId ? `${ch(settings.honeypotChannelId)} ${badge(honeypotAction(settings.honeypotAction), 'warn')}` : badge('off')}</td></tr>
-<tr><td>Verification</td><td>${settings.verifyRoleId ? `${ch(settings.verifyChannelId)}${settings.verifyMinAccountAgeDays ? ` ${badge(`accounts ≥ ${settings.verifyMinAccountAgeDays} days`, 'info')}` : ''}` : badge('off')}</td></tr>
 </table><p class="mt"><a href="/admin/settings">Change settings →</a></p></div>`;
     html(res, layout('Overview', body, pc(res, 'overview', req)));
   });
@@ -265,15 +262,7 @@ ${
 <label>Trap channel${select('channel', channels, s.honeypotChannelId, '— pick a channel —')}</label>
 <label>Action${select('action', HONEYPOT_ACTIONS.map((a) => ({ value: a, label: a })), honeypotAction(s.honeypotAction), '— softban —')}</label>
 </div><div><button>${s.honeypotChannelId ? 'Update honeypot' : 'Turn on honeypot'}</button></div></form>
-${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/off', 'Turn honeypot off', { danger: true, confirm: true })}</p>` : ''}</div>
-<h2>Verification</h2>
-<div class="card"><form class="stack" method="post" action="/admin/settings/verification">${csrfField(p.session)}
-<div class="row">
-<label>Panel channel${select('channel', channels, s.verifyChannelId, '— pick a channel —')}</label>
-<label>Role to give${select('role', roles, s.verifyRoleId, '— pick a role —')}</label>
-<label>Minimum account age (days)<input type="number" name="min_age" min="0" max="365" value="${s.verifyMinAccountAgeDays ?? 0}"></label>
-</div><div><button>${s.verifyRoleId ? 'Update and re-post panel' : 'Turn on verification'}</button></div></form>
-${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/off', 'Turn verification off', { danger: true, confirm: true })}</p>` : ''}</div>`;
+${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/off', 'Turn honeypot off', { danger: true, confirm: true })}</p>` : ''}</div>`;
     html(res, layout('Settings', body, p));
   });
 
@@ -385,32 +374,6 @@ ${s.verifyRoleId ? `<p>${actionButton(p.session, '/admin/settings/verification/o
     }),
   );
 
-  router.post(
-    '/settings/verification',
-    action('settings', async (req, session) => {
-      const channel = id(req.body.channel);
-      const role = id(req.body.role);
-      if (!channel || !role) throw new UserError('Pick both a channel and a role.');
-      const minAge = Math.max(0, Math.min(365, Number(req.body.min_age) || 0));
-      const url = await setupVerification(ctx, channel, role, minAge || null);
-      await audit(session, 'Set up verification', [{ name: 'Panel', value: url }]);
-      return 'Verification panel posted.';
-    }),
-  );
-
-  router.post(
-    '/settings/verification/off',
-    action('settings', async (req, session) => {
-      if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
-      await disableVerification(ctx);
-      await audit(session, 'Turned verification off');
-      return 'Verification is off and its panel was removed.';
-    }),
-  );
-
-  // --- AI (same controls as the /ai command) ---
-
-  registerAiRoutes({ router, ctx, pc, html, action, audit });
   registerMessagesRoutes({ router, ctx, pc, html, audit, channelOptions: async () => channelOptions(await guild()) });
   registerSsTestRoutes({ router, ctx, pc, html });
   registerRivenRoutes({ router, ctx, pc, html, action, audit, channelOptions: async () => channelOptions(await guild()) });
