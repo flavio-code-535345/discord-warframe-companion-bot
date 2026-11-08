@@ -5,7 +5,8 @@ import { getSendableChannel, renderLfg } from '../services/clan.js';
 import { sweepTempVoice } from './autovc.js';
 import { DEFAULT_GRACE_MINUTES, sweepAction } from './lifecycle.js';
 
-const SWEEP_INTERVAL_MS = 60_000;
+/** How often the squad voice job runs (src/jobs.ts). */
+export const SWEEP_INTERVAL_MS = 60_000;
 const MEMBER_ACCESS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak];
 
 const graceMs = (ctx: AppContext) =>
@@ -127,30 +128,8 @@ export async function sweepSquads(ctx: AppContext, now = Date.now()): Promise<vo
   }
 }
 
-export class LfgVoiceSweeper {
-  private timer: NodeJS.Timeout | null = null;
-  private running = false;
-
-  constructor(private readonly ctx: AppContext) {}
-
-  start(): void {
-    this.timer = setInterval(() => void this.tick(), SWEEP_INTERVAL_MS);
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
-
-  private async tick(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      await sweepSquads(this.ctx);
-      await sweepTempVoice(this.ctx);
-    } catch (err) {
-      console.error('[lfg] sweep failed:', err);
-    } finally {
-      this.running = false;
-    }
-  }
+/** The squad voice job (src/jobs.ts): squads past their time or without their host, then empty join-to-create rooms. */
+export async function sweepVoice(ctx: AppContext): Promise<void> {
+  await sweepSquads(ctx);
+  await sweepTempVoice(ctx);
 }

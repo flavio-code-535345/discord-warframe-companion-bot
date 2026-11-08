@@ -60,36 +60,24 @@ export async function handleLevelMessage(message: Message, ctx: AppContext): Pro
   await award(ctx, message.member, rollMessageXp(), now, message);
 }
 
+/** How often voice XP is handed out (src/jobs.ts). */
+export const VOICE_XP_MS = MESSAGE_COOLDOWN_MS;
+
 /** Once a minute, members who are in a voice channel with someone else (not deafened, not AFK) earn a little XP. */
-export class LevelVoiceTicker {
-  private timer: NodeJS.Timeout | null = null;
-
-  constructor(private readonly ctx: AppContext) {}
-
-  start(): void {
-    this.timer = setInterval(() => void this.tick().catch((err) => console.warn('[levels] voice tick failed:', (err as Error).message)), MESSAGE_COOLDOWN_MS);
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
-
-  private async tick(): Promise<void> {
-    const { ctx } = this;
-    if (!levelingOn(ctx)) return;
-    const guild = ctx.client.guilds.cache.get(ctx.config.DISCORD_GUILD_ID);
-    if (!guild) return;
-    const ignored = new Set(ctx.store.xpIgnoredChannels(guild.id));
-    const now = Date.now();
-    for (const channel of guild.channels.cache.values()) {
-      if (!channel.isVoiceBased() || channel.id === guild.afkChannelId || ignored.has(channel.id)) continue;
-      const humans = [...channel.members.values()].filter((m) => !m.user.bot);
-      if (humans.length < 2) continue;
-      for (const m of humans) {
-        if (m.voice.deaf || m.voice.mute) continue;
-        // One member's failure must not take the minute's XP away from everyone after them.
-        await award(ctx, m, VOICE_XP_PER_MINUTE, now, null).catch((err) => console.warn('[levels] voice XP failed:', (err as Error).message));
-      }
+export async function awardVoiceXp(ctx: AppContext): Promise<void> {
+  if (!levelingOn(ctx)) return;
+  const guild = ctx.client.guilds.cache.get(ctx.config.DISCORD_GUILD_ID);
+  if (!guild) return;
+  const ignored = new Set(ctx.store.xpIgnoredChannels(guild.id));
+  const now = Date.now();
+  for (const channel of guild.channels.cache.values()) {
+    if (!channel.isVoiceBased() || channel.id === guild.afkChannelId || ignored.has(channel.id)) continue;
+    const humans = [...channel.members.values()].filter((m) => !m.user.bot);
+    if (humans.length < 2) continue;
+    for (const m of humans) {
+      if (m.voice.deaf || m.voice.mute) continue;
+      // One member's failure must not take the minute's XP away from everyone after them.
+      await award(ctx, m, VOICE_XP_PER_MINUTE, now, null).catch((err) => console.warn('[levels] voice XP failed:', (err as Error).message));
     }
   }
 }

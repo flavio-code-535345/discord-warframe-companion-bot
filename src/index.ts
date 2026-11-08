@@ -1,10 +1,7 @@
 import { join } from 'node:path';
-import { BackupScheduler } from './backup/service.js';
-import { LfgVoiceSweeper } from './lfg/voice.js';
 import { configureWorldState } from './warframe/worldstate.js';
 import { reportStart, reportStop } from './lifecycle.js';
 import { RivenCrawler } from './rivens/crawler.js';
-import { LevelVoiceTicker } from './leveling/service.js';
 import { WikiCrawler } from './wiki/crawler.js';
 import { WikiIndex, setWikiIndex } from './wiki/index.js';
 import { onRestart } from './selfupdate.js';
@@ -17,7 +14,7 @@ import type { AppContext } from './context.js';
 import { Store } from './db.js';
 import { attachHandlers, createClient } from './discord/bot.js';
 import { attachAuditLogging } from './logging/service.js';
-import { Notifier } from './discord/notifier.js';
+import { registerJobs } from './jobs.js';
 import { startHttpServer } from './http.js';
 import { getItemIndex } from './warframe/market.js';
 
@@ -66,22 +63,13 @@ onSettingChange((key) => {
 
 attachHandlers(ctx);
 attachAuditLogging(ctx);
-const notifier = new Notifier(ctx);
-const backups = new BackupScheduler(ctx);
-const squadVoice = new LfgVoiceSweeper(ctx);
-const voiceXp = new LevelVoiceTicker(ctx);
-const rivenCrawler = new RivenCrawler(ctx);
 // The wiki index lives in its own file: it is big, rebuildable, and must not bloat the main database or backups.
 const wikiIndex = config.WIKI_INDEX ? new WikiIndex(join(config.DATA_DIR, 'wiki.db')) : null;
 setWikiIndex(wikiIndex);
-const wikiCrawler = wikiIndex ? new WikiCrawler(wikiIndex) : null;
+// Every recurring task is a job of one scheduler (src/jobs.ts), started once Discord is ready.
+const jobs = registerJobs(ctx, { rivenCrawler: new RivenCrawler(ctx), wikiCrawler: wikiIndex ? new WikiCrawler(wikiIndex) : null });
 client.once('clientReady', () => {
-  notifier.start();
-  backups.start();
-  squadVoice.start();
-  voiceXp.start();
-  rivenCrawler.start();
-  wikiCrawler?.start();
+  jobs.start();
   void reportStart(ctx);
 });
 
@@ -102,12 +90,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.log(`[app] ${signal} received, shutting down`);
   await reportStop(ctx, signal);
-  notifier.stop();
-  backups.stop();
-  squadVoice.stop();
-  voiceXp.stop();
-  rivenCrawler.stop();
-  wikiCrawler?.stop();
+  jobs.stop();
   http.close();
   await client.destroy();
   store.close();

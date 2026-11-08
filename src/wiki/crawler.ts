@@ -12,8 +12,9 @@ const REQUEST_GAP_MS = 2500;
 const BUSY_WAIT_MS = 20_000;
 /** …but not forever: after this many waits in a row the refresh gives up until the next check. */
 const MAX_BUSY_WAITS = 60;
-const STARTUP_DELAY_MS = 90_000;
-const CHECK_INTERVAL_MS = 3_600_000;
+/** The wiki job (src/jobs.ts) first looks this long after the start, then every hour. */
+export const WIKI_FIRST_MS = 90_000;
+export const WIKI_CHECK_MS = 3_600_000;
 /** Chat answers come from this copy, so it follows the wiki closely; a refresh only downloads the pages that changed. */
 const REFRESH_AFTER_MS = 6 * 3_600_000;
 
@@ -46,8 +47,6 @@ const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
  * pages that changed, and removes deleted ones. It is slow on purpose (one request every 2.5s) to be a good citizen.
  */
 export class WikiCrawler {
-  private timer: NodeJS.Timeout | null = null;
-  private first: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor(
@@ -58,18 +57,6 @@ export class WikiCrawler {
     private readonly busyWaitMs = BUSY_WAIT_MS,
   ) {}
 
-  start(): void {
-    this.stop();
-    this.first = setTimeout(() => void this.maybeRefresh(), STARTUP_DELAY_MS);
-    this.timer = setInterval(() => void this.maybeRefresh(), CHECK_INTERVAL_MS);
-  }
-
-  stop(): void {
-    if (this.first) clearTimeout(this.first);
-    if (this.timer) clearInterval(this.timer);
-    this.first = this.timer = null;
-  }
-
   get busy(): boolean {
     return this.running;
   }
@@ -79,10 +66,11 @@ export class WikiCrawler {
     return this.index.stats().pages > 0 && this.index.getMeta('clean_version') !== String(CLEAN_VERSION);
   }
 
-  private async maybeRefresh(): Promise<void> {
+  /** The hourly check: refreshes once the last refresh is six hours old (or the cleaning changed). */
+  async maybeRefresh(): Promise<void> {
     const last = Number(this.index.getMeta('refreshed_at') ?? 0);
     if (Date.now() - last < REFRESH_AFTER_MS && !this.needsReclean()) return;
-    await this.refresh().catch((err) => console.error('[archive] refresh failed:', err));
+    await this.refresh();
   }
 
   private async call(params: Record<string, string>): Promise<ApiResponse> {

@@ -14,7 +14,8 @@ const RETRY_AFTER_FAILURE_MS = 6 * 3_600_000;
 /** After this many failures in a row (different weapons) the whole crawl rests. */
 const MAX_FAILURES = 3;
 const REST_MS = 3_600_000;
-const FIRST_DELAY_MS = 3 * 60_000;
+/** The riven job (src/jobs.ts) starts this long after the bot. */
+export const RIVEN_FIRST_MS = 3 * 60_000;
 
 /** The next weapon to read: never-read ones first (in list order), then the one read longest ago that is due; null when nothing is due. */
 export function pickWeapon(weapons: RivenWeapon[], rows: RivenCrawlRow[], now: number, refreshMs: number, retryMs = RETRY_AFTER_FAILURE_MS): RivenWeapon | null {
@@ -37,34 +38,14 @@ export function pickWeapon(weapons: RivenWeapon[], rows: RivenCrawlRow[], now: n
 export type TickResult = 'read' | 'idle' | 'off' | 'paused' | 'failed';
 
 export class RivenCrawler {
-  private timer: NodeJS.Timeout | null = null;
-  private stopped = true;
   private failures = 0;
   private pausedUntil = 0;
 
   constructor(private readonly ctx: AppContext) {}
 
-  start(): void {
-    this.stopped = false;
-    this.schedule(FIRST_DELAY_MS);
-  }
-
-  stop(): void {
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-  }
-
-  private schedule(ms: number): void {
-    this.timer = setTimeout(() => {
-      void this.tick()
-        .catch((err) => console.warn('[riven] crawl step failed:', err))
-        // A step that was still running when stop() came must not start the next round.
-        .finally(() => {
-          if (!this.stopped) this.schedule(Math.max(10, this.ctx.config.RIVEN_CRAWL_INTERVAL_SECONDS) * 1000);
-        });
-    }, ms);
-    this.timer.unref();
+  /** The pause between two reads; the setting can change at runtime, so the job asks after every read. */
+  get intervalMs(): number {
+    return Math.max(10, this.ctx.config.RIVEN_CRAWL_INTERVAL_SECONDS) * 1000;
   }
 
   async tick(now = Date.now()): Promise<TickResult> {

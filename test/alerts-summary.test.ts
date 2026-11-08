@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { EmbedBuilder } from 'discord.js';
 import { Store } from '../src/db.js';
-import { Notifier, type SummaryChannel, expireNote, newItemsText, postNote, updateSummaryMessage } from '../src/discord/notifier.js';
+import { postWorldStateAlerts, type SummaryChannel, expireNote, newItemsText, postNote, updateSummaryMessage } from '../src/discord/notifier.js';
 import { summaryEmbeds, summaryHash } from '../src/discord/summary.js';
 import { type WorldState, alertName } from '../src/warframe/worldstate.js';
 
@@ -254,7 +254,7 @@ describe('the notifier', () => {
       messages: { edit: async (id: string) => void edits.push(id), delete: async (id: string) => void deleted.push(id), fetch: async () => ({}) },
     };
     const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
-    const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
+    const notifier = { postWorldStateAlerts: (ws: WorldState) => postWorldStateAlerts(ctx, ws) };
     const future = Date.now() + 3_600_000;
     const base = (over: Record<string, unknown> = {}) => world({ sortie: { id: 's1', boss: 'Vor', expiry: new Date(future), variants: [] }, archonHunt: undefined, voidTrader: undefined, steelPath: undefined, alerts: [], invasions: [], ...over });
 
@@ -289,7 +289,7 @@ describe('the notifier', () => {
     const deleted: string[] = [];
     const channel = { id: 'chan', guildId: 'g', isSendable: () => true, send: async (p: (typeof sent)[number]) => (sent.push(p), { id: `m${sent.length}` }), messages: { edit: async () => {}, delete: async (id: string) => void deleted.push(id), fetch: async () => ({}) } };
     const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
-    const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
+    const notifier = { postWorldStateAlerts: (ws: WorldState) => postWorldStateAlerts(ctx, ws) };
     const future = Date.now() + 3_600_000;
     const sortie = (id: string, boss: string) => world({ sortie: { id, boss, expiry: new Date(future), variants: [] }, archonHunt: undefined, voidTrader: undefined, steelPath: undefined, alerts: [], invasions: [] });
 
@@ -306,7 +306,7 @@ describe('the notifier', () => {
     const sent: { content?: string; embeds?: { toJSON(): { fields?: { value: string }[] } }[] }[] = [];
     const channel = { id: 'chan', guildId: 'g', isSendable: () => true, send: async (p: (typeof sent)[number]) => (sent.push(p), { id: `m${sent.length}` }), messages: { edit: async () => {}, delete: async () => {}, fetch: async () => ({}) } };
     const ctx = { store, client: { channels: { fetch: async () => channel } }, config: { BOT_NAME: 'Ordis', CLAN_NAME: 'Rats', DISCORD_GUILD_ID: 'g' } } as never;
-    const notifier = new Notifier(ctx) as unknown as { postWorldStateAlerts(ws: WorldState): Promise<void> };
+    const notifier = { postWorldStateAlerts: (ws: WorldState) => postWorldStateAlerts(ctx, ws) };
     const future = Date.now() + 3_600_000;
     const event = (id: string) => ({ id, expiry: new Date(future), mission: { description: 'Event Alert Title', type: 'Survival', node: 'Naeglar (Eris)', faction: 'Infested', reward: { countedItems: [{ count: 50, type: 'Road To Tau Event Resource' }], credits: 17000 } } });
     const base = (alerts: unknown[]) => world({ sortie: undefined, archonHunt: undefined, voidTrader: undefined, steelPath: undefined, alerts, invasions: [] });

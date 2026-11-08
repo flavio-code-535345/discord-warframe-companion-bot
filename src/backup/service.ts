@@ -4,7 +4,8 @@ import { type BackupSummary, createSnapshot, summarize } from './snapshot.js';
 
 export const AUTO_BACKUP_INTERVAL_MS = 24 * 3_600_000;
 export const KEEP_AUTO_BACKUPS = 14;
-const CHECK_INTERVAL_MS = 3_600_000;
+/** How often the backup job looks whether a day has passed since the last automatic backup. */
+export const BACKUP_CHECK_MS = 3_600_000;
 
 let running: Promise<StoredBackup> | null = null;
 
@@ -34,29 +35,9 @@ export function takeBackup(ctx: AppContext, label: string | null, auto: boolean)
 
 export const summaryOf = (b: StoredBackup) => JSON.parse(b.summary) as BackupSummary;
 
-/** Takes an automatic backup whenever the newest one is older than a day; checks hourly. */
-export class BackupScheduler {
-  private timer: NodeJS.Timeout | null = null;
-  private first: NodeJS.Timeout | null = null;
-
-  constructor(private readonly ctx: AppContext) {}
-
-  start(): void {
-    this.stop();
-    // Give the gateway a minute to settle before the first check.
-    this.first = setTimeout(() => void this.check(), 60_000);
-    this.timer = setInterval(() => void this.check(), CHECK_INTERVAL_MS);
-  }
-
-  stop(): void {
-    if (this.first) clearTimeout(this.first);
-    if (this.timer) clearInterval(this.timer);
-    this.first = this.timer = null;
-  }
-
-  private async check(): Promise<void> {
-    const latest = this.ctx.store.listBackups(this.ctx.config.DISCORD_GUILD_ID).find((b) => b.auto);
-    if (latest && Date.now() - latest.createdAt < AUTO_BACKUP_INTERVAL_MS) return;
-    await takeBackup(this.ctx, null, true).catch((err) => console.error('[backup] automatic backup failed:', err));
-  }
+/** Takes an automatic backup when the newest one is older than a day (the hourly backup job, src/jobs.ts). */
+export async function backupIfDue(ctx: AppContext): Promise<void> {
+  const latest = ctx.store.listBackups(ctx.config.DISCORD_GUILD_ID).find((b) => b.auto);
+  if (latest && Date.now() - latest.createdAt < AUTO_BACKUP_INTERVAL_MS) return;
+  await takeBackup(ctx, null, true);
 }

@@ -12,6 +12,9 @@ import { api } from '../warframe/fetch.js';
 import { screenshotQueue } from '../queue.js';
 import { worldStateInfo } from '../warframe/worldstate.js';
 import { settingStates } from '../runtime-config.js';
+import { jobs } from '../jobs.js';
+import { emojiStatus } from '../discord/app-emojis.js';
+import { emojiReport } from '../discord/emoji.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
 /**
@@ -117,7 +120,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Bot health',
       description:
-        'One-call health check: uptime, Discord connection, last start/stop reports, the Warframe API pacing state, which screenshot-reading models are configured (and whether the local one is currently being skipped after a failure), the wiki index size, how many questions were answered in the last 24 hours by source, every bot setting and every Config page value that differs from its default.',
+        'One-call health check: uptime, Discord connection, last start/stop reports, the Warframe API pacing state, which screenshot-reading models are configured (and whether the local one is currently being skipped after a failure), the wiki index size, every background job (runs, failures, last error, next run), the custom emojis in use and which icons fall back to Unicode, how many questions were answered in the last 24 hours by source, every bot setting and every Config page value that differs from its default.',
       annotations: READ_ONLY,
     },
     tool(async () => {
@@ -143,6 +146,30 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           cloudDailyLimit: config.FREE_AI_KEY ? config.FREE_AI_DAILY_LIMIT : null,
         },
         wikiIndex: wiki && { pages: wiki.pages, chunks: wiki.chunks, refreshedAt: iso(wiki.refreshedAt) },
+        // Every background job: how often it ran, whether it is failing and when it runs next.
+        jobs: jobs.stats().map((j) => ({
+          name: j.name,
+          everySeconds: Math.round(j.everyMs / 1000),
+          runs: j.runs,
+          failures: j.failures,
+          running: j.running,
+          lastRun: iso(j.lastStartAt),
+          lastMs: j.lastMs,
+          lastError: j.lastError && { message: j.lastError, at: iso(j.lastErrorAt) },
+          nextRun: iso(j.nextAt),
+        })),
+        emojis: (() => {
+          const status = emojiStatus();
+          const report = emojiReport();
+          return {
+            customKnown: status?.known ?? 0,
+            refreshedAt: iso(status?.at ?? null),
+            uploaded: status?.created ?? [],
+            failedUploads: status?.failed ?? [],
+            // Logical names that show their Unicode stand-in because no custom emoji is there for them.
+            fallingBack: report.filter((r) => !r.custom).map((r) => r.name),
+          };
+        })(),
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
         features: {
           statusReports: Boolean(s.statusChannelId),
