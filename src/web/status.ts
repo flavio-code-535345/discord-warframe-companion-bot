@@ -315,7 +315,7 @@ document.querySelectorAll('.chip').forEach(c=>{const on=c.dataset.kind!==undefin
 let n=0;document.querySelectorAll('tr[data-tier]').forEach(r=>{const show=(kind==='all'||r.dataset.kind===kind)&&(tier==='all'||r.dataset.tier===tier);r.hidden=!show;if(show)n++});
 const c=document.querySelector('[data-fcount]');if(c)c.textContent=n+' shown'}
 document.addEventListener('click',e=>{const c=e.target.closest&&e.target.closest('.chip');if(!c)return;if(c.dataset.kind!==undefined)kind=c.dataset.kind;else tier=c.dataset.tier;try{sessionStorage.setItem('fissures',JSON.stringify({kind:kind,tier:tier}))}catch(x){}filt()});
-async function refresh(){if(busy)return;busy=true;try{const r=await fetch('/',{cache:'no-store'});if(r.ok){const m=new DOMParser().parseFromString(await r.text(),'text/html').querySelector('main');if(m){document.querySelector('main').innerHTML=m.innerHTML;localize();filt()}}}catch(e){}last=Date.now();busy=false}
+async function refresh(){if(busy)return;busy=true;try{const r=await fetch('/',{cache:'no-store'});if(r.ok){const m=new DOMParser().parseFromString(await r.text(),'text/html').querySelector('main');if(m){const o=[...document.querySelectorAll('details[data-g]')].map(d=>[d.dataset.g,d.open]);document.querySelector('main').innerHTML=m.innerHTML;o.forEach(([g,v])=>{document.querySelectorAll('details[data-g]').forEach(d=>{if(d.dataset.g===g)d.open=v})});localize();filt()}}}catch(e){}last=Date.now();busy=false}
 function tick(){const now=Date.now();let over=false;document.querySelectorAll('[data-until]').forEach(el=>{const left=Date.parse(el.dataset.until)-now;el.textContent=left>0?'in '+fmt(left):'now';if(left<=0)over=true});if(over&&now-last>15000)refresh()}
 localize();filt();tick();setInterval(tick,1000);setInterval(refresh,60000);
 `;
@@ -329,14 +329,13 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
   const unavailable = none('World state unavailable right now.');
   const more = (n: number) => (n > 0 ? row(`<span class="n">…and ${n} more</span>`) : '');
 
-  const pills = [
-    s.online ? `<span class="pill"><span class="dot"></span><b>Online</b>${s.pingMs !== null ? ` ${s.pingMs} ms` : ''}</span>` : '<span class="pill off"><span class="dot"></span><b>Offline</b></span>',
-    `<span class="pill">up <b>${e(formatDuration(s.uptimeSeconds * 1000))}</b></span>`,
-    `<span class="pill"><b>${e(String(s.server?.memberCount ?? '—'))}</b> members</span>`,
-    `<span class="pill"><b>${s.registeredMembers}</b> registered</span>`,
-    `<span class="pill">World state <b>${e(apiPill(s.warframeApi))}</b></span>`,
-    s.archive ? `<span class="pill">archive <b>${s.archive.pages.toLocaleString('en-US')}${s.archive.syncing && s.archive.total ? ` / ${s.archive.total.toLocaleString('en-US')}` : ''}</b>${s.archive.syncing ? ' · syncing' : ''}</span>` : '',
-  ].join('');
+  const status = s.online ? `<span class="live"><span class="dot"></span>Online${s.pingMs !== null ? ` · ${s.pingMs} ms` : ''}</span>` : '<span class="live off"><span class="dot"></span>Offline</span>';
+  const facts = [
+    `${e(String(s.server?.memberCount ?? '—'))} members`,
+    `up ${e(formatDuration(s.uptimeSeconds * 1000))}`,
+    `world state ${e(apiPill(s.warframeApi))}`,
+    s.archive ? `wiki archive ${s.archive.pages.toLocaleString('en-US')}${s.archive.syncing ? ' · syncing' : ''}` : '',
+  ].filter(Boolean).join(' · ');
 
   const clan = tile(
     'Clan events',
@@ -349,7 +348,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
   );
 
   const cycles = tile(
-    'Open worlds',
+    'Day and night cycles',
     '',
     s.cycles ? s.cycles.map((c) => row(`${c.icon} ${e(c.name)} <b>${e(c.state)}</b>`, countdown(c.endsAt), c.note ? e(c.note) : '')).join('') : unavailable,
   );
@@ -397,10 +396,10 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
     w?.baro ? stat("Baro Ki'Teer", w.baro.here ? 'Here now' : 'Arriving', `${e(w.baro.location)} · ${countdown(w.baro.at)}`) : '',
     w ? stat('Arbitration', w.arbitration ? e(w.arbitration.type) : 'None', w.arbitration ? `${e(w.arbitration.node)} · ends ${countdown(w.arbitration.endsAt)}` : 'between missions') : '',
     w?.sortie ? stat('Sortie', e(w.sortie.boss), `resets ${countdown(w.sortie.endsAt)}`) : '',
-    w ? stat('Fissures', String(fissureTotal), `${w.fissures.reduce((n, f) => n + f.steelPath, 0)} Steel Path · ${w.fissures.reduce((n, f) => n + f.storm, 0)} Storm`) : '',
   ].join('');
 
-  const group = (title: string, hint: string, tiles: string) => (tiles.trim() ? `<section class="group"><h3>${title}<span>${hint}</span></h3><div class="grid">${tiles}</div></section>` : '');
+  const group = (title: string, hint: string, tiles: string, open = false) =>
+    tiles.trim() ? `<details class="group" data-g="${e(title)}"${open ? ' open' : ''}><summary><h3>${title}</h3><span>${hint}</span></summary><div class="grid">${tiles}</div></details>` : '';
 
   const sortie = !w
     ? tile('Sortie', '', unavailable)
@@ -423,9 +422,9 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
         "Baro Ki'Teer",
         countdown(w.baro.at),
         `<div class="lead">${w.baro.here ? `Here at ${e(w.baro.location)}` : `Arrives at ${e(w.baro.location)}`}</div>${w.baro.items
-          .slice(0, 8)
+          .slice(0, 5)
           .map((i) => row(e(i.name), `${i.ducats} <span class="u">ducats</span>`))
-          .join('')}${more(w.baro.items.length - 8)}`,
+          .join('')}${more(w.baro.items.length - 5)}`,
       )
     : '';
 
@@ -446,9 +445,9 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
         'Invasions',
         `<span class="x">${w.invasions.length} active</span>`,
         w.invasions
-          .slice(0, 6)
+          .slice(0, 4)
           .map((i) => row(`${i.notable ? '<span class="star">★</span> ' : ''}${e(i.node)}`, `${i.completion}%`, e(i.rewards)))
-          .join('') + more(w.invasions.length - 6),
+          .join('') + more(w.invasions.length - 4),
       )
     : '';
 
@@ -461,9 +460,9 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
         `Nightwave · S${w.nightwave.season}`,
         countdown(w.nightwave.endsAt),
         w.nightwave.challenges
-          .slice(0, 8)
+          .slice(0, 5)
           .map((c) => row(`${e(c.title)}<span class="tag">${c.kind}</span>`, c.reputation.toLocaleString('en-US')))
-          .join('') + more(w.nightwave.challenges.length - 8),
+          .join('') + more(w.nightwave.challenges.length - 5),
       )
     : '';
 
@@ -495,16 +494,16 @@ ${s.archive?.syncing ? '<meta http-equiv="refresh" content="15">' : ''}
 <header>
 <img class="logo" src="/logo.png" alt="" width="44" height="44">
 <div><h1>${e(s.botName)}</h1><div class="sub">Companion of ${e(s.clanName)}${s.server && s.server.name !== s.clanName ? ` · ${e(s.server.name)}` : ''}</div></div>
-<div class="pills">${pills}</div>
+${status}
 </header>
 ${strip ? `<div class="strip">${strip}</div>` : ''}
 <div class="groups">
-${group('Open worlds', 'cycles and the Void Trader', cycles + baro)}
-${group('The Void', 'fissures and Arbitration', fissures + arbitration)}
+${group('Open worlds', 'cycles and the Void Trader', cycles + baro, true)}
+${group('The Void', 'fissures and Arbitration', fissures + arbitration, true)}
 ${group('Resets', 'daily, weekly and seasonal', sortie + archon + steel + archimedea + nightwave)}
 ${group('Events and trading', 'the clan, alerts, invasions and deals', clan + alerts + invasions + events + darvo + resurgence)}
 </div>
-<footer>World state from warframestat.us · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
+<footer><p>${facts}</p>World state from warframestat.us · updated <time datetime="${s.generatedAt}" data-local>${e(utc(s.generatedAt))}</time> · refreshes automatically · <a href="/admin/">Admin</a></footer>
 </main>
 <script nonce="${nonce}">${SCRIPT}</script>
 </body>
