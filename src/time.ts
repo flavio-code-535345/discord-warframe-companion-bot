@@ -81,8 +81,8 @@ export function relative(date: TimeInput, now = Date.now()): string {
   return diff >= 0 ? `in ${formatDuration(diff)}` : `${formatDuration(-diff)} ago`;
 }
 
-/** Discord timestamp markup, rendered in each reader's own timezone. */
-export function discordTime(date: TimeInput, style: 'R' | 'F' | 'f' | 't' | 'D' = 'R'): string {
+/** Discord timestamp markup, rendered in each reader's own timezone: R "in 2 hours", t "18:00", T "18:00:00", d "08/11/2026", D "8 November 2026", f date and time, F with the weekday. */
+export function discordTime(date: TimeInput, style: 'R' | 'F' | 'f' | 't' | 'T' | 'd' | 'D' = 'R'): string {
   const ms = toMs(date);
   return Number.isNaN(ms) ? 'unknown' : `<t:${Math.floor(ms / 1000)}:${style}>`;
 }

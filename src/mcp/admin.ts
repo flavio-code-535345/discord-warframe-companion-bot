@@ -43,6 +43,12 @@ const ARCHIVE_NAME = '🗄️ ARCHIVE';
 const TEXT_CHANNEL = { types: [ChannelType.GuildText, ChannelType.GuildAnnouncement], label: 'a text channel' };
 const SETTING_CHANNEL_KINDS: Record<string, { types: ChannelType[]; label: string }> = {
   alerts_channel_id: TEXT_CHANNEL,
+  arbitrations_channel_id: TEXT_CHANNEL,
+  fissures_channel_id: TEXT_CHANNEL,
+  sortie_channel_id: TEXT_CHANNEL,
+  cycles_channel_id: TEXT_CHANNEL,
+  traders_channel_id: TEXT_CHANNEL,
+  invasions_channel_id: TEXT_CHANNEL,
   announcements_channel_id: TEXT_CHANNEL,
   welcome_channel_id: TEXT_CHANNEL,
   chat_channel_id: TEXT_CHANNEL,
@@ -772,10 +778,19 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'update_bot_settings',
     {
       title: "Set the bot's channels",
-      description: 'Points the bot at channels: worldstate alerts (+ ping role), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the birthday channel, the weekly reset post channel the promo codes channel and the game news channel. null turns one off.',
+      description:
+        'Points the bot at channels: the seven World State boards (alerts, arbitrations, fissures, sortie, cycles, traders, invasions; one live board per channel, a channel holds one) and their ping roles, announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the birthday channel, the weekly reset post channel, the promo codes channel and the game news channel. null turns one off.',
       inputSchema: {
-        alerts_channel_id: snowflake.nullable().optional(),
-        alerts_role_id: snowflake.nullable().optional(),
+        alerts_channel_id: snowflake.nullable().optional().describe('World State board: alerts, Gifts of the Lotus, events and Nightwave'),
+        alerts_role_id: snowflake.nullable().optional().describe('Pinged for a notable alert or invasion (the alerts and invasions boards share it)'),
+        arbitrations_channel_id: snowflake.nullable().optional().describe('World State board: the Arbitration now, the next 48 hours with tiers and the best of the week'),
+        arbitrations_role_id: snowflake.nullable().optional().describe('Pinged 10 minutes before an S or A tier Arbitration'),
+        fissures_channel_id: snowflake.nullable().optional().describe('World State board: normal, Steel Path and Void Storm fissures by relic tier'),
+        sortie_channel_id: snowflake.nullable().optional().describe('World State board: sortie, Archon Hunt, Archimedeas and Steel Path honors'),
+        cycles_channel_id: snowflake.nullable().optional().describe('World State board: open world cycles with their next changes, the Duviri Circuit and bounties'),
+        traders_channel_id: snowflake.nullable().optional().describe("World State board: Baro Ki'Teer, Darvo, Varzia's Prime Resurgence and Teshin"),
+        baro_role_id: snowflake.nullable().optional().describe("Pinged when Baro Ki'Teer arrives"),
+        invasions_channel_id: snowflake.nullable().optional().describe('World State board: every invasion with both rewards and its progress'),
         announcements_channel_id: snowflake.nullable().optional(),
         welcome_channel_id: snowflake.nullable().optional(),
         chat_channel_id: snowflake.nullable().optional(),
@@ -813,10 +828,29 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         if (kind && !kind.types.includes(channel.type)) throw new UserError(`${key}: ${channel.name} is the wrong kind of channel, this setting needs ${kind.label}.`);
       }
       // Everything is checked before anything is saved, so a refused change leaves the settings as they were.
-      assertChannelFree(ctx, { chatChannelId: args.chat_channel_id, honeypotChannelId: args.honeypot_channel_id, rivenChannelId: args.riven_channel_id });
+      assertChannelFree(ctx, {
+        chatChannelId: args.chat_channel_id,
+        honeypotChannelId: args.honeypot_channel_id,
+        rivenChannelId: args.riven_channel_id,
+        alertsChannelId: args.alerts_channel_id,
+        arbitrationsChannelId: args.arbitrations_channel_id,
+        fissuresChannelId: args.fissures_channel_id,
+        sortieChannelId: args.sortie_channel_id,
+        cyclesChannelId: args.cycles_channel_id,
+        tradersChannelId: args.traders_channel_id,
+        invasionsChannelId: args.invasions_channel_id,
+      });
       const patch = {
         ...(args.alerts_channel_id !== undefined ? { alertsChannelId: args.alerts_channel_id } : {}),
         ...(args.alerts_role_id !== undefined ? { alertsRoleId: args.alerts_role_id } : {}),
+        ...(args.arbitrations_channel_id !== undefined ? { arbitrationsChannelId: args.arbitrations_channel_id } : {}),
+        ...(args.arbitrations_role_id !== undefined ? { arbitrationsRoleId: args.arbitrations_role_id } : {}),
+        ...(args.fissures_channel_id !== undefined ? { fissuresChannelId: args.fissures_channel_id } : {}),
+        ...(args.sortie_channel_id !== undefined ? { sortieChannelId: args.sortie_channel_id } : {}),
+        ...(args.cycles_channel_id !== undefined ? { cyclesChannelId: args.cycles_channel_id } : {}),
+        ...(args.traders_channel_id !== undefined ? { tradersChannelId: args.traders_channel_id } : {}),
+        ...(args.baro_role_id !== undefined ? { baroRoleId: args.baro_role_id } : {}),
+        ...(args.invasions_channel_id !== undefined ? { invasionsChannelId: args.invasions_channel_id } : {}),
         ...(args.announcements_channel_id !== undefined ? { announcementsChannelId: args.announcements_channel_id } : {}),
         ...(args.welcome_channel_id !== undefined ? { welcomeChannelId: args.welcome_channel_id } : {}),
         ...(args.chat_channel_id !== undefined ? { chatChannelId: args.chat_channel_id } : {}),

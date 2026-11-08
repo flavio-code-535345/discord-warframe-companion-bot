@@ -426,7 +426,20 @@ const ARCHIMEDEA_NAMES: Record<string, string> = { CT_LAB: 'Deep Archimedea', CT
 /** The parser spaces out camel-cased internal names ("C T_ L A B", "M P V Protea Prime Single Pack"). */
 const despace = (s: string) => s.replace(/\s+/g, '');
 export const archimedeaName = (type: string) => ARCHIMEDEA_NAMES[despace(type)] ?? type;
-export const resurgenceItemName = (item: string) => item.replace(/^M P V /, '');
+
+const RELIC_TIERS = ['Lith', 'Meso', 'Neo', 'Axi'];
+/**
+ * Varzia's stock as players know it. The feed spaces out internal names ("M P V Protea Prime Single Pack") and names some items after
+ * their path: "T1 Void Projection Nidus Saryn Vault A Bronze" is a Lith relic of that resurgence, "Prime Strun Weapon" is Strun Prime
+ * (so a `/track reward Strun Prime` finds it). Its "ducats" are Regal Aya and its "credits" are Aya.
+ */
+export function resurgenceItemName(raw: string): string {
+  const item = raw.replace(/^M P V /, '');
+  const relic = /^T([1-4]) Void Projection (.+?) Vault ([A-Z])\b/i.exec(item);
+  if (relic) return `${RELIC_TIERS[Number(relic[1]) - 1]} relic · ${relic[2]} ${relic[3]!.toUpperCase()}`;
+  const weapon = /^Prime (?!Access\b)(.+?)(?: Weapon)?$/.exec(item);
+  return weapon ? `${weapon[1]} Prime` : item;
+}
 
 /**
  * Total standing for a bounty, or null when the stages aren't in standing units: Entrati jobs report

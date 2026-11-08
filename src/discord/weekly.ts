@@ -51,7 +51,7 @@ export function weeklyEmbeds(ws: WorldState, week: number): EmbedBuilder[] {
   return [overview, archonEmbed(ws), steelPathEmbed(ws)];
 }
 
-/** The button under the channel post and on the alerts summary: `weekly:toggle` turns the member's DM subscription on or off. */
+/** The button under the channel post and on the sortie board: `weekly:toggle` turns the member's DM subscription on or off. */
 export function weeklyButton(): ButtonBuilder {
   return new ButtonBuilder().setCustomId('weekly:toggle').setLabel('Weeklies by DM').setEmoji('🗓️').setStyle(ButtonStyle.Secondary);
 }

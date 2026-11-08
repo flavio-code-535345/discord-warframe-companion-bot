@@ -1,198 +1,44 @@
 import { EmbedBuilder } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { getSendableChannel, refreshEventMessage } from '../services/clan.js';
-import { type TimeInput, discordTime, toMs } from '../time.js';
+import { discordTime } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
-import { type WorldState, alertName, getWorldState, isBaroHere, isNotableReward, worldStateEnabled, rewardText } from '../warframe/worldstate.js';
-import { alertsComponents } from './alerts-panel.js';
-import { COLORS, archonEmbed, baroEmbed, clampLines, sortieEmbed, steelPathEmbed } from './embeds.js';
+import { type ArbitrationSlot, arbitrationView, loadArbitrations } from '../warframe/arbitrations.js';
+import { type WorldState, getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
+import { COLORS, clampLines } from './embeds.js';
+import { feedInput, syncFeeds } from './feeds/index.js';
 import { brandIcon } from './identity.js';
 import { postNews } from './news.js';
 import { postWeeklyReset } from './weekly.js';
-import { summaryEmbeds, summaryHash } from './summary.js';
 
 const REMINDER_WINDOW_MS = 15 * 60 * 1000;
 const SEEN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-export interface WorldStateAlert {
-  /** Stable identity used to post each alert only once, across restarts. */
-  key: string;
-  embed: EmbedBuilder;
-  /** What the ping says about it when the title alone is not enough (the reward). */
-  note?: string;
-}
-
-/** Everything currently in the worldstate that deserves an alert; the caller filters out what was already posted. */
-export function collectAlerts(ws: WorldState, now = Date.now()): WorldStateAlert[] {
-  const alerts: WorldStateAlert[] = [];
-  const live = (expiry: TimeInput) => toMs(expiry) > now;
-
-  if (ws.sortie && live(ws.sortie.expiry)) alerts.push({ key: `sortie:${ws.sortie.id}`, embed: sortieEmbed(ws) });
-  if (ws.archonHunt && live(ws.archonHunt.expiry)) alerts.push({ key: `archon:${ws.archonHunt.id}`, embed: archonEmbed(ws) });
-  if (ws.voidTrader && isBaroHere(ws, now)) {
-    alerts.push({ key: `baro:${ws.voidTrader.id}:${toMs(ws.voidTrader.activation)}`, embed: baroEmbed(ws) });
-  }
-  if (ws.steelPath?.currentReward && live(ws.steelPath.expiry)) {
-    alerts.push({ key: `steelpath:${toMs(ws.steelPath.activation)}`, embed: steelPathEmbed(ws) });
-  }
-
-  for (const a of ws.alerts ?? []) {
-    if (!live(a.expiry)) continue;
-    // Only an alert with something worth a detour is announced (like invasions below); the rest, such as an event's endless resource
-    // nodes that appear every half hour, is still listed in the summary.
-    if (!isNotableReward(rewardText(a.mission.reward))) continue;
-    alerts.push({
-      key: `alert:${a.id}`,
-      note: `⚠️ ${alertName(a)}: **${rewardText(a.mission.reward)}** (${a.mission.node})`,
-      embed: new EmbedBuilder()
-        .setColor(COLORS.warn)
-        .setTitle(`⚠️ Alert: ${alertName(a)}`)
-        .setDescription(
-          `${a.mission.type} — ${a.mission.node} · ${a.mission.faction}\n**Reward:** ${rewardText(a.mission.reward)}\nEnds ${discordTime(a.expiry)}`,
-        ),
-    });
-  }
-
-  for (const inv of ws.invasions ?? []) {
-    if (inv.completed) continue;
-    const rewards = [rewardText(inv.attacker.reward), rewardText(inv.defender.reward)];
-    if (!rewards.some((r) => isNotableReward(r))) continue;
-    alerts.push({
-      key: `invasion:${inv.id}`,
-      note: `🎯 Invasion at ${inv.node}: **${rewards.filter((r) => isNotableReward(r)).join(" / ")}**`,
-      embed: new EmbedBuilder()
-        .setColor(COLORS.warn)
-        .setTitle(`🎯 Invasion worth running: ${inv.node}`)
-        .setDescription(
-          `${inv.desc}\n${inv.vsInfestation ? '' : `**${inv.attacker.faction}:** ${rewards[0]}\n`}**${inv.defender.faction}:** ${rewards[1]}\n${Math.round(inv.completion)}% complete`,
-        ),
-    });
-  }
-
-  return alerts;
-}
-
-/** The most that is said in the short "something new" message; the rest is in the summary. */
-const MAX_TITLES = 8;
-/** The summary is edited at most this often, unless something new just appeared. */
-const SUMMARY_MIN_EDIT_MS = 2 * 60_000;
-
-/** The little of a channel that the summary needs (a real text channel has all of it), so it can be tested without Discord. */
-export interface SummaryChannel {
-  id: string;
-  guildId: string;
-  send(payload: { content?: string; embeds?: EmbedBuilder[]; components?: ReturnType<typeof alertsComponents>; allowedMentions: { parse?: []; roles?: string[] } }): Promise<{ id: string }>;
-  messages: { edit(messageId: string, payload: { embeds: EmbedBuilder[]; components?: ReturnType<typeof alertsComponents> }): Promise<unknown>; delete(messageId: string): Promise<unknown>; fetch(messageId: string): Promise<unknown> };
-}
-
-/** An unchanged summary is not edited, so every so often it is checked that the message is still there (someone may have deleted it). */
-const SUMMARY_VERIFY_MS = 10 * 60_000;
-
-interface SummaryRecord {
-  messageId: string;
-  hash: string;
-  at: number;
-  /** When the message was last seen to exist. */
-  checked: number;
-}
-
-const readRecord = (raw: string | null): SummaryRecord | null => {
-  try {
-    const r = JSON.parse(raw ?? 'null') as Partial<SummaryRecord> | null;
-    return r && typeof r.messageId === 'string' && typeof r.hash === 'string' ? { messageId: r.messageId, hash: r.hash, at: Number(r.at) || 0, checked: Number(r.checked) || Number(r.at) || 0 } : null;
-  } catch {
-    return null;
-  }
-};
-
-/** The short message that goes with a ping: what is new, and where the whole picture is. */
-export function newItemsText(titles: string[], summaryUrl: string, roleId: string | null | undefined): string {
-  const shown = titles.slice(0, MAX_TITLES).join(' · ');
-  const more = titles.length > MAX_TITLES ? ` · +${titles.length - MAX_TITLES} more` : '';
-  return `${roleId ? `<@&${roleId}> ` : ''}🔔 **New:** ${shown}${more}\n[Everything right now](<${summaryUrl}>)`;
-}
-
 /**
- * Keeps the alerts channel's single summary message up to date: it is edited in place when something in it changed (not more often than
- * every two minutes, unless something new just appeared), posted again if someone deleted it, and left alone when nothing changed. The
- * message id and a fingerprint of its content are kept in bot_meta, so a restart continues with the same message. Returns its link.
+ * The world state job (src/jobs.ts, every minute; the world state itself is fetched at most every WORLDSTATE_POLL_SECONDS, the
+ * Arbitration schedule twice a day): the World State boards, the members' DMs and the weekly reset post. The Arbitration board and
+ * the Arbitration DMs work from the schedule alone, so they keep going while the world state is switched off or not answering.
  */
-export async function updateSummaryMessage(ctx: AppContext, channel: SummaryChannel, ws: WorldState, opts: { force: boolean; now?: number }): Promise<string> {
-  const { store, config } = ctx;
-  const now = opts.now ?? Date.now();
-  const key = `alerts_summary:${channel.id}`;
-  const link = (id: string) => `https://discord.com/channels/${channel.guildId}/${channel.id}/${id}`;
-  const embeds = summaryEmbeds(ws, { botName: config.BOT_NAME, clanName: config.CLAN_NAME, iconURL: brandIcon(ctx) }, now);
-  // The suffix versions the layout and buttons of the message, so a message saved with an older one is edited once to get the new.
-  const hash = `${summaryHash(embeds)}:c4`;
-  const saved = readRecord(store.getMeta(key));
-  // 10008: someone deleted the message, so post a new one. Anything else (no permission, Discord down) is for the caller to log.
-  const gone = (err: unknown) => {
-    if ((err as { code?: number }).code !== 10008) throw err;
-  };
-  let missing = false;
-  if (saved && saved.hash === hash && now - saved.checked >= SUMMARY_VERIFY_MS) {
-    try {
-      await channel.messages.fetch(saved.messageId);
-      store.setMeta(key, JSON.stringify({ ...saved, checked: now }));
-    } catch (err) {
-      gone(err);
-      missing = true;
-    }
-  }
-  if (saved && !missing && (saved.hash === hash || (!opts.force && now - saved.at < SUMMARY_MIN_EDIT_MS))) return link(saved.messageId);
-  embeds[embeds.length - 1]!.setTimestamp(now);
-  if (saved && !missing) {
-    try {
-      await channel.messages.edit(saved.messageId, { embeds, components: alertsComponents() });
-      store.setMeta(key, JSON.stringify({ messageId: saved.messageId, hash, at: now, checked: now }));
-      return link(saved.messageId);
-    } catch (err) {
-      gone(err);
-    }
-  }
-  const sent = await channel.send({ embeds, components: alertsComponents(), allowedMentions: { parse: [] } });
-  store.setMeta(key, JSON.stringify({ messageId: sent.id, hash, at: now, checked: now }));
-  return link(sent.id);
-}
-
-/** How long the short "something new" message stays: what it announced is in the summary, which is all the channel keeps. */
-const NOTE_TTL_MS = 3 * 60 * 60_000;
-const noteKey = (channelId: string) => `alerts_note:${channelId}`;
-
-const readNote = (raw: string | null): { messageId: string; at: number } | null => {
-  try {
-    const r = JSON.parse(raw || 'null') as { messageId?: unknown; at?: unknown } | null;
-    return r && typeof r.messageId === 'string' ? { messageId: r.messageId, at: Number(r.at) || 0 } : null;
-  } catch {
-    return null;
-  }
-};
-
-/** Posts the "something new" message and removes the previous one, so a busy day doesn't leave a pile of them in the channel. */
-export async function postNote(ctx: AppContext, channel: SummaryChannel, payload: Parameters<SummaryChannel['send']>[0], now = Date.now()): Promise<void> {
-  const previous = readNote(ctx.store.getMeta(noteKey(channel.id)));
-  const sent = await channel.send(payload);
-  ctx.store.setMeta(noteKey(channel.id), JSON.stringify({ messageId: sent.id, at: now }));
-  if (previous) await channel.messages.delete(previous.messageId).catch(() => {});
-}
-
-/** Removes the "something new" message once it is old, or at once (`immediately`) when there is no role to ping any more. */
-export async function expireNote(ctx: AppContext, channel: SummaryChannel, now = Date.now(), immediately = false): Promise<void> {
-  const saved = readNote(ctx.store.getMeta(noteKey(channel.id)));
-  if (!saved || (!immediately && now - saved.at < NOTE_TTL_MS)) return;
-  await channel.messages.delete(saved.messageId).catch(() => {});
-  ctx.store.setMeta(noteKey(channel.id), '');
-}
-
-/** The world state job (src/jobs.ts, every minute; the world state itself is fetched at most every WORLDSTATE_POLL_SECONDS). */
 export async function worldStateJob(ctx: AppContext): Promise<void> {
-  if (!worldStateEnabled()) return;
-  const ws = await getWorldState();
-  await postWorldStateAlerts(ctx, ws);
-  await notifyTrackers(ctx, ws);
-  await postWeeklyReset(ctx, ws).catch((err) => console.error('[notifier] weekly reset post failed:', err));
+  const now = Date.now();
+  let ws: WorldState | null = null;
+  let wsError: unknown = null;
+  if (worldStateEnabled()) {
+    try {
+      ws = await getWorldState();
+    } catch (err) {
+      wsError = err;
+    }
+  }
+  const arbyData = await loadArbitrations().catch(() => null);
+  const arby = arbitrationView(arbyData, ws, now, { hours: 48, bestDays: 7, bestTier: 'B' });
+  await syncFeeds(ctx, feedInput(ctx, { ws, arbyData, arby, now }), { wsFailed: wsError !== null });
+  // The schedule's hours only while it agrees with the game; otherwise the world state's own entry (without a tier) is used.
+  const slots = arby.scheduleTrusted ? [arby.current, ...arby.upcoming].filter((s): s is ArbitrationSlot => s !== null) : undefined;
+  await notifyTrackers(ctx, ws, now, slots);
+  if (ws) await postWeeklyReset(ctx, ws).catch((err) => console.error('[notifier] weekly reset post failed:', err));
   ctx.store.pruneSeen(SEEN_RETENTION_MS);
+  if (wsError) throw wsError;
 }
 
 /** The game news job: the in-game news comes with the (cached) world state, the Steam announcements are read on their own. */
@@ -200,41 +46,12 @@ export async function newsJob(ctx: AppContext): Promise<void> {
   await postNews(ctx, worldStateEnabled() ? await getWorldState().catch(() => null) : null);
 }
 
-export async function postWorldStateAlerts(ctx: AppContext, ws: WorldState): Promise<void> {
-  const { store } = ctx;
-  // On a brand-new database, record what's already live instead of announcing all of it as new.
-  const bootstrap = store.seenCount() === 0;
-  const fresh = collectAlerts(ws).filter((a) => store.markSeen(a.key));
-  const notify = !bootstrap && fresh.length > 0;
-
-  for (const settings of store.allSettings()) {
-    if (!settings.alertsChannelId) continue;
-    try {
-      const channel = await getSendableChannel(ctx, settings.alertsChannelId);
-      // One message says everything that is going on and is edited in place; it is brought up to date before anyone is pinged.
-      const target = channel as unknown as SummaryChannel;
-      const url = await updateSummaryMessage(ctx, target, ws, { force: notify });
-      // The short "New:" message exists only to ping the alerts role (an edit can't ping anyone). Without a role it would be a
-      // second message that pings nobody and repeats the summary, so the channel keeps the summary alone.
-      const roleId = settings.alertsRoleId;
-      if (notify && roleId) {
-        await postNote(ctx, target, {
-          content: newItemsText(fresh.map((a) => a.note ?? a.embed.data.title ?? 'Something new'), url, roleId),
-          allowedMentions: { roles: [roleId] },
-        });
-      } else await expireNote(ctx, target, Date.now(), !roleId);
-    } catch (err) {
-      console.error(`[notifier] could not post alerts to ${settings.alertsChannelId}:`, err);
-    }
-  }
-}
-
-/** DMs each member about new worldstate items matching their /track trackers, one message per member per poll. */
-async function notifyTrackers(ctx: AppContext, ws: WorldState): Promise<void> {
+/** DMs each member about what matches their /track trackers and the boards' "DM me when…" menus, one message per member per round. */
+async function notifyTrackers(ctx: AppContext, ws: WorldState | null, now: number, arbitrations: ArbitrationSlot[] | undefined): Promise<void> {
   const { store, config, client } = ctx;
   const trackers = store.listTrackers(config.DISCORD_GUILD_ID);
   if (!trackers.length) return;
-  const items = collectTrackables(ws);
+  const items = collectTrackables(ws, now, arbitrations ? { arbitrations } : {});
   const perUser = new Map<string, { label: string; lines: string[] }[]>();
 
   for (const tracker of trackers) {

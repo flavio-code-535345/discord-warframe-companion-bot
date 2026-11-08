@@ -272,6 +272,7 @@ export function resurgenceEmbed(ws: WorldState): EmbedBuilder {
   const t = ws.vaultTrader;
   const embed = base(COLORS.void, 'resurgence', 'Prime Resurgence (Varzia)');
   if (!t?.inventory?.length) return embed.setDescription('No Prime Resurgence stock right now.');
-  const lines = t.inventory.map((i) => `• ${resurgenceItemName(i.item)}${i.ducats ? ` — **${i.ducats}** Aya` : ''}${i.credits ? ` · ${Number(i.credits).toLocaleString('en-US')} cr` : ''}`);
+  // The feed's "ducats" are Regal Aya (bought) and its "credits" are Aya (earned in missions, what relics cost).
+  const lines = t.inventory.map((i) => `• ${resurgenceItemName(i.item)}${i.ducats ? ` · **${i.ducats}** Regal Aya` : ''}${i.credits ? ` · **${Number(i.credits).toLocaleString('en-US')}** Aya` : ''}`);
   return embed.setDescription(`Rotates ${discordTime(t.expiry)}\n\n${clampLines(lines, 3800)}`);
 }

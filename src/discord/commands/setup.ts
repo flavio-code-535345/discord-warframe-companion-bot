@@ -8,6 +8,7 @@ import { disableSsRoles, resetSsClaims, setupSsRoles } from '../../ssroles/servi
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 import { syncChatTopic } from '../chat-topic.js';
+import { FEEDS, feedDef } from '../feeds/index.js';
 import { skipCurrentWeek } from '../weekly.js';
 
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement] as const;
@@ -23,7 +24,10 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
     .setColor(COLORS.brand)
     .setTitle('Bot settings')
     .addFields(
-      { name: 'Worldstate alerts', value: `${ch(s.alertsChannelId)}${s.alertsRoleId ? ` · pings <@&${s.alertsRoleId}>` : ''}` },
+      {
+        name: 'World State boards',
+        value: FEEDS.map((f) => `${f.label}: ${ch(s[f.channel])}${f.role && s[f.role] ? ` · pings <@&${s[f.role]}>` : ''}`).join('\n'),
+      },
       { name: 'Announcements & events', value: ch(s.announcementsChannelId) },
       {
         name: 'Welcome messages',
@@ -40,7 +44,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}` : '*off*' },
       { name: 'Riven scanning', value: s.rivenChannelId ? `${ch(s.rivenChannelId)}` : '*off*' },
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
-      { name: 'Pings', value: [s.alertsRoleId ? `alerts <@&${s.alertsRoleId}>` : null, s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
+      { name: 'Pings', value: [s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
       { name: 'Promo codes', value: ch(s.promoChannelId), inline: true },
       { name: 'Game news', value: ch(s.newsChannelId), inline: true },
@@ -61,10 +65,18 @@ export const setup: Command = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
       s
-        .setName('alerts')
-        .setDescription('Channel for automatic Baro, sortie, Archon, Steel Path and invasion alerts')
-        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addRoleOption((o) => o.setName('ping_role').setDescription('Role to ping with each alert')),
+        .setName('feed')
+        .setDescription('A World State channel: Ordis keeps one live board there (alerts, arbitrations, fissures, traders…)')
+        .addStringOption((o) =>
+          o
+            .setName('board')
+            .setDescription('What the channel shows')
+            .setRequired(true)
+            .addChoices(...FEEDS.map((f) => ({ name: f.label, value: f.id }))),
+        )
+        .addChannelOption((o) => o.setName('channel').setDescription('A channel only Ordis writes in').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
+        .addRoleOption((o) => o.setName('ping_role').setDescription('Pinged for what is new: alerts/invasions (shared), S/A Arbitrations, Baro'))
+        .addBooleanOption((o) => o.setName('no_ping').setDescription("Stop pinging this board's role")),
     )
     .addSubcommand((s) =>
       s
@@ -198,7 +210,7 @@ export const setup: Command = {
             .setDescription('Feature')
             .setRequired(true)
             .addChoices(
-              { name: 'Worldstate alerts', value: 'alerts' },
+              ...FEEDS.map((f) => ({ name: `Board: ${f.label}`, value: `feed:${f.id}` })),
               { name: 'Announcements channel', value: 'announcements' },
               { name: 'Welcome messages', value: 'welcome' },
               { name: 'Ordis chat channel', value: 'chat' },
@@ -229,12 +241,19 @@ export const setup: Command = {
 
     let settings: GuildSettings;
     switch (sub) {
-      case 'alerts':
-        settings = ctx.store.updateSettings(guildId, {
-          alertsChannelId: channelId(),
-          alertsRoleId: interaction.options.getRole('ping_role')?.id ?? null,
-        });
+      case 'feed': {
+        const def = feedDef(interaction.options.getString('board', true));
+        if (!def) throw new UserError('Unknown board.');
+        const chan = channelId();
+        assertChannelFree(ctx, { [def.channel]: chan });
+        const role = interaction.options.getRole('ping_role')?.id ?? null;
+        const noPing = interaction.options.getBoolean('no_ping') ?? false;
+        if ((role || noPing) && !def.role) throw new UserError(`The ${def.label} board pings nobody, so it takes no role.`);
+        const patch: Partial<GuildSettings> = { [def.channel]: chan };
+        if (def.role && (role || noPing)) patch[def.role] = noPing ? null : role;
+        settings = ctx.store.updateSettings(guildId, patch);
         break;
+      }
       case 'announcements':
         settings = ctx.store.updateSettings(guildId, { announcementsChannelId: channelId() });
         break;
@@ -330,6 +349,11 @@ export const setup: Command = {
       }
       case 'off': {
         const feature = interaction.options.getString('feature', true);
+        const board = feature.startsWith('feed:') ? feedDef(feature.slice(5)) : undefined;
+        if (board) {
+          settings = ctx.store.updateSettings(guildId, { [board.channel]: null });
+          break;
+        }
         if (feature === 'autovc') {
           settings = ctx.store.updateSettings(guildId, { autoVcHubChannelId: null });
           break;
@@ -379,19 +403,17 @@ export const setup: Command = {
         }
         settings = ctx.store.updateSettings(
           guildId,
-          feature === 'alerts'
-            ? { alertsChannelId: null, alertsRoleId: null }
-            : feature === 'announcements'
-              ? { announcementsChannelId: null }
-              : feature === 'chat'
-                ? { chatChannelId: null }
-                : feature === 'modlog'
-                  ? { modLogChannelId: null }
-                  : feature === 'auditlog'
-                    ? { auditLogChannelId: null }
-                    : feature === 'status'
-                      ? { statusChannelId: null }
-                  : { welcomeChannelId: null },
+          feature === 'announcements'
+            ? { announcementsChannelId: null }
+            : feature === 'chat'
+              ? { chatChannelId: null }
+              : feature === 'modlog'
+                ? { modLogChannelId: null }
+                : feature === 'auditlog'
+                  ? { auditLogChannelId: null }
+                  : feature === 'status'
+                    ? { statusChannelId: null }
+                    : { welcomeChannelId: null },
         );
         break;
       }

@@ -3,8 +3,8 @@ import type { AppContext } from '../context.js';
 import type { RsvpStatus } from '../db.js';
 import { closeSquad, setSquadVoiceAccess } from '../lfg/voice.js';
 import { UserError, renderEvent, renderLfg } from '../services/clan.js';
-import { handleAlertsButton } from './alerts-panel.js';
 import { handleBackupButton } from './commands/backup.js';
+import { handleFeedButton } from './feeds/handlers.js';
 import { handlePurgeButton } from './commands/moderation.js';
 import { handleGiveawayButton } from '../giveaways/service.js';
 import { handleRoleButton } from '../selfroles/service.js';
@@ -12,7 +12,7 @@ import { handleWeeklyButton } from './weekly.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
-/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `weekly:toggle`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
+/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `weekly:toggle`, `feeds:<mine|plan>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
 export async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
   const [kind, rawId, action] = interaction.customId.split(':');
   const id = Number(rawId);
@@ -25,8 +25,8 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
     await handleBackupButton(interaction, ctx, rawId ?? '', action ?? '');
     return;
   }
-  if (kind === 'alerts') {
-    await handleAlertsButton(interaction, ctx, rawId ?? '');
+  if (kind === 'feeds') {
+    await handleFeedButton(interaction, ctx, rawId ?? '');
     return;
   }
   if (kind === 'roles') {

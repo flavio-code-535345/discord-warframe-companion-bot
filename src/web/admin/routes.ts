@@ -27,6 +27,7 @@ import {
   unsign,
 } from './auth.js';
 import { syncChatTopic } from '../../discord/chat-topic.js';
+import { FEEDS } from '../../discord/feeds/index.js';
 import { registerMessagesRoutes } from './messages-page.js';
 import { registerRivenRoutes } from './riven-page.js';
 import { registerSsTestRoutes } from './sstest-page.js';
@@ -197,7 +198,7 @@ ${statCard('Latest backup', latest ? `#${latest.id}` : '—', latest ? utc(lates
 </div>
 <h2>Bot channels</h2>
 <div class="card"><table>
-<tr><td>Worldstate alerts</td><td>${ch(settings.alertsChannelId)}</td></tr>
+${FEEDS.map((f) => `<tr><td>${e(f.label)}</td><td>${ch(settings[f.channel])}</td></tr>`).join('\n')}
 <tr><td>Announcements &amp; events</td><td>${ch(settings.announcementsChannelId)}</td></tr>
 <tr><td>Moderation log</td><td>${ch(settings.modLogChannelId)}</td></tr>
 <tr><td>Welcome</td><td>${ch(settings.welcomeChannelId)}</td></tr>
@@ -220,13 +221,21 @@ ${statCard('Latest backup', latest ? `#${latest.id}` : '—', latest ? utc(lates
 <h2>Channels</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings">${csrfField(p.session)}
 <div class="row">
-${field('Worldstate alerts channel', 'alertsChannelId', channels)}
-${field('Alerts ping role', 'alertsRoleId', roles)}
 ${field('Announcements & events channel', 'announcementsChannelId', channels)}
 ${field('Moderation log channel', 'modLogChannelId', channels)}
 ${field('Welcome channel', 'welcomeChannelId', channels)}
 ${field('Ordis chat channel', 'chatChannelId', channels)}
 </div><div><button>Save</button></div></form></div>
+<h2>World State boards</h2>
+<div class="card"><form class="stack" method="post" action="/admin/settings/feeds">${csrfField(p.session)}
+<p class="muted">One live board per channel, kept current by Ordis; a channel holds one board. Members use its menus to get DMs, and the roles are pinged for what is new.</p>
+<div class="row">
+${FEEDS.map((f) => field(e(f.label), f.channel, channels)).join('\n')}
+</div><div class="row">
+${field('Alerts and invasions ping role', 'alertsRoleId', roles)}
+${field('S/A tier Arbitration ping role', 'arbitrationsRoleId', roles)}
+${field("Baro Ki'Teer ping role", 'baroRoleId', roles)}
+</div><div><button>Save boards</button></div></form></div>
 <h2>Squad voice channels</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings/lfgvoice">${csrfField(p.session)}
 <p class="muted">Every /lfg squad gets its own temporary voice channel in this category. Joining the squad unlocks it, and it is deleted when the squad ends and the channel is empty.</p>
@@ -276,13 +285,9 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
         if (v && !g.channels.cache.has(v)) throw new UserError('One of the channels no longer exists.');
         return v;
       };
-      const role = id(req.body.alertsRoleId);
-      if (role && !g.roles.cache.has(role)) throw new UserError('That role no longer exists.');
       const chatChannelId = ch('chatChannelId');
       assertChannelFree(ctx, { chatChannelId });
       store.updateSettings(guildId, {
-        alertsChannelId: ch('alertsChannelId'),
-        alertsRoleId: role,
         announcementsChannelId: ch('announcementsChannelId'),
         modLogChannelId: ch('modLogChannelId'),
         welcomeChannelId: ch('welcomeChannelId'),
@@ -291,6 +296,29 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
       void syncChatTopic(ctx);
       await audit(session, 'Changed bot channel settings');
       return 'Settings saved.';
+    }),
+  );
+
+  router.post(
+    '/settings/feeds',
+    action('settings', async (req, session) => {
+      const g = await guild();
+      await Promise.all([g.channels.fetch(), g.roles.fetch()]);
+      const patch: Partial<GuildSettings> = {};
+      for (const f of FEEDS) {
+        const v = id(req.body[f.channel]);
+        if (v && !g.channels.cache.has(v)) throw new UserError('One of the channels no longer exists.');
+        patch[f.channel] = v;
+      }
+      for (const key of ['alertsRoleId', 'arbitrationsRoleId', 'baroRoleId'] as const) {
+        const v = id(req.body[key]);
+        if (v && !g.roles.cache.has(v)) throw new UserError('One of the roles no longer exists.');
+        patch[key] = v;
+      }
+      assertChannelFree(ctx, patch);
+      store.updateSettings(guildId, patch);
+      await audit(session, 'Changed the World State boards');
+      return 'Boards saved: they appear or move within a minute.';
     }),
   );
 

@@ -15,6 +15,7 @@ import { settingStates } from '../runtime-config.js';
 import { jobs } from '../jobs.js';
 import { emojiStatus } from '../discord/app-emojis.js';
 import { emojiReport } from '../discord/emoji.js';
+import { feedHealth } from '../discord/feeds/index.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
 /**
@@ -120,7 +121,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Bot health',
       description:
-        'One-call health check: uptime, Discord connection, last start/stop reports, the Warframe API pacing state, which screenshot-reading models are configured (and whether the local one is currently being skipped after a failure), the wiki index size, every background job (runs, failures, last error, next run), the custom emojis in use and which icons fall back to Unicode, how many questions were answered in the last 24 hours by source, every bot setting and every Config page value that differs from its default.',
+        'One-call health check: uptime, Discord connection, last start/stop reports, the Warframe API pacing state, which screenshot-reading models are configured (and whether the local one is currently being skipped after a failure), the wiki index size, every background job (runs, failures, last error, next run), each World State board (channel, last action or error, biggest message against the limits, pings), the custom emojis in use and which icons fall back to Unicode, how many questions were answered in the last 24 hours by source, every bot setting and every Config page value that differs from its default.',
       annotations: READ_ONLY,
     },
     tool(async () => {
@@ -158,6 +159,10 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           lastError: j.lastError && { message: j.lastError, at: iso(j.lastErrorAt) },
           nextRun: iso(j.nextAt),
         })),
+        // The World State boards: what each one did last round, and how close its biggest message is to Discord's limits.
+        feeds: Object.fromEntries(
+          Object.entries(feedHealth()).map(([id, h]) => [id, { ...h, at: iso(h.at), textLimit: 4000, componentLimit: 40 }]),
+        ),
         emojis: (() => {
           const status = emojiStatus();
           const report = emojiReport();

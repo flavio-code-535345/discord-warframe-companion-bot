@@ -59,6 +59,13 @@ export const EMOJI = {
   shardViolet: { names: ['taupurple'], fallback: '🟣' },
   shardTopaz: { names: ['tautopaz'], fallback: '🟡' },
   shardEmerald: { names: ['tauemerald'], fallback: '🟢' },
+  // Arbitration tiers (the Arbitration Goons' S…F); the stand-in is the letter itself, so a list stays readable without them.
+  tierS: { names: ['wf_tier_s'], fallback: '`S`' },
+  tierA: { names: ['wf_tier_a'], fallback: '`A`' },
+  tierB: { names: ['wf_tier_b'], fallback: '`B`' },
+  tierC: { names: ['wf_tier_c'], fallback: '`C`' },
+  tierD: { names: ['wf_tier_d'], fallback: '`D`' },
+  tierF: { names: ['wf_tier_f'], fallback: '`F`' },
   // Rarity
   common: { names: ['IconCommon'], fallback: '🟫' },
   uncommon: { names: ['IconUncommon'], fallback: '⬜' },
@@ -127,6 +134,12 @@ export function emojiFor(name: EmojiName): APIMessageComponentEmoji {
 /** Whether a custom emoji is in use for this name (the admin panel lists what is missing). */
 export const hasCustom = (name: EmojiName): boolean => custom(name) !== null;
 
+/** The picture of the custom emoji (a board's thumbnail), or null when only the Unicode stand-in exists. */
+export function emojiUrl(name: EmojiName, size = 96): string | null {
+  const c = custom(name);
+  return c ? `https://cdn.discordapp.com/emojis/${c.id}.${c.animated ? 'gif' : 'png'}?size=${size}` : null;
+}
+
 /** Every logical name with what shows it now. */
 export function emojiReport(): { name: EmojiName; custom: string | null; fallback: string }[] {
   return (Object.keys(EMOJI) as EmojiName[]).map((name) => ({ name, custom: custom(name)?.name ?? null, fallback: EMOJI[name].fallback }));
@@ -149,6 +162,15 @@ const FACTIONS: [RegExp, EmojiName][] = [
 export function factionEmoji(faction: string | null | undefined): string {
   const hit = FACTIONS.find(([re]) => re.test(faction ?? ''));
   return hit ? e(hit[1]) : '';
+}
+
+/**
+ * A faction in a dense list: its icon when the custom one exists, else its name ("Crossfire" and unknown factions by name too). A
+ * coloured circle alone would say nothing, so the Unicode stand-ins are not used here.
+ */
+export function factionTag(faction: string | null | undefined): string {
+  const hit = FACTIONS.find(([re]) => re.test(faction ?? ''));
+  return hit && hasCustom(hit[1]) ? e(hit[1]) : (faction ?? '');
 }
 
 const TIERS: Record<string, EmojiName> = { lith: 'lith', meso: 'meso', neo: 'neo', axi: 'axi', requiem: 'requiem', omnia: 'omnia' };

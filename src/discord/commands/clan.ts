@@ -2,6 +2,7 @@ import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { UserError } from '../../services/clan.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';
+import { FEEDS } from '../feeds/index.js';
 import { brandIcon } from '../identity.js';
 
 export const PLATFORMS = ['PC', 'PlayStation', 'Xbox', 'Switch', 'Mobile'] as const;
@@ -50,7 +51,7 @@ export const clan: Command = {
           { name: 'Registered Tenno', value: String(ctx.store.listMembers(guildId).length), inline: true },
           { name: 'Upcoming events', value: String(ctx.store.upcomingEvents(guildId).length), inline: true },
           { name: 'Next event', value: next ? `${next.title} <t:${Math.floor(next.startsAt / 1000)}:R>` : '—' },
-          { name: 'Worldstate alerts', value: ch(settings.alertsChannelId), inline: true },
+          { name: 'World State', value: FEEDS.map((f) => settings[f.channel]).filter(Boolean).map((id) => ch(id)).join(' ') || '*not set*' },
           { name: 'Announcements', value: ch(settings.announcementsChannelId), inline: true },
           { name: 'Welcome', value: ch(settings.welcomeChannelId), inline: true },
         );

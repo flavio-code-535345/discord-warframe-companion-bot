@@ -207,7 +207,8 @@ function summarizeSection(ws: WorldState, section: Section, now: number): Record
   if (want.has('resurgence') && ws.vaultTrader) {
     out.primeResurgence = {
       rotates: when(ws.vaultTrader.expiry, now),
-      items: (ws.vaultTrader.inventory ?? []).map((i) => ({ item: resurgenceItemName(i.item), aya: i.ducats || null })),
+      // The feed's "ducats" are Regal Aya (bought) and its "credits" are Aya (earned, what relics cost).
+      items: (ws.vaultTrader.inventory ?? []).map((i) => ({ item: resurgenceItemName(i.item), regalAya: i.ducats || null, aya: i.credits || null })),
     };
   }
 

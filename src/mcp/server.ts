@@ -3,6 +3,7 @@ import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { PLATFORMS } from '../discord/commands/clan.js';
+import { FEEDS } from '../discord/feeds/index.js';
 import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../services/clan.js';
 import { parseEnd, parseWhen } from '../time.js';
 import { searchDrops } from '../warframe/drops.js';
@@ -163,11 +164,10 @@ export function createMcpServer(ctx: AppContext): McpServer {
         discordServer: { id: guild.id, name: guild.name, memberCount: guild.memberCount },
         registeredMembers: store.listMembers(guildId).length,
         channels: {
-          alerts: settings.alertsChannelId,
-          alertsPingRole: settings.alertsRoleId,
           announcements: settings.announcementsChannelId,
           welcome: settings.welcomeChannelId,
         },
+        worldStateBoards: Object.fromEntries(FEEDS.map((f) => [f.id, { channel: settings[f.channel], pingRole: f.role ? settings[f.role] : null }])),
         upcomingEvents: store.upcomingEvents(guildId).slice(0, 5).map((e) => ({ id: e.id, title: e.title, startsAt: new Date(e.startsAt).toISOString() })),
       };
     }),

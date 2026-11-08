@@ -13,8 +13,8 @@ import {
 import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { UserError } from '../services/clan.js';
-import { handleAlertsSelect } from './alerts-panel.js';
 import { handleButton } from './buttons.js';
+import { handleFeedSelect } from './feeds/handlers.js';
 import { trackMessageActivity, trackVoiceActivity } from '../activity/service.js';
 import { handleVoiceStateUpdate } from '../lfg/autovc.js';
 import { handleHoneypotMessage } from '../moderation/honeypot.js';
@@ -145,9 +145,9 @@ export function attachHandlers(ctx: AppContext): void {
       return;
     }
 
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('alerts:')) {
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('feeds:')) {
       try {
-        await handleAlertsSelect(interaction, ctx);
+        await handleFeedSelect(interaction, ctx);
       } catch (err) {
         await replyError(interaction, err);
       }

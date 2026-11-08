@@ -42,12 +42,12 @@ set `ENABLE_MESSAGE_CONTENT=true`).
 | `/price item` | warframe.market cheapest online sellers and top buyers, with a ready-to-paste whisper |
 | `/drops item` | Where an item, mod or relic drops, with chances |
 | `/wiki query` | Wiki article summary and link |
-| `/track reward · fissure · cycle · baro · list · remove` | Personal DM alerts: a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), fissures matching tier/mission/Steel Path, a cycle starting (e.g. Cetus night), Baro arriving |
+| `/track reward · fissure · cycle · baro · arbitration · sortie · archon · weekly · price · list · remove` | Personal DM alerts: a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a market price dropping. The same DMs can be set up from each World State board's menu |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
 | `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; pings everyone when full. With squad voice on, it also gets its own voice channel |
 | `/activity set · clear · list` | (Manage Server) a picture, ping role and fixed channel for each LFG activity |
-| `/setup alerts · announcements · welcome · chat · modlog · honeypot · off · show` | (Manage Server) choose channels and the alert ping role |
+| `/setup feed · announcements · welcome · chat · modlog · honeypot · off · show` | (Manage Server) choose channels: `feed board: channel: [ping_role]` puts one World State board in a channel |
 
 ### Moderation
 
@@ -134,9 +134,24 @@ when `ENABLE_MESSAGE_CONTENT=true`, with the last 50 messages per channel.
 - **If the whole server is deleted:** create a new server, invite Ordis, set `DISCORD_GUILD_ID` to the new server and redeploy. Then run `/backup import` with a downloaded file (or use a stored backup) and `/backup load`. Bot roles from other bots come back when you re-invite those bots.
 - **Where backups live:** in Ordis's database volume on your server. Download one now and then so a copy also survives your host going down.
 
-**Automatic alerts** (in the `/setup alerts` channel): new daily sortie, weekly Archon Hunt, Baro Ki'Teer's arrival
-with inventory, Steel Path reward rotation, in-game alerts, and invasions offering Orokin Catalysts/Reactors, Forma,
-Exilus Adapters or Wraith/Vandal parts. Each alert is posted once (tracked in the database across restarts).
+### World State boards
+
+Each World State channel holds one live board that Ordis keeps up to date (`/setup feed`, or the admin panel's Settings
+page). Only the messages that changed are edited, so the channels stay quiet:
+
+| Board | What it shows | Pings |
+| --- | --- | --- |
+| Alerts | Alerts with reward, node and levels; events with progress and interim rewards; Nightwave | The alerts role, for a reward worth a detour (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …) |
+| Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead | The Arbitrations role, 10 minutes before an S or A tier hour |
+| Fissures | Normal, Steel Path and Void Storms, by relic tier | — |
+| Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | — |
+| Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | — |
+| Traders | Baro Ki'Teer's whole inventory with ducats and credits, Darvo's deal, Varzia's Prime Resurgence, Teshin | The Baro role, when he arrives |
+| Invasions | Every invasion with both rewards and its progress | The alerts role, for a notable reward |
+
+Every board has a **🔔 DM me when…** menu and a **My notifications** button, so members can set up their own DMs without
+typing a command. The Arbitration schedule and tiers come from [browse.wf](https://browse.wf) (the world state itself from
+warframestat.us); Digital Extremes' servers are never called.
 
 Feature ideas borrowed from community tools: Genesis/WFCD (world-state commands, trackers), Warframe Hub (personal
 notifications), warframestat.us (item and drop data) and the wiki.
@@ -152,7 +167,7 @@ notifications), warframestat.us (item and drop data) and the wiki.
    "mentionable", also give the bot **Mention @everyone, @here, and All Roles**.
 4. Copy the server ID (Discord settings → Advanced → Developer Mode, then right-click the server) into `DISCORD_GUILD_ID`.
 
-Slash commands are registered to that server automatically on startup. Then run `/setup alerts` and `/setup announcements`.
+Slash commands are registered to that server automatically on startup. Then run `/setup feed` for each World State board and `/setup announcements`.
 
 **Name and avatar:** on startup the bot renames itself to `BOT_NAME` (default `Cephalon Ordis`) and uploads
 `assets/clan-logo.png` as its avatar. It only sends a change when something differs, because Discord allows just

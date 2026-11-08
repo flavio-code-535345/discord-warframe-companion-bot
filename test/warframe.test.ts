@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { collectAlerts } from '../src/discord/notifier.js';
 import { groupDrops } from '../src/warframe/drops.js';
 import { searchItems } from '../src/warframe/market.js';
 import { type Fissure, type WorldState, filterFissures, isNotableReward, rewardText } from '../src/warframe/worldstate.js';
@@ -48,23 +47,6 @@ test('rewardText formats counted items, items and credits', () => {
   assert.equal(rewardText({ countedItems: [{ count: 1, type: 'Pumpkin Dangle' }], items: ['Pumpkin Dangle', 'Glyph'] }), 'Pumpkin Dangle, Glyph');
 });
 
-test('collectAlerts emits stable keys for sortie, Baro and notable invasions only', () => {
-  const now = Date.now();
-  const future = new Date(now + 3_600_000);
-  const ws = {
-    sortie: { id: 's1', expiry: future, variants: [] },
-    archonHunt: undefined,
-    voidTrader: { id: 'b1', activation: new Date(now - 1000), expiry: future, location: 'Relay', inventory: [{ item: 'Primed Flow', ducats: 300, credits: 100000 }] },
-    steelPath: undefined,
-    alerts: [],
-    invasions: [
-      { id: 'i1', completed: false, node: 'N', desc: 'D', vsInfestation: false, completion: 50, attacker: { faction: 'Grineer', reward: { items: ['Orokin Reactor Blueprint'] } }, defender: { faction: 'Corpus', reward: { countedItems: [{ count: 3, type: 'Fieldron' }] } } },
-      { id: 'i2', completed: false, node: 'N', desc: 'D', vsInfestation: false, completion: 50, attacker: { faction: 'Grineer', reward: { countedItems: [{ count: 3, type: 'Mutagen Mass' }] } }, defender: { faction: 'Corpus', reward: { countedItems: [{ count: 3, type: 'Fieldron' }] } } },
-    ],
-  } as unknown as WorldState;
-  assert.deepEqual(collectAlerts(ws, now).map((a) => a.key), ['sortie:s1', `baro:b1:${now - 1000}`, 'invasion:i1']);
-});
-
 test('a big Kuva payout is worth an alert, a small one is not', () => {
   assert.equal(isNotableReward('200,000 Kuva, 10,000 cr'), true);
   assert.equal(isNotableReward('100,000 Kuva'), true);
@@ -73,24 +55,4 @@ test('a big Kuva payout is worth an alert, a small one is not', () => {
   assert.equal(isNotableReward('3 Forma, 10,000 cr'), true);
   assert.equal(isNotableReward('Nitain Extract'), true);
   assert.equal(isNotableReward('50 Moonflesh, 17,000 cr'), false);
-});
-
-test('collectAlerts announces a 200,000 Kuva alert but not a resource one', () => {
-  const now = Date.now();
-  const later = new Date(now + 3_600_000);
-  const alert = (id: string, reward: object) => ({ id, activation: new Date(now - 1000), expiry: later, expired: false, mission: { description: 'Gift From The Lotus', type: 'Mobile Defense', node: 'Larissa (Neptune)', reward } });
-  const ws = {
-    alerts: [alert('k1', { countedItems: [{ count: 200000, type: 'Kuva' }], credits: 10000 }), alert('m1', { countedItems: [{ count: 50, type: 'Moonflesh' }], credits: 17000 })],
-    invasions: [],
-  } as unknown as WorldState;
-  assert.deepEqual(collectAlerts(ws, now).map((a) => a.key), ['alert:k1']);
-});
-
-test('the ping note for an alert says what the reward is', () => {
-  const now = Date.now();
-  const ws = {
-    alerts: [{ id: 'k1', activation: new Date(now - 1000), expiry: new Date(now + 3_600_000), expired: false, mission: { description: 'Gift From The Lotus', type: 'Mobile Defense', node: 'Larissa (Neptune)', reward: { countedItems: [{ count: 200000, type: 'Kuva' }], credits: 10000 } } }],
-    invasions: [{ id: 'i1', completed: false, node: 'Titan (Saturn)', desc: 'D', vsInfestation: false, completion: 10, attacker: { faction: 'Corpus', reward: { items: ['Snipetron Vandal Blueprint'] } }, defender: { faction: 'Grineer', reward: { countedItems: [{ count: 3, type: 'Fieldron' }] } } }],
-  } as unknown as WorldState;
-  assert.deepEqual(collectAlerts(ws, now).map((a) => a.note), ['⚠️ Gift From The Lotus: **200,000 Kuva, 10,000 cr** (Larissa (Neptune))', '🎯 Invasion at Titan (Saturn): **Snipetron Vandal Blueprint**']);
 });

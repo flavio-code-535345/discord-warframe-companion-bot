@@ -1,5 +1,6 @@
 import { own } from './own.js';
-import { type TimeInput, toMs } from './time.js';
+import { type TimeInput, discordTime, toMs } from './time.js';
+import { type ArbitrationSlot, type ArbyTier, atLeast } from './warframe/arbitrations.js';
 import { type WorldState, activeArbitration, isBaroHere, resurgenceItemName, rewardText } from './warframe/worldstate.js';
 import { projectCycles } from './warframe/cycles.js';
 
@@ -12,7 +13,8 @@ export type TrackerSpec =
   | { kind: 'fissure'; tier?: string; mission?: string; steelPath?: boolean; storm?: boolean }
   | { kind: 'cycle'; cycle: string; state: string }
   | { kind: 'baro' }
-  | { kind: 'arbitration'; type?: string }
+  /** `minTier`: only hours of that tier or better (the Arbitration Goons' S…F, see warframe/arbitrations.ts). */
+  | { kind: 'arbitration'; type?: string; minTier?: ArbyTier }
   | { kind: 'sortie'; mission?: string }
   | { kind: 'archon' }
   | { kind: 'price'; slug: string; name: string; below: number }
@@ -59,13 +61,38 @@ export interface Trackable {
   expiry?: TimeInput;
   fissure?: { tier: string; mission: string; steelPath: boolean; storm: boolean };
   cycle?: { cycle: string; state: string };
-  arbitration?: { type: string };
+  /** `tier` is null when the Arbitration came from the world state alone (no schedule, so no tier). */
+  arbitration?: { type: string; tier: ArbyTier | null };
   sortie?: { missions: string[] };
 }
 
-export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[] {
+/** An Arbitration is announced this long before it starts (and again never: its key is its start). */
+export const ARBITRATION_LEAD_MS = 10 * 60_000;
+
+/**
+ * Everything trackers can match right now. `extra.arbitrations` are the hours from the Arbitration schedule (the one running and the
+ * next when it starts within ARBITRATION_LEAD_MS); without them the world state's own entry is used. `ws` is null when the world state
+ * is switched off: then only the schedule's Arbitrations can match.
+ */
+export function collectTrackables(ws: WorldState | null, now = Date.now(), extra: { arbitrations?: ArbitrationSlot[] } = {}): Trackable[] {
   const out: Trackable[] = [];
   const live = (e: TimeInput) => toMs(e) > now;
+
+  if (extra.arbitrations) {
+    for (const s of extra.arbitrations) {
+      if (s.end <= now || s.start - ARBITRATION_LEAD_MS > now) continue;
+      const where = s.planet ? `${s.name} (${s.planet})` : s.name;
+      out.push({
+        key: `arbitration:${s.start}`,
+        kind: 'arbitration',
+        title: `${s.tier}-tier Arbitration: ${s.mission}`,
+        detail: `${where}${s.faction ? ` · ${s.faction}` : ''} · ${s.start > now ? `starts ${discordTime(s.start)}` : 'running now'}`,
+        expiry: s.end,
+        arbitration: { type: s.mission, tier: s.nodeKey ? s.tier : null },
+      });
+    }
+  }
+  if (!ws) return out;
 
   for (const inv of ws.invasions ?? []) {
     if (inv.completed) continue;
@@ -102,7 +129,7 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
     out.push({ key: `${key}:items`, kind: 'reward', title: "Baro Ki'Teer's inventory", rewards: items, detail: `At ${ws.voidTrader.location}`, expiry: ws.voidTrader.expiry });
   }
 
-  const arb = activeArbitration(ws, now);
+  const arb = extra.arbitrations ? null : activeArbitration(ws, now);
   if (arb) {
     const flags = [arb.archwing ? 'Archwing' : '', arb.sharkwing ? 'Sharkwing' : ''].filter(Boolean);
     const type = arb.type ?? 'Unknown';
@@ -112,7 +139,7 @@ export function collectTrackables(ws: WorldState, now = Date.now()): Trackable[]
       title: `Arbitration: ${type}`,
       detail: `${arb.node}${arb.enemy ? ` · ${arb.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}`,
       expiry: arb.expiry,
-      arbitration: { type },
+      arbitration: { type, tier: null },
     });
   }
   if (ws.sortie && live(ws.sortie.expiry)) {
@@ -196,8 +223,13 @@ export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
       return t.cycle && t.cycle.cycle === spec.cycle && t.cycle.state === spec.state ? [] : null;
     case 'baro':
       return [];
-    case 'arbitration':
-      return spec.type && t.arbitration?.type.toLowerCase() !== spec.type.toLowerCase() ? null : [];
+    case 'arbitration': {
+      const a = t.arbitration!;
+      if (spec.type && normMission(a.type) !== normMission(spec.type)) return null;
+      // Without a tier (the world state alone) a tier tracker can't tell, so it stays quiet rather than send an F tier as an S.
+      if (spec.minTier && (!a.tier || !atLeast(a.tier, spec.minTier))) return null;
+      return [];
+    }
     case 'sortie':
       return spec.mission && !t.sortie?.missions.some((m) => normMission(m) === normMission(spec.mission!)) ? null : [];
     case 'archon':
@@ -228,8 +260,11 @@ export function describeTracker(spec: TrackerSpec): string {
       return CYCLE_CHOICES.find((c) => c.cycle === spec.cycle && c.state === spec.state)?.label ?? `${spec.cycle} ${spec.state}`;
     case 'baro':
       return "Baro Ki'Teer arrives";
-    case 'arbitration':
-      return `Arbitration${spec.type ? ` (${spec.type})` : ' (any)'}`;
+    case 'arbitration': {
+      const tier = spec.minTier ? (spec.minTier === 'S' ? 'S tier' : `${spec.minTier} tier or better`) : null;
+      const what = [tier, spec.type].filter(Boolean).join(', ');
+      return `Arbitration (${what || 'any'})`;
+    }
     case 'sortie':
       return spec.mission ? `Daily sortie with ${spec.mission}` : 'Daily sortie (every reset)';
     case 'archon':

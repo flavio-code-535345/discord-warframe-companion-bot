@@ -7,8 +7,24 @@ export type RsvpStatus = 'going' | 'maybe' | 'declined';
 
 export interface GuildSettings {
   guildId: string;
+  /** The World State channels (src/discord/feeds): one live board each. Alerts, Gifts of the Lotus, events and Nightwave. */
   alertsChannelId: string | null;
+  /** Pinged for an alert or invasion with a notable reward. */
   alertsRoleId: string | null;
+  /** Now, the next 48 hours with tiers, and the week's best. */
+  arbitrationsChannelId: string | null;
+  /** Pinged 10 minutes before an S or A tier Arbitration. */
+  arbitrationsRoleId: string | null;
+  fissuresChannelId: string | null;
+  /** Sortie, Archon Hunt, Archimedea and the Steel Path honors. */
+  sortieChannelId: string | null;
+  /** Open worlds, Duviri and bounties. */
+  cyclesChannelId: string | null;
+  /** Baro, Darvo, Varzia and Teshin. */
+  tradersChannelId: string | null;
+  /** Pinged when Baro Ki'Teer arrives. */
+  baroRoleId: string | null;
+  invasionsChannelId: string | null;
   announcementsChannelId: string | null;
   welcomeChannelId: string | null;
   /** Channel where Ordis answers every message (needs the Message Content intent). */
@@ -108,6 +124,14 @@ export interface TempVoice {
 const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['alertsChannelId', 'alerts_channel_id'],
   ['alertsRoleId', 'alerts_role_id'],
+  ['arbitrationsChannelId', 'arbitrations_channel_id'],
+  ['arbitrationsRoleId', 'arbitrations_role_id'],
+  ['fissuresChannelId', 'fissures_channel_id'],
+  ['sortieChannelId', 'sortie_channel_id'],
+  ['cyclesChannelId', 'cycles_channel_id'],
+  ['tradersChannelId', 'traders_channel_id'],
+  ['baroRoleId', 'baro_role_id'],
+  ['invasionsChannelId', 'invasions_channel_id'],
   ['announcementsChannelId', 'announcements_channel_id'],
   ['welcomeChannelId', 'welcome_channel_id'],
   ['chatChannelId', 'chat_channel_id'],
@@ -713,6 +737,17 @@ const MIGRATIONS: string[] = [
   ALTER TABLE guild_settings DROP COLUMN verify_panel_message_id;
   ALTER TABLE guild_settings DROP COLUMN verify_role_id;
   ALTER TABLE guild_settings DROP COLUMN verify_min_account_age_days;
+  `,
+  // The World State channels: one board per kind of information instead of one summary in the alerts channel.
+  `
+  ALTER TABLE guild_settings ADD COLUMN arbitrations_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN arbitrations_role_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN fissures_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN sortie_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN cycles_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN traders_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN baro_role_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN invasions_channel_id TEXT;
   `,
 ];
 

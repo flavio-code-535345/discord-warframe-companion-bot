@@ -16,7 +16,7 @@ export const COLORS = {
   muted: 0x6b7280,
 } as const;
 
-/** One emoji per kind of information, so the same thing looks the same in a command, in the alerts summary and in chat answers. */
+/** One emoji per kind of information, so the same thing looks the same in a command, on the boards and in chat answers. */
 export const ICON = {
   cycles: '🌍',
   fissures: '🌀',

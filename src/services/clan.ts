@@ -31,17 +31,25 @@ export async function getSendableChannel(ctx: AppContext, channelId: string): Pr
 }
 
 /**
- * The settings that make Ordis read every message in a channel. Two such jobs on one channel fight over its messages (the screenshot
- * handler deletes whatever is not a screenshot, the honeypot removes whoever posts, the chat answers...), so a channel gets only one.
+ * The settings that give a channel a job of its own. The first four make Ordis read every message there: two of those on one channel
+ * fight over its messages (the screenshot handler deletes whatever is not a screenshot, the honeypot removes whoever posts, the chat
+ * answers...). The rest are the World State boards (discord/feeds), each the whole content of its channel. A channel gets only one.
  */
 const MESSAGE_JOBS = [
   ['chatChannelId', 'the Ordis chat'],
   ['honeypotChannelId', 'the honeypot'],
   ['ssRolesChannelId', 'screenshot roles'],
   ['rivenChannelId', 'riven scanning'],
+  ['alertsChannelId', 'the alerts board'],
+  ['arbitrationsChannelId', 'the arbitrations board'],
+  ['fissuresChannelId', 'the fissures board'],
+  ['sortieChannelId', 'the sortie and Archon board'],
+  ['cyclesChannelId', 'the cycles board'],
+  ['tradersChannelId', 'the traders board'],
+  ['invasionsChannelId', 'the invasions board'],
 ] as const;
 
-type MessageJob = (typeof MESSAGE_JOBS)[number][0];
+export type MessageJob = (typeof MESSAGE_JOBS)[number][0];
 
 /**
  * Refuses a change that would give a channel a second message-reading job. `patch` holds the channel settings about to be saved (null turns

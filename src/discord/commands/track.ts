@@ -8,6 +8,7 @@ import {
   describeTracker,
   parseSpec,
 } from '../../trackers.js';
+import type { ArbyTier } from '../../warframe/arbitrations.js';
 import { getItemIndex, resolveItem, searchItems } from '../../warframe/market.js';
 import { FISSURE_TIERS } from '../../warframe/worldstate.js';
 import type { Command } from '../command.js';
@@ -48,7 +49,18 @@ export const track: Command = {
     .addSubcommand((s) =>
       s
         .setName('arbitration')
-        .setDescription('A new Arbitration starting (every hour), optionally only one mission type')
+        .setDescription('An Arbitration about to start (10 minutes ahead), optionally only good tiers or one mission type')
+        .addStringOption((o) =>
+          o
+            .setName('min_tier')
+            .setDescription('Only hours of this tier or better (tiers by the Arbitration Goons)')
+            .addChoices(
+              { name: 'S tier only', value: 'S' },
+              { name: 'A tier or better', value: 'A' },
+              { name: 'B tier or better', value: 'B' },
+              { name: 'C tier or better', value: 'C' },
+            ),
+        )
         .addStringOption((o) => o.setName('type').setDescription('Mission type, e.g. Defense or Survival (empty = every arbitration)').setAutocomplete(true)),
     )
     .addSubcommand((s) =>
@@ -119,7 +131,8 @@ export const track: Command = {
       const [cycle, state] = interaction.options.getString('which', true).split(':') as [string, string];
       spec = { kind: 'cycle', cycle, state };
     } else if (sub === 'arbitration') {
-      spec = { kind: 'arbitration', type: interaction.options.getString('type')?.trim() || undefined };
+      const minTier = interaction.options.getString('min_tier') as ArbyTier | null;
+      spec = { kind: 'arbitration', type: interaction.options.getString('type')?.trim() || undefined, ...(minTier ? { minTier } : {}) };
     } else if (sub === 'sortie') {
       spec = { kind: 'sortie', mission: interaction.options.getString('mission')?.trim() || undefined };
     } else if (sub === 'archon') {

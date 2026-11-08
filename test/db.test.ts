@@ -81,6 +81,14 @@ test('settings: partial updates keep other fields', () => {
     weeklyRoleId: null,
     promoChannelId: null,
     newsChannelId: null,
+    arbitrationsChannelId: null,
+    arbitrationsRoleId: null,
+    fissuresChannelId: null,
+    sortieChannelId: null,
+    cyclesChannelId: null,
+    tradersChannelId: null,
+    baroRoleId: null,
+    invasionsChannelId: null,
   });
   store.updateSettings(G, { lfgVoiceGraceMinutes: 7 });
   assert.equal(store.getSettings(G).lfgVoiceGraceMinutes, 7);
@@ -177,12 +185,13 @@ test('the answer cache is dropped with its switch and settings, also from a data
     raw.exec(
       "INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x'), ('cfg_LOCAL_AI_MODEL', 'v:old-model'), ('ai_toggle_local', 'on'), ('cfg_WORLDSTATE_URL', 'v:https://docs.warframestat.us/'), ('avatar_sha256', 'abc')",
     );
-    // Back to before the cache migration (ten from the end). The review column it was followed by is gone again by now, the
+    // Back to before the cache migration (eleven from the end). The review column it was followed by is gone again by now, the
     // migrations after it are replayed as they come: add the column, clean the settings, drop the corrections and ratings, add the
-    // community tables (undone here first, so they can be added again), drop the research board and starboard again, and drop
-    // verification and the AI switches (their columns put back first).
-    raw.exec(`PRAGMA user_version = ${version - 10}`);
+    // community tables (undone here first, so they can be added again), drop the research board and starboard again, drop
+    // verification and the AI switches (their columns put back first), and add the World State board channels.
+    raw.exec(`PRAGMA user_version = ${version - 11}`);
     for (const col of ['events_role_id', 'lfg_role_id', 'birthday_channel_id', 'weekly_channel_id', 'weekly_role_id', 'promo_channel_id', 'news_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
+    for (const col of ['arbitrations_channel_id', 'arbitrations_role_id', 'fissures_channel_id', 'sortie_channel_id', 'cycles_channel_id', 'traders_channel_id', 'baro_role_id', 'invasions_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
     for (const col of ['verify_channel_id TEXT', 'verify_panel_message_id TEXT', 'verify_role_id TEXT', 'verify_min_account_age_days INTEGER']) raw.exec(`ALTER TABLE guild_settings ADD COLUMN ${col}`);
     raw.exec('ALTER TABLE events DROP COLUMN discord_event_id');
     for (const t of ['self_roles', 'giveaway_entries', 'giveaways', 'birthdays', 'member_activity']) raw.exec(`DROP TABLE ${t}`);

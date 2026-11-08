@@ -134,6 +134,9 @@ export async function syncBoard(
 }
 
 /** Removes a board's messages and forgets it (its channel was switched off or moved). */
+/** The ids of a board's messages in a channel, top to bottom (empty before it was posted). */
+export const boardMessageIds = (ctx: Pick<AppContext, 'store'>, boardId: string, channelId: string): string[] => readRecord(ctx.store.getMeta(boardKey(boardId, channelId)))?.ids ?? [];
+
 export async function clearBoard(ctx: Pick<AppContext, 'store'>, channel: Pick<BoardChannel, 'id' | 'messages'>, boardId: string): Promise<void> {
   const key = boardKey(boardId, channel.id);
   const saved = readRecord(ctx.store.getMeta(key));
