@@ -168,6 +168,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       const byPos = (a: { rawPosition: number }, b: { rawPosition: number }) => a.rawPosition - b.rawPosition;
       const categories = channels.filter((c): c is CategoryChannel => c.type === ChannelType.GuildCategory).sort(byPos);
       const children = (parentId: string | null) => channels.filter((c) => c.type !== ChannelType.GuildCategory && c.parentId === parentId).sort(byPos);
+      const emojis = await guild.emojis.fetch().catch(() => guild.emojis.cache);
       return {
         server: {
           id: guild.id,
@@ -200,6 +201,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
             members: r.members.size,
             permissions: r.permissions.has(PermissionFlagsBits.Administrator) ? ['Administrator'] : r.permissions.toArray(),
           })),
+        // Custom emojis, written as <:name:id> (<a:name:id> when animated) in messages and embeds.
+        emojis: [...emojis.values()].map((e) => ({ id: e.id, name: e.name, animated: e.animated ?? false, available: e.available ?? true })),
       };
     }),
   );

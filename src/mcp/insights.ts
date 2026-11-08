@@ -14,6 +14,7 @@ import { getWikiIndex } from '../wiki/index.js';
 import { api } from '../warframe/fetch.js';
 import { screenshotQueue } from '../queue.js';
 import { worldStateInfo } from '../warframe/worldstate.js';
+import { settingStates } from '../runtime-config.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
 /**
@@ -156,6 +157,21 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           honeypot: Boolean(s.honeypotChannelId),
           chatChannel: Boolean(s.chatChannelId),
         },
+        // Every guild setting, with channel and role ids named, so it is clear what is switched on, off or never set up.
+        settings: Object.fromEntries(
+          Object.entries(s)
+            .filter(([k]) => k !== 'guildId')
+            .map(([k, v]) => {
+              if (typeof v !== 'string' || !/^\d{17,20}$/.test(v)) return [k, v];
+              const name = guild?.channels.cache.get(v)?.name ?? guild?.roles.cache.get(v)?.name;
+              return [k, name ? `${name} (${v})` : `${v} (not found)`];
+            }),
+        ),
+        // Config page values that differ from the built-in default, and where they come from.
+        config: settingStates(config, store)
+          .filter((c) => c.source !== 'default')
+          .map((c) => ({ key: c.def.key, value: c.value, source: c.source, pendingRestart: c.pendingRestart })),
+        allowCodeEdit: config.ALLOW_CODE_EDIT,
       };
     }),
   );
