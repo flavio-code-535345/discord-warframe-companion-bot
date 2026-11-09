@@ -52,15 +52,25 @@ export function woffToSfnt(woff: Uint8Array): Buffer {
 
 export const FONT = 'OrdisSans';
 export const FONT_BOLD = 'OrdisSansBold';
+/** Roboto bold's Greek letters (the Omnia emoji's Ω); the Latin files have none. */
+export const FONT_GREEK_BOLD = 'OrdisGreekBold';
 let ready = false;
 
-/** Registers Roboto regular as `FONT` and bold as `FONT_BOLD` (separate families: the weight matching of the drawing library is unreliable). Safe to call many times. */
+/**
+ * Registers Roboto regular as `FONT`, bold as `FONT_BOLD` and bold Greek as `FONT_GREEK_BOLD` (separate families: the weight matching
+ * of the drawing library is unreliable). Safe to call many times.
+ */
 export function loadFonts(): void {
   if (ready) return;
   const require = createRequire(import.meta.url);
   const dir = join(tmpdir(), 'ordis-fonts');
   mkdirSync(dir, { recursive: true });
-  for (const [family, file] of [[FONT, 'roboto-latin-400-normal'], [FONT_BOLD, 'roboto-latin-700-normal']] as const) {
+  const families = [
+    [FONT, 'roboto-latin-400-normal'],
+    [FONT_BOLD, 'roboto-latin-700-normal'],
+    [FONT_GREEK_BOLD, 'roboto-greek-700-normal'],
+  ] as const;
+  for (const [family, file] of families) {
     const target = join(dir, `${file}.ttf`);
     writeFileSync(target, woffToSfnt(readFileSync(require.resolve(`@fontsource/roboto/files/${file}.woff`))));
     PImage.registerFont(target, family).loadSync();

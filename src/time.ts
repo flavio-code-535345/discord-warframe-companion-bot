@@ -66,6 +66,15 @@ export function formatDuration(ms: number): string {
   return `${Math.max(m, 1)}m`;
 }
 
+export const WEEK_MS = 7 * 86_400_000;
+
+/** Monday 00:00 UTC of the week `now` is in: Warframe's weekly reset (Circuit, Nightwave, Archon Hunt, Steel Path honors). */
+export function weekStart(now: number): number {
+  const d = new Date(now);
+  const day = (d.getUTCDay() + 6) % 7;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - day * 86_400_000;
+}
+
 /** Worldstate models type most timestamps as optional, so every helper tolerates missing values. */
 export type TimeInput = Date | string | number | null | undefined;
 

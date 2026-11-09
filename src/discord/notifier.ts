@@ -1,11 +1,10 @@
-import { EmbedBuilder } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { getSendableChannel, refreshEventMessage } from '../services/clan.js';
 import { discordTime } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
 import { type ArbitrationSlot, arbitrationView, loadArbitrations } from '../warframe/arbitrations.js';
 import { type WorldState, getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
-import { COLORS, clampLines } from './embeds.js';
+import { type DmGroup, sendDm, trackerDm } from './dm.js';
 import { feedInput, syncFeeds } from './feeds/index.js';
 import { brandIcon } from './identity.js';
 import { postNews } from './news.js';
@@ -48,45 +47,30 @@ export async function newsJob(ctx: AppContext): Promise<void> {
 
 /** DMs each member about what matches their /track trackers and the boards' "DM me when…" menus, one message per member per round. */
 async function notifyTrackers(ctx: AppContext, ws: WorldState | null, now: number, arbitrations: ArbitrationSlot[] | undefined): Promise<void> {
-  const { store, config, client } = ctx;
+  const { store, config } = ctx;
   const trackers = store.listTrackers(config.DISCORD_GUILD_ID);
   if (!trackers.length) return;
   const items = collectTrackables(ws, now, arbitrations ? { arbitrations } : {});
-  const perUser = new Map<string, { label: string; lines: string[] }[]>();
+  const perUser = new Map<string, DmGroup[]>();
 
   for (const tracker of trackers) {
     const spec = parseSpec(tracker.spec);
     if (!spec) continue;
-    const lines: string[] = [];
+    const matched: DmGroup['items'] = [];
     for (const item of items) {
       const hits = matchTracker(spec, item);
       if (hits === null || !store.markSeen(`track:${tracker.id}:${item.key}`)) continue;
-      const ends = item.expiry ? ` · ends ${discordTime(item.expiry)}` : '';
-      lines.push(`**${item.title}**${hits.length ? ` — ${hits.join(', ')}` : ''}\n${item.detail}${ends}`);
+      matched.push({ item, hits });
     }
-    if (lines.length) {
+    if (matched.length) {
       const list = perUser.get(tracker.userId) ?? [];
-      list.push({ label: `#${tracker.id} ${describeTracker(spec)}`, lines });
+      list.push({ label: `${describeTracker(spec)} · #${tracker.id}`, items: matched });
       perUser.set(tracker.userId, list);
     }
   }
 
-  for (const [userId, groups] of perUser) {
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.brand)
-      .setAuthor({ name: config.BOT_NAME, iconURL: brandIcon(ctx) })
-      .setTitle('Operator, something you asked Ordis to watch for is here!')
-      .setFooter({ text: 'Manage with /track list and /track remove' });
-    for (const g of groups.slice(0, 20)) {
-      embed.addFields({ name: g.label.slice(0, 256), value: clampLines(g.lines, 1000) });
-    }
-    try {
-      const user = await client.users.fetch(userId);
-      await user.send({ embeds: [embed] });
-    } catch (err) {
-      console.warn(`[notifier] could not DM tracker update to ${userId} (DMs closed?):`, (err as Error).message);
-    }
-  }
+  const avatar = brandIcon(ctx) ?? null;
+  for (const [userId, groups] of perUser) await sendDm(ctx, userId, trackerDm(groups, avatar), 'a tracker update');
 }
 
 /** The clan events job (every minute): reminders 15 minutes before the start, then ended events re-rendered without their buttons. */

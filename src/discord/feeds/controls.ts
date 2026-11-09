@@ -124,6 +124,10 @@ export function notifyRow(feed: FeedId, placeholder = '🔔 DM me when…'): Row
 
 export const mineButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('feeds:mine').setLabel('My notifications').setEmoji('📋').setStyle(ButtonStyle.Secondary);
 
+/** `weekly:toggle` (handled in weekly.ts): turns the member's weekly DM on or off; under the weekly post and on the sortie board. */
+export const weeklyButton = (): ButtonBuilder =>
+  new ButtonBuilder().setCustomId('weekly:toggle').setLabel('Weeklies by DM').setEmoji(emojiFor('weekly')).setStyle(ButtonStyle.Secondary);
+
 /** The toggle of a self-assign role (the roles panel's handler). */
 export const roleButton = (roleId: string, label: string, emoji: EmojiName): ButtonBuilder =>
   new ButtonBuilder().setCustomId(`roles:${roleId}`).setLabel(label).setEmoji(emojiFor(emoji)).setStyle(ButtonStyle.Secondary);

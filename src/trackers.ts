@@ -49,11 +49,28 @@ const normMission = (m: string) => {
   return own(MISSION_ALIASES, s) ?? s;
 };
 
+/** Where a trackable comes from (the DM shows its icon). */
+export type TrackableSource =
+  | 'arbitration'
+  | 'invasion'
+  | 'alert'
+  | 'deal'
+  | 'event'
+  | 'steelPath'
+  | 'resurgence'
+  | 'baro'
+  | 'sortie'
+  | 'archon'
+  | 'circuit'
+  | 'fissure'
+  | 'cycle';
+
 /** Something in the current worldstate a tracker can match. */
 export interface Trackable {
   /** Stable identity: the same item keeps its key across polls, a new rotation gets a new one. */
   key: string;
   kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly'>;
+  source: TrackableSource;
   title: string;
   /** Searchable reward text for reward trackers. */
   rewards?: string[];
@@ -85,6 +102,7 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
       out.push({
         key: `arbitration:${s.start}`,
         kind: 'arbitration',
+        source: 'arbitration',
         title: `${s.tier}-tier Arbitration: ${s.mission}`,
         detail: `${where}${s.faction ? ` · ${s.faction}` : ''} · ${s.start > now ? `starts ${discordTime(s.start)}` : 'running now'}`,
         expiry: s.end,
@@ -98,35 +116,35 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
     if (inv.completed) continue;
     const sides = inv.vsInfestation ? [inv.defender] : [inv.attacker, inv.defender];
     const rewards = sides.map((s) => rewardText(s.reward)).filter((r) => r !== '—');
-    out.push({ key: `invasion:${inv.id}`, kind: 'reward', title: `Invasion on ${inv.node}`, rewards, detail: `${inv.desc}: ${rewards.join(' / ')}` });
+    out.push({ key: `invasion:${inv.id}`, kind: 'reward', source: 'invasion', title: `Invasion on ${inv.node}`, rewards, detail: `${inv.desc}: ${rewards.join(' / ')}` });
   }
   for (const a of ws.alerts ?? []) {
     if (!live(a.expiry)) continue;
     const reward = rewardText(a.mission.reward);
-    out.push({ key: `alert:${a.id}`, kind: 'reward', title: `Alert on ${a.mission.node}`, rewards: [reward], detail: `${a.mission.type}: ${reward}`, expiry: a.expiry });
+    out.push({ key: `alert:${a.id}`, kind: 'reward', source: 'alert', title: `Alert on ${a.mission.node}`, rewards: [reward], detail: `${a.mission.type}: ${reward}`, expiry: a.expiry });
   }
   for (const d of ws.dailyDeals ?? []) {
     if (!live(d.expiry)) continue;
-    out.push({ key: `deal:${d.id}`, kind: 'reward', title: "Darvo's deal", rewards: [d.item], detail: `${d.item} for ${d.salePrice}p (-${d.discount}%)`, expiry: d.expiry });
+    out.push({ key: `deal:${d.id}`, kind: 'reward', source: 'deal', title: "Darvo's deal", rewards: [d.item], detail: `${d.item} for ${d.salePrice}p (-${d.discount}%)`, expiry: d.expiry });
   }
   for (const e of ws.events ?? []) {
     if (!live(e.expiry)) continue;
     const rewards = (e.rewards ?? []).map(rewardText).filter((r) => r !== '—');
-    if (rewards.length) out.push({ key: `event:${e.id}`, kind: 'reward', title: e.description, rewards, detail: rewards.join(', '), expiry: e.expiry });
+    if (rewards.length) out.push({ key: `event:${e.id}`, kind: 'reward', source: 'event', title: e.description, rewards, detail: rewards.join(', '), expiry: e.expiry });
   }
   if (ws.steelPath?.currentReward && live(ws.steelPath.expiry)) {
     const r = ws.steelPath.currentReward;
-    out.push({ key: `steelpath:${toMs(ws.steelPath.activation)}`, kind: 'reward', title: 'Steel Path honors', rewards: [r.name], detail: `${r.name} for ${r.cost} Steel Essence`, expiry: ws.steelPath.expiry });
+    out.push({ key: `steelpath:${toMs(ws.steelPath.activation)}`, kind: 'reward', source: 'steelPath', title: 'Steel Path honors', rewards: [r.name], detail: `${r.name} for ${r.cost} Steel Essence`, expiry: ws.steelPath.expiry });
   }
   if (ws.vaultTrader?.inventory?.length && live(ws.vaultTrader.expiry)) {
     const items = ws.vaultTrader.inventory.map((i) => resurgenceItemName(i.item));
-    out.push({ key: `resurgence:${toMs(ws.vaultTrader.expiry)}`, kind: 'reward', title: 'Prime Resurgence', rewards: items, detail: 'Varzia', expiry: ws.vaultTrader.expiry });
+    out.push({ key: `resurgence:${toMs(ws.vaultTrader.expiry)}`, kind: 'reward', source: 'resurgence', title: 'Prime Resurgence', rewards: items, detail: 'Varzia', expiry: ws.vaultTrader.expiry });
   }
   if (ws.voidTrader && isBaroHere(ws, now)) {
     const items = ws.voidTrader.inventory.map((i) => i.item);
     const key = `baro:${ws.voidTrader.id}:${toMs(ws.voidTrader.activation)}`;
-    out.push({ key, kind: 'baro', title: "Baro Ki'Teer has arrived", detail: `At ${ws.voidTrader.location} with ${items.length} items`, expiry: ws.voidTrader.expiry });
-    out.push({ key: `${key}:items`, kind: 'reward', title: "Baro Ki'Teer's inventory", rewards: items, detail: `At ${ws.voidTrader.location}`, expiry: ws.voidTrader.expiry });
+    out.push({ key, kind: 'baro', source: 'baro', title: "Baro Ki'Teer has arrived", detail: `At ${ws.voidTrader.location} with ${items.length} items`, expiry: ws.voidTrader.expiry });
+    out.push({ key: `${key}:items`, kind: 'reward', source: 'baro', title: "Baro Ki'Teer's inventory", rewards: items, detail: `At ${ws.voidTrader.location}`, expiry: ws.voidTrader.expiry });
   }
 
   const arb = extra.arbitrations ? null : activeArbitration(ws, now);
@@ -136,6 +154,7 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
     out.push({
       key: `arbitration:${toMs(arb.activation)}`,
       kind: 'arbitration',
+      source: 'arbitration',
       title: `Arbitration: ${type}`,
       detail: `${arb.node}${arb.enemy ? ` · ${arb.enemy}` : ''}${flags.length ? ` · ${flags.join(', ')}` : ''}`,
       expiry: arb.expiry,
@@ -147,6 +166,7 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
     out.push({
       key: `sortie:${ws.sortie.id}`,
       kind: 'sortie',
+      source: 'sortie',
       title: `Daily sortie${ws.sortie.boss ? `: ${ws.sortie.boss}` : ''}`,
       detail: variants.map((v) => `${v.missionType} (${v.node})`).join(' · '),
       expiry: ws.sortie.expiry,
@@ -157,6 +177,7 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
     out.push({
       key: `archon:${ws.archonHunt.id}`,
       kind: 'archon',
+      source: 'archon',
       title: `Archon Hunt${ws.archonHunt.boss ? `: ${ws.archonHunt.boss}` : ''}`,
       detail: (ws.archonHunt.missions ?? []).map((m) => `${m.type} (${m.node})`).join(' · '),
       expiry: ws.archonHunt.expiry,
@@ -164,13 +185,14 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
   }
   // The Duviri Circuit's Warframe choices change weekly: a reward tracker such as "Mesa" matches them like any other reward.
   const circuit = (ws.duviriCycle as { choices?: { category?: string; choices?: string[] }[] } | undefined)?.choices?.find((c) => c.category === 'normal')?.choices;
-  if (circuit?.length) out.push({ key: `circuit:${circuit.join(',')}`, kind: 'reward', title: 'Duviri Circuit (Warframes)', rewards: circuit, detail: "This week's Circuit choices" });
+  if (circuit?.length) out.push({ key: `circuit:${circuit.join(',')}`, kind: 'reward', source: 'circuit', title: 'Duviri Circuit (Warframes)', rewards: circuit, detail: "This week's Circuit choices" });
 
   for (const f of ws.fissures ?? []) {
     if (!live(f.expiry)) continue;
     out.push({
       key: `fissure:${f.id}`,
       kind: 'fissure',
+      source: 'fissure',
       title: `${f.tier} ${f.missionType}${f.isHard ? ' (Steel Path)' : ''}${f.isStorm ? ' (Void Storm)' : ''}`,
       detail: `${f.node} · ${f.enemy}`,
       expiry: f.expiry,
@@ -196,7 +218,7 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
   ];
   for (const [cycle, name, state, expiry] of cycles) {
     if (!state || !live(expiry)) continue;
-    out.push({ key: `cycle:${cycle}:${state}:${Math.round(toMs(expiry) / 60_000) * 60_000}`, kind: 'cycle', title: `${name}: ${state}`, detail: `${name} is now ${state}`, expiry, cycle: { cycle, state: state.toLowerCase() } });
+    out.push({ key: `cycle:${cycle}:${state}:${Math.round(toMs(expiry) / 60_000) * 60_000}`, kind: 'cycle', source: 'cycle', title: `${name}: ${state}`, detail: `${name} is now ${state}`, expiry, cycle: { cycle, state: state.toLowerCase() } });
   }
   return out;
 }

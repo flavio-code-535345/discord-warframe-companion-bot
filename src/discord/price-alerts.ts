@@ -1,8 +1,7 @@
-import { EmbedBuilder } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { type TrackerSpec, parseSpec, priceDecision } from '../trackers.js';
 import { priceCheck } from '../warframe/market.js';
-import { COLORS } from './embeds.js';
+import { priceDm, sendDm } from './dm.js';
 import { brandIcon } from './identity.js';
 
 /**
@@ -19,7 +18,7 @@ const alertKey = (id: number) => `price_alert:${id}`;
 type PriceSpec = Extract<TrackerSpec, { kind: 'price' }>;
 
 export async function checkPriceTrackers(ctx: AppContext): Promise<void> {
-  const { store, config, client } = ctx;
+  const { store, config } = ctx;
   const trackers = store
     .listTrackers(config.DISCORD_GUILD_ID)
     .map((t) => ({ t, spec: parseSpec(t.spec) }))
@@ -43,18 +42,7 @@ export async function checkPriceTrackers(ctx: AppContext): Promise<void> {
     if (decision === 'reset') store.setMeta(alertKey(t.id), '');
     if (decision !== 'alert') continue;
     store.setMeta(alertKey(t.id), '1');
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.success)
-      .setAuthor({ name: config.BOT_NAME, iconURL: brandIcon(ctx) })
-      .setTitle(`💰 ${spec.name} is at ${now.price}p`)
-      .setURL(now.url)
-      .setDescription(`Your limit was **${spec.below}p**. The cheapest online seller right now is **${now.seller ?? 'someone'}**.\n[Open on warframe.market](${now.url})`)
-      .setFooter({ text: `Tracker #${t.id} · Ordis tells you again once the price has gone back above your limit` });
-    try {
-      const user = await client.users.fetch(t.userId);
-      await user.send({ embeds: [embed] });
-    } catch (err) {
-      console.warn(`[price-alerts] could not DM ${t.userId} (DMs closed?):`, (err as Error).message);
-    }
+    const card = priceDm({ name: spec.name, price: now.price!, below: spec.below, seller: now.seller, url: now.url, trackerId: t.id }, brandIcon(ctx) ?? null);
+    await sendDm(ctx, t.userId, card, 'a price alert');
   }
 }

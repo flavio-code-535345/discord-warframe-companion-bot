@@ -1,5 +1,5 @@
 import { distance } from '../ssroles/parse.js';
-import { discordTime } from '../time.js';
+import { WEEK_MS, discordTime, weekStart } from '../time.js';
 import { type WikiResult, readWikiPage } from '../warframe/wiki.js';
 import { type WorldState, getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
 
@@ -18,7 +18,6 @@ export interface Rotations {
   warframes: string[][];
 }
 
-const WEEK_MS = 7 * 86_400_000;
 const RELOAD_MS = 6 * 3_600_000;
 
 /** The table only counts when every week from 1 on is there; a gap would make every count after it wrong. */
@@ -78,11 +77,7 @@ export const resetRotations = (): void => {
 };
 
 /** Monday 00:00 UTC after `now`, when the Circuit's weekly rewards change. */
-export function nextReset(now: number): number {
-  const d = new Date(now);
-  const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  return midnight + (7 - ((d.getUTCDay() + 6) % 7)) * 86_400_000;
-}
+export const nextReset = (now: number): number => weekStart(now) + WEEK_MS;
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9& ]/g, ' ').replace(/\s+/g, ' ').trim();
 

@@ -101,6 +101,22 @@ export function messageStats(components: { toJSON(): unknown }[]): { text: numbe
   return { text: chars, components: count };
 }
 
+/** What a message's components show: the text displays in order, then each row of buttons and menus as one `[label] [label]` line (MCP read_messages). */
+export function componentText(components: { toJSON(): unknown }[]): string {
+  const out: string[] = [];
+  const label = (c: Record<string, unknown>) => `[${String(c.label ?? c.placeholder ?? (c.emoji as { name?: string } | undefined)?.name ?? '?')}]`;
+  const walk = (c: Record<string, unknown>) => {
+    if (c.type === 1) {
+      out.push(((c.components as Record<string, unknown>[] | undefined) ?? []).map(label).join(' '));
+      return;
+    }
+    if (typeof c.content === 'string') out.push(c.content);
+    for (const child of (c.components as Record<string, unknown>[] | undefined) ?? []) walk(child);
+  };
+  for (const c of components) walk(c.toJSON() as Record<string, unknown>);
+  return out.join('\n');
+}
+
 /** "Hydron (Sedna)" → "Sedna". */
 export const planetOf = (node: string): string | null => /\(([^)]+)\)\s*$/.exec(node)?.[1] ?? null;
 

@@ -1,13 +1,21 @@
 import type { AppContext } from '../context.js';
+import { cycleIcon, omniaIcon, tierBadge } from '../imaging/badges.js';
+import type { ArbyTier } from '../warframe/arbitrations.js';
 import { apiFetch } from '../warframe/fetch.js';
 import { loadEmojis } from './emoji.js';
+import { TIER_COLOR } from './feeds/arbitrations.js';
+
+/** A wiki file name, or a picture Ordis draws itself (src/imaging/badges.ts) when the wiki has none. */
+export type EmojiSource = string | (() => Promise<Buffer>);
+
+const badge = (tier: ArbyTier) => () => tierBadge(tier, `#${TIER_COLOR[tier].toString(16).padStart(6, '0')}`);
 
 /**
  * Ordis's own emojis: application emojis (up to 2000, usable in every channel and DM, and not counted against the clan server's
- * 50 slots) uploaded from the Warframe wiki's icons. Each one is uploaded once; an icon the wiki doesn't have, or that fails, is tried
- * again a day later, and until then src/discord/emoji.ts shows its Unicode stand-in.
+ * 50 slots), from the Warframe wiki's icons or drawn by Ordis. Each one is uploaded once; one that fails (an icon the wiki doesn't have)
+ * is tried again a day later, and until then src/discord/emoji.ts shows its Unicode stand-in.
  */
-export const APP_EMOJIS: Record<string, string> = {
+export const APP_EMOJIS: Record<string, EmojiSource> = {
   wf_grineer: 'IconGrineerOn(xWhite).png',
   wf_corpus: 'IconCorpusOn(xWhite).png',
   wf_infested: 'IconInfestedOn(xWhite).png',
@@ -36,6 +44,15 @@ export const APP_EMOJIS: Record<string, string> = {
   wf_darvo: 'Darvo.png',
   wf_teshin: 'Teshin.png',
   wf_varzia: 'Varzia.png',
+  // Drawn: the wiki has no Arbitration tier badges, no Omnia fissure icon and no plain day/night icon.
+  wf_tier_s: badge('S'),
+  wf_tier_a: badge('A'),
+  wf_tier_b: badge('B'),
+  wf_tier_c: badge('C'),
+  wf_tier_d: badge('D'),
+  wf_tier_f: badge('F'),
+  wf_omnia: omniaIcon,
+  wf_cycle: cycleIcon,
 };
 
 const WIKI_API = 'https://wiki.warframe.com/api.php';
@@ -78,7 +95,7 @@ export interface SyncResult {
 /** Uploads the manifest's emojis that the application doesn't have yet. */
 export async function syncAppEmojis(
   target: AppEmojiTarget,
-  opts: { fetcher?: Fetcher; manifest?: Record<string, string>; now?: number; existing?: EmojiLike[] } = {},
+  opts: { fetcher?: Fetcher; manifest?: Record<string, EmojiSource>; now?: number; existing?: EmojiLike[] } = {},
 ): Promise<SyncResult> {
   const fetcher = opts.fetcher ?? background;
   const manifest = opts.manifest ?? APP_EMOJIS;
@@ -92,11 +109,17 @@ export async function syncAppEmojis(
     failedAt.set(name, now);
     result.failed.push({ name, reason });
   };
+  const upload = async (name: string, image: Buffer) => {
+    if (image.length > MAX_BYTES) throw new Error(`${Math.round(image.length / 1024)} KB is over Discord's 256 KB`);
+    result.emojis.push(await target.create(name, image));
+    result.created.push(name);
+  };
+  const fromWiki = wanted.filter((w): w is [string, string] => typeof w[1] === 'string');
 
   // One request finds the thumbnails of up to 50 files; the wiki answers with normalised titles, mapped back here.
   const urls = new Map<string, string>();
-  for (let i = 0; i < wanted.length; i += 50) {
-    const batch = wanted.slice(i, i + 50);
+  for (let i = 0; i < fromWiki.length; i += 50) {
+    const batch = fromWiki.slice(i, i + 50);
     const params = new URLSearchParams({
       action: 'query',
       format: 'json',
@@ -136,12 +159,17 @@ export async function syncAppEmojis(
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim();
       if (!IMAGE_TYPES.test(type)) throw new Error(`not an image (${type || 'no type'})`);
-      const image = Buffer.from(await res.arrayBuffer());
-      if (image.length > MAX_BYTES) throw new Error(`${Math.round(image.length / 1024)} KB is over Discord's 256 KB`);
-      result.emojis.push(await target.create(name, image));
-      result.created.push(name);
+      await upload(name, Buffer.from(await res.arrayBuffer()));
     } catch (err) {
       fail(name, (err as Error).message);
+    }
+  }
+  for (const [name, source] of wanted) {
+    if (typeof source === 'string') continue;
+    try {
+      await upload(name, await source());
+    } catch (err) {
+      fail(name, `drawing or upload failed: ${(err as Error).message}`);
     }
   }
   return result;

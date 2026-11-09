@@ -22,6 +22,7 @@ import { planRoleMove } from './role-order.js';
 import { syncChatTopic } from '../discord/chat-topic.js';
 import { cardEmbed, deleteOwnMessage, editOwnMessage, editOwnMessageCard } from '../discord/messages.js';
 import { COLORS } from '../discord/embeds.js';
+import { componentText } from '../discord/feeds/parts.js';
 import { brandIcon } from '../discord/identity.js';
 import { postWelcome } from '../discord/welcome.js';
 import { skipCurrentWeek } from '../discord/weekly.js';
@@ -517,7 +518,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'read_messages',
     {
       title: 'Read channel messages',
-      description: 'Reads the latest messages of a text channel (newest first, up to 100), including embed text and attachment links. Use it to see what is there before rewriting or clearing a channel.',
+      description:
+        'Reads the latest messages of a text channel (newest first, up to 100), including embed text, what Components V2 messages show (the World State boards: their text, then each row of buttons and menus as [label]) and attachment links. Use it to see what is there before rewriting or clearing a channel.',
       inputSchema: { channel_id: snowflake, limit: z.number().int().min(1).max(100).optional() },
       annotations: READ_ONLY,
     },
@@ -535,7 +537,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
           pinned: m.pinned,
           at: m.createdAt.toISOString(),
           content: m.content,
-          embeds: m.embeds.map((e) => ({ title: e.title, description: e.description, fields: e.fields.map((f) => `${f.name}: ${f.value}`) , image: e.image?.url ?? null })),
+          embeds: m.embeds.map((e) => ({ title: e.title, description: e.description, fields: e.fields.map((f) => `${f.name}: ${f.value}`), image: e.image?.url ?? null })),
+          components: m.components.length ? componentText(m.components) : undefined,
           attachments: [...m.attachments.values()].map((a) => a.url),
         })),
       };

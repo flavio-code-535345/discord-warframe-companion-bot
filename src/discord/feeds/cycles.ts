@@ -1,10 +1,9 @@
 import { ActionRowBuilder, type ContainerBuilder, type MessageActionRowComponentBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { discordTime } from '../../time.js';
+import { WEEK_MS, discordTime, weekStart } from '../../time.js';
 import { CETUS, DUVIRI_MOODS, DUVIRI_MOOD_MS, VALLIS, projectCycles } from '../../warframe/cycles.js';
 import { type WorldState, bountyStanding } from '../../warframe/worldstate.js';
 import { BOUNTY_SYNDICATES } from '../embeds.js';
 import { e, emojiFor, emojiUrl } from '../emoji.js';
-import { weekStart } from '../weekly.js';
 import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, cap, card, num, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
@@ -16,7 +15,6 @@ import { type FeedInput, STALE_NOTE } from './types.js';
  */
 
 const COLOR = { worlds: 0x0f766e, duviri: 0x7c3aed } as const;
-const MIN = 60_000;
 
 export const CYCLE_EMOJI: Record<string, string> = {
   day: '☀️',
@@ -73,7 +71,7 @@ function circuitPart(ws: WorldState, now: number): Part {
   const hard = d?.choices?.find((c) => c.category === 'hard')?.choices ?? [];
   if (!normal.length && !hard.length) return null;
   return [
-    `### 🔁 Duviri Circuit · resets ${discordTime(weekStart(now) + 7 * 24 * 60 * MIN, 'R')}`,
+    `### 🔁 Duviri Circuit · resets ${discordTime(weekStart(now) + WEEK_MS, 'R')}`,
     normal.length ? `**Warframes:** ${normal.join(', ')}` : '',
     hard.length ? `**Incarnon (Steel Path):** ${hard.join(', ')}` : '',
   ]

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import type { StringSelectMenuInteraction } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  type MessageActionRowComponentBuilder,
+  StringSelectMenuBuilder,
+  type StringSelectMenuInteraction,
+} from 'discord.js';
 import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
 import { BOUNTY_SYNDICATES } from '../src/discord/embeds.js';
@@ -11,7 +18,7 @@ import { TRACK_OPTIONS, notifyRow, sameSpec } from '../src/discord/feeds/control
 import { handleFeedSelect } from '../src/discord/feeds/handlers.js';
 import { FEEDS, feedHealth, feedOfChannel, syncFeeds } from '../src/discord/feeds/index.js';
 import { invasionPings } from '../src/discord/feeds/invasions.js';
-import { card, compact, fit, messageStats } from '../src/discord/feeds/parts.js';
+import { card, compact, componentText, fit, messageStats } from '../src/discord/feeds/parts.js';
 import { traderPings } from '../src/discord/feeds/traders.js';
 import { FEED_IDS, type FeedInput } from '../src/discord/feeds/types.js';
 import { MAX_TRACKERS_PER_USER, parseSpec } from '../src/trackers.js';
@@ -584,6 +591,15 @@ describe('board building blocks', () => {
     const json = card(0, [{ separator: true, divider: true, large: false }, 'a', { separator: true, divider: true, large: false }, { separator: true, divider: false, large: false }, 'b', { separator: true, divider: true, large: false }]).toJSON() as { components: { type: number }[] };
     assert.deepEqual(json.components.map((c) => c.type), [10, 14, 10], 'text, one separator, text');
     assert.match(JSON.stringify(card(0, [null, false, '']).toJSON()), /Nothing to show right now/);
+  });
+
+  it('read back as text, with the buttons and menus of a row on one line', () => {
+    const row = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('a').setLabel('My notifications').setStyle(ButtonStyle.Secondary),
+      new StringSelectMenuBuilder().setCustomId('b').setPlaceholder('🔔 DM me when…').addOptions({ label: 'x', value: 'x' }),
+    );
+    const board = card(0, ['### Fissures', { separator: true, divider: true, large: false }, { section: true, text: 'Lith · Capture', thumb: 'https://cdn.discordapp.com/emojis/1.png' }, row]);
+    assert.equal(componentText([board]), '### Fissures\nLith · Capture\n[My notifications] [🔔 DM me when…]');
   });
 
   it('write credit prices short', () => {

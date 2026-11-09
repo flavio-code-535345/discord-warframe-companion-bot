@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import { type EmojiLike, resetEmojiFailures, syncAppEmojis } from '../src/discord/app-emojis.js';
-import { e, emojiFor, emojiReport, factionEmoji, loadEmojis, rewardEmoji, shardEmoji, tierEmoji } from '../src/discord/emoji.js';
+import { APP_EMOJIS, type EmojiLike, resetEmojiFailures, syncAppEmojis } from '../src/discord/app-emojis.js';
+import { EMOJI, e, emojiFor, emojiReport, factionEmoji, loadEmojis, rewardEmoji, shardEmoji, tierEmoji } from '../src/discord/emoji.js';
 
 describe('emoji registry', () => {
   afterEach(() => loadEmojis([]));
@@ -102,5 +102,32 @@ describe('application emoji upload', () => {
     assert.equal(wiki.calls.length, 0);
     const nextDay = await syncAppEmojis(app.target, { fetcher: wiki.fetcher, manifest, now: 2 + 24 * 3_600_000 });
     assert.deepEqual(nextDay.failed.map((f) => f.name).sort(), ['wf_broken', 'wf_gone']);
+  });
+
+  it('uploads the pictures it draws without asking the wiki, and retries a failed drawing a day later', async () => {
+    const wiki = fakeWiki({});
+    const app = fakeApp([]);
+    let attempts = 0;
+    const manifest = {
+      wf_drawn: async () => png,
+      wf_broken: async (): Promise<Buffer> => {
+        attempts++;
+        throw new Error('no font');
+      },
+    };
+    const res = await syncAppEmojis(app.target, { fetcher: wiki.fetcher, manifest, now: 1 });
+    assert.deepEqual(res.created, ['wf_drawn']);
+    assert.equal(wiki.calls.length, 0, 'nothing is looked up for a drawn emoji');
+    assert.match(res.failed[0]!.reason, /drawing or upload failed: no font/);
+    await syncAppEmojis(app.target, { fetcher: wiki.fetcher, manifest, now: 2 });
+    assert.equal(attempts, 1);
+    await syncAppEmojis(app.target, { fetcher: wiki.fetcher, manifest, now: 2 + 24 * 3_600_000 });
+    assert.equal(attempts, 2);
+  });
+
+  it('has an upload source for every application emoji the registry names', () => {
+    const named = Object.values(EMOJI).flatMap((v) => [...v.names]).filter((n) => n.startsWith('wf_'));
+    const missing = named.filter((n) => !Object.hasOwn(APP_EMOJIS, n));
+    assert.equal(missing.length, 0, `no source for ${missing.join(', ')}`);
   });
 });

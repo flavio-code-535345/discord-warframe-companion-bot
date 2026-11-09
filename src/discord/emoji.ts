@@ -20,7 +20,7 @@ export const EMOJI = {
   neo: { names: ['T3Fissure'], fallback: '🟡' },
   axi: { names: ['T4Fissure'], fallback: '🟠' },
   requiem: { names: ['wf_requiem'], fallback: '🔴' },
-  omnia: { names: [], fallback: '🌐' },
+  omnia: { names: ['wf_omnia'], fallback: '🌐' },
   storm: { names: ['wf_railjack'], fallback: '⛈️' },
   steelPath: { names: ['wf_steel_essence'], fallback: '🔥' },
   invasion: { names: ['wf_invasion'], fallback: '🎯' },
@@ -28,7 +28,7 @@ export const EMOJI = {
   nightwave: { names: ['wf_nightwave'], fallback: '🌙' },
   weekly: { names: ['IconWeekly'], fallback: '🗓️' },
   bounty: { names: ['wf_bounty'], fallback: '📜' },
-  cycle: { names: [], fallback: '🌗' },
+  cycle: { names: ['wf_cycle'], fallback: '🌗' },
   lotus: { names: ['wf_lotus'], fallback: '🪷' },
   // Traders
   baro: { names: ['wf_baro'], fallback: '🛒' },

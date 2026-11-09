@@ -2,8 +2,7 @@ import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
 import { type WorldState, archimedeaName } from '../../warframe/worldstate.js';
 import { e, emojiUrl, factionTag, shardEmoji } from '../emoji.js';
-import { weeklyButton } from '../weekly.js';
-import { buttonRow, mineButton, notifyRow } from './controls.js';
+import { buttonRow, mineButton, notifyRow, weeklyButton } from './controls.js';
 import { DIVIDER, type Part, card, nodeName, planetOf, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
 
@@ -35,14 +34,15 @@ function sortiePart(ws: WorldState, now: number): Part[] {
   return [section(head, emojiUrl('sortie')), missions];
 }
 
-function archonPart(ws: WorldState, now: number): Part[] {
+/** The Archon Hunt: the archon, the shard it drops, the planet and the three missions (also in the weekly post, a heading lower). */
+export function archonPart(ws: WorldState, now: number, heading: '##' | '###' = '##'): Part[] {
   const a = ws.archonHunt;
-  if (!a || !live(a.expiry, now) || !a.missions?.length) return [`## ${e('archon')} Archon Hunt\nNo Archon Hunt right now.`];
+  if (!a || !live(a.expiry, now) || !a.missions?.length) return [`${heading} ${e('archon')} Archon Hunt\nNo Archon Hunt right now.`];
   const shard = archonShard(a.boss);
   const planets = new Set(a.missions.map((m) => planetOf(m.node)));
   const planet = planets.size === 1 ? [...planets][0] : null;
   const head = [
-    `## ${shard ? shardEmoji(shard) : e('archon')} Archon Hunt${a.boss ? ` · ${a.boss}` : ''}`,
+    `${heading} ${shard ? shardEmoji(shard) : e('archon')} Archon Hunt${a.boss ? ` · ${a.boss}` : ''}`,
     `${shard ? `Drops a **${shard} Archon Shard** · ` : ''}${planet ? `on **${planet}** · ` : ''}resets ${discordTime(a.expiry, 'R')}`,
   ].join('\n');
   const missions = a.missions.map((m, i) => `**${i + 1}. ${m.type}** · ${planet ? nodeName(m.node) : m.node}`).join('\n');
@@ -71,7 +71,8 @@ function archimedeaPart(ws: WorldState, now: number): Part[] {
   });
 }
 
-function honorsPart(ws: WorldState, now: number): Part {
+/** Teshin's Steel Path honor this week and the next one (also the weekly post's). */
+export function honorsPart(ws: WorldState, now: number): Part {
   const sp = ws.steelPath;
   if (!sp?.currentReward || !live(sp.expiry, now)) return null;
   const rotation = sp.rotation ?? [];

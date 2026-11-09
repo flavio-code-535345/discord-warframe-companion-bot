@@ -7,7 +7,9 @@ import { assertValidBirthday, birthdaysOn, daysUntil } from '../src/birthdays/se
 import { drawWinners, renderGiveaway } from '../src/giveaways/service.js';
 import { rolesPanel } from '../src/selfroles/service.js';
 import { describeTracker, priceDecision } from '../src/trackers.js';
-import { handleWeeklyButton, postWeeklyReset, weekStart, weeklyDue, weeklyEmbeds } from '../src/discord/weekly.js';
+import { componentText } from '../src/discord/feeds/parts.js';
+import { handleWeeklyButton, postWeeklyReset, weeklyCard, weeklyDue } from '../src/discord/weekly.js';
+import { weekStart } from '../src/time.js';
 import type { WorldState } from '../src/warframe/worldstate.js';
 
 const G = '111111111111111111';
@@ -118,13 +120,17 @@ describe('weekly reset post', () => {
     assert.equal(weeklyDue(ws(monday), monday, monday + 600_000), null, 'once per week');
   });
 
-  it('shows the Circuit and only the weekly Nightwave challenges', () => {
-    const [overview] = weeklyEmbeds(ws(monday), monday);
-    const text = json<{ description: string }>(overview).description;
+  it('shows the Circuit, only the weekly Nightwave challenges, the Archon Hunt and Steel Path in one card', () => {
+    const text = componentText([weeklyCard(ws(monday), monday, monday + 600_000)]);
     assert.match(text, /Mesa, Nidus/);
     assert.match(text, /Braton, Lato/);
     assert.match(text, /Elite One/);
     assert.doesNotMatch(text, /Daily/);
+    assert.match(text, /### .* Archon Hunt · Archon Nira/);
+    assert.match(text, /Amber Archon Shard/);
+    assert.match(text, /Umbra Forma Blueprint/);
+    assert.doesNotMatch(text, /Weeklies by DM/, 'no button in a DM');
+    assert.match(componentText([weeklyCard(ws(monday), monday, monday + 600_000, true)]), /\[Weeklies by DM\]$/, 'the channel post ends with the button');
   });
 });
 

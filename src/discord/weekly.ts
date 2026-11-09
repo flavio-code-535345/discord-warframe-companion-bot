@@ -1,28 +1,24 @@
-import { ActionRowBuilder, ButtonBuilder, type ButtonInteraction, ButtonStyle, EmbedBuilder, MessageFlags } from 'discord.js';
+import { type ButtonInteraction, type ContainerBuilder, MessageFlags } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { UserError, getSendableChannel } from '../services/clan.js';
-import { toMs } from '../time.js';
+import { WEEK_MS, discordTime, toMs, weekStart } from '../time.js';
 import { MAX_TRACKERS_PER_USER, parseSpec } from '../trackers.js';
 import type { WorldState } from '../warframe/worldstate.js';
-import { COLORS, archonEmbed, steelPathEmbed } from './embeds.js';
-import { footer } from './style.js';
+import { sendDm } from './dm.js';
+import { e } from './emoji.js';
+import { buttonRow, weeklyButton } from './feeds/controls.js';
+import { DIVIDER, card } from './feeds/parts.js';
+import { archonPart, honorsPart } from './feeds/sortie.js';
+import { COLORS } from './style.js';
 
 /**
- * The Monday post: what the weekly reset (Monday 00:00 UTC) brought, in the /setup weekly channel and as a DM to everyone with the
- * Weeklies role or a /track weekly subscription. It waits until the world state
- * shows the new week (the Archon Hunt started after the reset), or posts anyway after WAIT_LIMIT_MS; bot_meta `weekly_posted` holds the
- * week it last posted, so it goes out once per week, also across restarts.
+ * The Monday post: what the weekly reset (Monday 00:00 UTC) brought, as one Components V2 card in the /setup weekly channel and as a
+ * DM to everyone with the Weeklies role or a /track weekly subscription. It waits until the world state shows the new week (the Archon
+ * Hunt started after the reset), or posts anyway after WAIT_LIMIT_MS; bot_meta `weekly_posted` holds the week it last posted, so it
+ * goes out once per week, also across restarts.
  */
 
-const WEEK_MS = 7 * 86_400_000;
 const WAIT_LIMIT_MS = 6 * 3_600_000;
-
-/** Monday 00:00 UTC of the week `now` is in. */
-export function weekStart(now: number): number {
-  const d = new Date(now);
-  const day = (d.getUTCDay() + 6) % 7;
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - day * 86_400_000;
-}
 
 /** Whether the post for this week is due now. */
 export function weeklyDue(ws: WorldState, lastPosted: number, now: number): number | null {
@@ -32,28 +28,34 @@ export function weeklyDue(ws: WorldState, lastPosted: number, now: number): numb
   return fresh || now - week >= WAIT_LIMIT_MS ? week : null;
 }
 
-/** The post's embeds: the overview (Circuit, Nightwave weeklies), then the Archon Hunt and Teshin's honors. Pure. */
-export function weeklyEmbeds(ws: WorldState, week: number): EmbedBuilder[] {
+/**
+ * The week's post as one card: this week's Duviri Circuit, the weekly Nightwave challenges, the Archon Hunt and Teshin's Steel Path
+ * honor. `button` adds the Weeklies by DM toggle, for the channel post only (a tap in a DM would not reach the clan server's
+ * interactions). Pure.
+ */
+export function weeklyCard(ws: WorldState, week: number, now: number, button = false): ContainerBuilder {
   const d = ws.duviriCycle as { choices?: { category?: string; choices?: string[] }[] } | undefined;
   const normal = d?.choices?.find((c) => c.category === 'normal')?.choices ?? [];
   const hard = d?.choices?.find((c) => c.category === 'hard')?.choices ?? [];
-  const weeklies = (ws.nightwave?.activeChallenges ?? []).filter((c) => !c.isDaily);
-  const lines = [
-    normal.length ? `**Circuit Warframes:** ${normal.join(', ')}` : null,
-    hard.length ? `**Steel Path Circuit Incarnons:** ${hard.join(', ')}` : null,
-    weeklies.length ? `\n**Nightwave this week**\n${weeklies.map((c) => `${c.isElite ? '⭐' : '•'} **${c.title}** (${c.reputation.toLocaleString('en-US')}): ${c.desc}`).join('\n')}` : null,
+  const circuit = [
+    normal.length ? `${e('warframe')} **Warframes:** ${normal.join(', ')}` : null,
+    hard.length ? `${e('steelPath')} **Steel Path Incarnons:** ${hard.join(', ')}` : null,
   ].filter(Boolean);
-  const overview = new EmbedBuilder()
-    .setColor(COLORS.brand)
-    .setTitle(`🗓️ Weekly reset · week of ${new Date(week).toISOString().slice(0, 10)}`)
-    .setDescription((lines.length ? lines.join('\n') : 'A new week has started.').slice(0, 4000))
-    .setFooter(footer('warframestat.us'));
-  return [overview, archonEmbed(ws), steelPathEmbed(ws)];
-}
-
-/** The button under the channel post and on the sortie board: `weekly:toggle` turns the member's DM subscription on or off. */
-export function weeklyButton(): ButtonBuilder {
-  return new ButtonBuilder().setCustomId('weekly:toggle').setLabel('Weeklies by DM').setEmoji('🗓️').setStyle(ButtonStyle.Secondary);
+  const weeklies = (ws.nightwave?.activeChallenges ?? []).filter((c) => !c.isDaily);
+  const nightwave = weeklies.map((c) => `${c.isElite ? '⭐' : '•'} **${c.title}** · ${c.reputation.toLocaleString('en-US')}\n-# ${c.desc}`);
+  return card(COLORS.brand, [
+    `## ${e('weekly')} Weekly reset\nThe week of ${discordTime(week, 'D')} · the next reset is ${discordTime(week + WEEK_MS, 'R')}`,
+    DIVIDER,
+    circuit.length ? `### 🔁 Duviri Circuit\n${circuit.join('\n')}` : null,
+    DIVIDER,
+    nightwave.length ? `### ${e('nightwave')} Nightwave this week\n${nightwave.join('\n')}` : null,
+    DIVIDER,
+    ...archonPart(ws, now, '###'),
+    DIVIDER,
+    honorsPart(ws, now),
+    DIVIDER,
+    button ? buttonRow(weeklyButton()) : null,
+  ]);
 }
 
 /**
@@ -104,27 +106,20 @@ export async function weeklySubscribers(ctx: AppContext): Promise<string[]> {
 }
 
 /** Posts the week's summary in the weekly channel (when one is set) and DMs it to every subscriber. Returns who was reached. */
-export async function sendWeekly(ctx: AppContext, ws: WorldState, week: number): Promise<{ channel: boolean; dms: number; failed: number }> {
-  const embeds = weeklyEmbeds(ws, week);
+export async function sendWeekly(ctx: AppContext, ws: WorldState, week: number, now = Date.now()): Promise<{ channel: boolean; dms: number; failed: number }> {
   const channelId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).weeklyChannelId;
   let posted = false;
   if (channelId) {
     const channel = await getSendableChannel(ctx, channelId);
-    // The button only goes under the channel post: in a DM a tap would not reach the clan server's interactions.
-    await channel.send({ embeds, components: [new ActionRowBuilder<ButtonBuilder>().addComponents(weeklyButton())], allowedMentions: { parse: [] } });
+    await channel.send({ components: [weeklyCard(ws, week, now, true)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
     posted = true;
   }
+  const dm = weeklyCard(ws, week, now);
   let dms = 0;
   let failed = 0;
   for (const userId of await weeklySubscribers(ctx)) {
-    try {
-      const user = await ctx.client.users.fetch(userId);
-      await user.send({ embeds });
-      dms++;
-    } catch (err) {
-      failed++;
-      console.warn(`[weekly] could not DM ${userId} (DMs closed?):`, (err as Error).message);
-    }
+    if (await sendDm(ctx, userId, dm, 'the weekly post')) dms++;
+    else failed++;
   }
   return { channel: posted, dms, failed };
 }
@@ -138,5 +133,5 @@ export async function postWeeklyReset(ctx: AppContext, ws: WorldState, now = Dat
   if (week === null || now - week > WEEK_MS) return;
   // Marked first: a failure to post is logged, not retried every minute.
   ctx.store.setMeta('weekly_posted', String(week));
-  await sendWeekly(ctx, ws, week);
+  await sendWeekly(ctx, ws, week, now);
 }
