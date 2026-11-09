@@ -2,52 +2,61 @@
 
 # Cephalon Ordis — The Rats Den 69 clan bot
 
-**Cephalon Ordis** is the Discord companion bot for the Warframe clan **The Rats Den 69**. It answers Warframe
-questions in chat (free, from live game data and the wiki), looks up items and relics, shows the live world state and
-market prices, DMs members about things they track, runs clan events and LFG squads, posts automatic alerts, and
-serves an **MCP server** so AI assistants (Claude Code, Claude Desktop, …) can read Warframe data and manage the clan.
+**Cephalon Ordis** is the Discord companion bot for the Warframe clan **The Rats Den 69**. It keeps a live World State
+board in each alert channel, answers Warframe questions in chat (from live game data and the wiki, with no AI model and
+nothing to pay), looks up items and what relics are worth, grades rivens from a screenshot, shows market prices, DMs
+members about what they track, runs clan events, LFG squads, giveaways and levels, and serves an **MCP server** so AI
+assistants (Claude Code, Claude Desktop, …) can read Warframe data and manage the clan.
 
 ## Features
 
 ### Ask Ordis
 
-Mention the bot (`@Cephalon Ordis where does Neo N16 drop?`), use `/ask`, or DM it (clan members only). Ordis
-works out what you're asking, looks up the facts himself, and only then lets a language model (optional: a self-hosted
-Ollama, or a free cloud model) put them into words; a check removes any sentence with a name or number the facts don't
-contain. Nothing costs money:
+Mention the bot (`@Cephalon Ordis where does Neo N16 drop?`), use `/ask`, DM it (clan members only), or write in the
+`/setup chat` channel. No language model is involved: Ordis works out what you're asking with fixed rules and answers
+from live data and his local copy of the wiki, so he never makes anything up.
 
 | You ask | Ordis answers with |
 | --- | --- |
 | "price of Arcane Energize", "how much is Wisp Prime set worth?" | warframe.market sellers and buyers |
 | "when can I get the Torid Incarnon?", "what's in the Steel Path Circuit this week?" | the exact week and date, counted from the wiki's rotation table and the live world state |
-| "where does Neo N16 drop?", "what's in Axi A1?", "Kuva Bramma stats" | the relic or item card |
-| "how do I get Wisp?", "best kuva farm?", "how do archon shards work?", "change my nickname?" | a short answer written from the wiki page and the drop tables, with the source linked |
-| "best stats for a Zarr riven?" | what the expensive Zarr rivens on warframe.market roll |
-| "when is Baro coming?", "is it night on Cetus?", "today's sortie", "Entrati bounties", "steel path axi fissures", "what is Varzia selling?" | the live world state |
+| "where does Neo N16 drop?", "what's in Axi A1?", "Kuva Bramma stats" | the drop tables, or the item or relic card (a relic with each reward's price and what a run is worth) |
+| "when is Baro coming?", "is it night on Cetus?", "today's sortie", "Entrati bounties", "steel path axi fissures" | the live world state |
 | "when is our next clan event?" | the clan's upcoming events |
-| "what is 9 x 2", "help" | the sum; examples of what to ask |
+| "how many points for MR 25?", "how do I make Corrosive?", "what is 9 x 2" | the mastery thresholds, the element recipe, the sum |
+| anything else, like "how do archon shards work?" | the sentence of the wiki page the question names that fits it best, quoted word for word, and links to the 1–3 most relevant pages |
 
-Follow-ups work ("and how do I get it?" remembers what you asked about), and a reply to a wrong answer corrects it.
-`/setup chat` names a channel where Ordis answers anything written there without a mention, slash command or DM; chatter
-gets a short line instead of a wiki lookup (needs the Message Content intent: enable it in the Developer Portal first, then
-set `ENABLE_MESSAGE_CONTENT=true`).
+In the chat channel Ordis answers anything written there without a mention, but stays out of replies between members and
+of chatter that names no wiki page. It needs the Message Content intent: enable it in the Developer Portal first, then set
+`ENABLE_MESSAGE_CONTENT=true`. `/ailog` shows staff what was asked and how it was answered.
 
 ### Commands
 
 | Command | What it does |
 | --- | --- |
 | `/ask question` | Ask Ordis anything about Warframe |
-| `/item name` | Stats for a Warframe (abilities, polarities), weapon (damage, crit, status, riven disposition), mod or arcane (max-rank effect, best drop sources) or relic (contents with intact → radiant chances, vaulted status) |
-| `/wf cycles · fissures · sortie · archon · baro · steelpath · invasions · nightwave · deals · events · archimedea · bounties · resurgence` | Live world state, including Darvo's deal, events, Deep/Temporal Archimedea, syndicate bounties and Varzia's Prime Resurgence |
+| `/item name` | Stats for a Warframe (abilities, polarities), weapon (damage, crit, status, riven disposition), mod or arcane (max-rank effect, best drop sources) or relic (contents with intact → radiant chances, each reward's price, what a run is worth, vaulted status) |
+| `/relics [refinement] [squad] [vaulted] [tier]` | The relics worth the most plat per run, alone or in a radshare |
 | `/price item` | warframe.market cheapest online sellers and top buyers, with a ready-to-paste whisper |
 | `/drops item` | Where an item, mod or relic drops, with chances |
 | `/wiki query` | Wiki article summary and link |
+| `/wf cycles · fissures · sortie · archon · baro · steelpath · invasions · nightwave · deals · events · archimedea · bounties · resurgence` | Live world state, including Darvo's deal, events, Deep/Temporal Archimedea, syndicate bounties and Varzia's Prime Resurgence |
+| `/riven grade · scan · find · watch · top · status` | Grade a riven from its stats or a screenshot, list the cheapest matching rivens for sale, get a DM when one is listed below your price |
+| `/alecaframe link · stats · relics · unlink` | Link your own AlecaFrame stats (opt-in, see below) |
 | `/track reward · fissure · cycle · baro · arbitration · sortie · archon · weekly · price · list · remove` | Personal DM alerts: a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a market price dropping. The same DMs can be set up from each World State board's menu |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
-| `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons and a reminder ping 15 min before start |
+| `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons, an optional end, a matching Discord scheduled event and a reminder ping 15 min before start |
 | `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; pings everyone when full. With squad voice on, it also gets its own voice channel |
 | `/activity set · clear · list` | (Manage Server) a picture, ping role and fixed channel for each LFG activity |
-| `/setup feed · announcements · welcome · chat · modlog · honeypot · off · show` | (Manage Server) choose channels: `feed board: channel: [ping_role]` puts one World State board in a channel |
+| `/giveaway start · end · reroll · list` | A giveaway with an Enter button and 1–10 winners, drawn when it ends |
+| `/birthday set · remove · list` | Ordis wishes you a happy birthday on the day (only day and month are stored) |
+| `/rank` · `/leaderboard` · `/xp` | Levels from chat and voice, with Level roles; staff can give XP, set levels and ignore channels |
+| `/roles add · remove · post · list` | (Manage Roles) a self-assign panel with one button per role |
+| `/sticky set · edit · remove · list` | (Manage Messages) a message Ordis keeps at the bottom of a channel |
+| `/vc rename · limit · lock · unlock` | Change your own join-to-create voice room |
+| `/inactive [days]` | (Kick Members) members who haven't written or talked in a while |
+| `/ailog [count] [member]` | (Manage Messages) the latest questions Ordis answered |
+| `/setup …` | (Manage Server) choose channels: `feed board: channel: [ping_role]` puts one World State board in a channel; also chat, announcements, welcome, modlog, auditlog, status, honeypot, ssroles, rivens, levels, weekly, news, promos, birthdays, pings, autovc and lfgvoice, plus `off` and `show` |
 
 ### Moderation
 
@@ -84,13 +93,46 @@ settings are in the admin panel (Settings page) and the `set_activity`, `list_ac
 ### The wiki index
 
 Ordis keeps a local, searchable copy of the whole Warframe wiki (about 11,000 articles) in `wiki.db` in the data volume.
-Questions that aren't about prices, drops, items or live game data ("how do Archon Shards work?", "what does Iron Skin do?",
-"how do I get a Kuva Lich?") are answered from the passage that matches best, with a link to the article, instead of just the
-article's introduction. It is also used by `/wiki`, the `search_wiki` and `read_wiki_page` MCP tools, and the optional Claude
-chat. The first build starts about 90 seconds after startup and takes roughly 8 minutes (one request every 1.5 seconds, so it
-is gentle on the wiki). Until then, and for anything the index can't answer, the live wiki is used. After that it refreshes
-once a day and only downloads pages whose revision changed. The index is rebuildable, is not part of backups, and takes
-about 50 MB. Set `WIKI_INDEX=false` to turn it off. Wiki text is available under CC BY-SA.
+Questions that aren't about prices, drops, items or live game data ("how do Archon Shards work?", "what does Iron Skin do?")
+are answered from it, and it also feeds `/wiki`, the Circuit rotation, the promo codes post and the `search_wiki` MCP tool.
+The first build starts about 90 seconds after startup and takes about a quarter of an hour (one request every 2.5 seconds,
+so it is gentle on the wiki). Until then, the live wiki is used. After that Ordis checks every hour and refreshes once the
+last refresh is 6 hours old, downloading only pages whose revision changed. The index is rebuildable, is not part of
+backups, and takes about 50 MB. Set `WIKI_INDEX=false` to turn it off. Wiki text is available under CC BY-SA.
+
+### Rivens
+
+Post a riven screenshot in the `/setup rivens` channel, or use `/riven scan`, and Ordis answers with a picture: the card,
+and next to it a grade for every roll (where the value sits in its 90–110% range, from the wiki's riven tables), the
+weapon's most wanted stats among its expensive listings on warframe.market, and what rivens with the same bonuses are
+listed for. Two or three screenshots of one weapon's rivens in one message are compared, to say which one to keep.
+`/riven find` lists the cheapest matching rivens for sale and `/riven watch` DMs you when one is listed below your price.
+Screenshots are read with OCR only and never stored; the market's riven listings are read slowly in the background (one
+weapon every 45 seconds).
+
+### Relic values
+
+`/relics`, the relic card and the `relic_values` MCP tool value a relic by what is in it: each reward's price from WFInfo's
+price table (served by warframestat.us, read every 6 hours) times its chance at each refinement. Alone that is the plat you
+can expect from one reward; in a radshare it is the best of four. Forma counts as nothing, and a reward without a price
+too (the answer says so). What relics themselves sell for isn't used: warframe.market has too few live orders per
+refinement for that to be reliable.
+
+### AlecaFrame (opt-in)
+
+A member can link their own [AlecaFrame](https://alecaframe.com) stats: in AlecaFrame open **Stats**, press **Create
+Public Link**, tick what to share (tick **Relics** for the relic planner), press **Generate token**, then run
+`/alecaframe link token:` with the token or the whole link. Ordis keeps only that read-only token, which can be revoked
+in AlecaFrame at any time, and reads AlecaFrame at most once a second.
+
+- `/alecaframe stats [period] [share]` draws platinum, ducats, endo, credits, aya and Vitus Essence over time, with relics
+  opened and trading totals (never trade partners' names). Only you see it unless you choose `share`.
+- `/alecaframe relics` lists your most valuable relics to open and the ones worth refining to Radiant, using the relic
+  values above.
+- `/alecaframe unlink` forgets the token.
+
+AlecaFrame's overlays and anything its public link doesn't share (riven data, the rest of the inventory) are out of
+reach for a bot.
 
 ### Join-to-create voice rooms
 
@@ -146,12 +188,16 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 | Fissures | Normal, Steel Path and Void Storms, by relic tier | — |
 | Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | — |
 | Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | — |
-| Traders | Baro Ki'Teer's whole inventory with ducats and credits, Darvo's deal, Varzia's Prime Resurgence, Teshin | The Baro role, when he arrives |
+| Traders | Baro Ki'Teer's whole inventory with ducats and credits and, within minutes of his arrival, what each item sells for on warframe.market (plat per ducat, the best resale); Darvo's deal, Varzia's Prime Resurgence, Teshin | The Baro role, when he arrives |
 | Invasions | Every invasion with both rewards and its progress | The alerts role, for a notable reward |
 
 Every board has a **🔔 DM me when…** menu and a **My notifications** button, so members can set up their own DMs without
 typing a command. The Arbitration schedule and tiers come from [browse.wf](https://browse.wf) (the world state itself from
 warframestat.us); Digital Extremes' servers are never called.
+
+A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to the Weeklies role),
+game news from the in-game news panel and Warframe's Steam announcements (`/setup news`), the active promo codes from the
+wiki (`/setup promos`) and birthday wishes (`/setup birthdays`).
 
 Feature ideas borrowed from community tools: Genesis/WFCD (world-state commands, trackers), Warframe Hub (personal
 notifications), warframestat.us (item and drop data) and the wiki.
@@ -234,12 +280,16 @@ npm run dev
 
 | Page | What you can do |
 | --- | --- |
-| Overview | Bot status, ping, members, events, latest backup, where the bot posts |
-| Settings | Alert, announcement, mod-log, welcome and chat channels; the alert ping role |
+| Overview | Health at a glance: the bot, every background job, the world state, each World State board, members, the next event, the latest backup, and where every feature posts |
+| Settings | Every channel and ping role (World State boards, chat, mod and audit logs, welcome, weekly, news, …) and the LFG activities |
 | Announce | Write and post an announcement, optionally pinging a role |
+| Messages | Edit the text of any message Ordis wrote |
 | Events | Create clan events (posted with RSVP buttons) and cancel them |
 | Members | Roster and warnings: remove members, clear warnings |
 | Backups | Take, download and delete server backups (restoring stays in Discord with `/backup load`) |
+| Screenshots | Try the screenshot-roles readers (OCR, the local model, the cloud model) on a picture, without giving any roles |
+| Rivens | The riven scan channel, the background market read, a screenshot test and the latest scans |
+| Config | Change settings (world state, models, queues, the riven reader, …) without a redeploy |
 | Admins | Add or remove panel admins by Discord ID |
 
 **Setup:**
@@ -261,8 +311,9 @@ The bot's HTTP port (3000 in the container) serves:
 | Path | What |
 | --- | --- |
 | `/admin` | Admin panel (see above) |
-| `/` | Live dashboard. Shows bot status, member counts and clan events (titles and RSVP counts only). Also shows open-world cycles, fissure counts per tier (normal, Steel Path, storm), the sortie, Archon Hunt, Baro and his best items, Steel Path honors, Darvo, invasions (worth-it rewards starred), in-game events, Nightwave, Archimedea and Prime Resurgence. Countdowns run live and the page refreshes itself |
+| `/` | The public status page: one line on the bot, a strip with the next cycle change, Baro, the Arbitration and the sortie, then four sections of tiles (open worlds; the Void, with every open fissure and filters; resets; events and trading) that open and close. Countdowns tick every second and the page updates itself every minute without reloading |
 | `/status.json` | The same data as JSON |
+| `/logo.png` | The clan logo |
 | `/health` | `{"status":"ok","discord":true}` once connected to Discord (used by the Docker health check) |
 | `/mcp` | MCP endpoint (below), only when `MCP_AUTH_TOKEN` is set |
 
@@ -275,10 +326,14 @@ Cloudflare Access if your event titles are private.
 
 | Tool | Kind |
 | --- | --- |
-| `get_worldstate`, `get_fissures`, `lookup_item`, `price_check`, `search_drops`, `search_wiki` | Warframe data (read-only) |
-| `get_clan_overview`, `list_clan_members`, `list_channels_and_roles`, `list_events` | Clan & Discord info (read-only) |
-| `create_event`, `cancel_event`, `send_announcement` | Post to Discord |
-| `register_member`, `remove_member` | Edit the clan roster |
+| `get_worldstate`, `get_fissures`, `lookup_item`, `price_check`, `relic_values`, `search_drops`, `search_wiki`, `search_web` | Warframe data (read-only; `search_web` needs a SearXNG) |
+| `grade_riven`, `find_rivens`, `riven_top_rolls`, `riven_status`, `riven_table_check` | Rivens (read-only) |
+| `get_clan_overview`, `list_clan_members`, `list_channels_and_roles`, `get_server_structure`, `read_messages`, `list_events`, `list_self_roles`, `list_activities`, `list_inactive_members`, `list_member_levels`, `list_backups` | Clan & Discord info (read-only) |
+| `get_bot_health`, `get_ai_log`, `test_answer` | Ordis's health and answers (read-only) |
+| `create_event`, `cancel_event`, `send_announcement`, `post_message`, `edit_message`, `delete_message`, `clear_messages`, `post_roles_panel`, `send_weekly_now`, `test_welcome` | Post to Discord |
+| `register_member`, `remove_member`, `set_member_level`, `set_self_role`, `set_activity`, `remove_activity`, `update_bot_settings` | Clan roster and settings |
+| `create_category`, `create_channel`, `edit_channel`, `set_channel_permissions`, `archive_channel`, `create_role`, `edit_role`, `delete_role`, `edit_server`, `create_backup` | Server admin (channels are archived, never deleted) |
+| `update_bot`, `restart_bot` | Pull a new image now, or restart |
 
 **Claude Code** — this repo ships a project `.mcp.json`. Export the token before starting Claude Code. With the
 Docker stack, also export the public URL `https://<BOT_DOMAIN>/mcp`, since the default is
@@ -314,9 +369,12 @@ read/write scope rather than the account password). The image name defaults to `
 
 - World state: the community [warframestat.us](https://docs.warframestat.us) API (`api.warframestat.us/<platform>`). The bot does not
   call Digital Extremes' own `api.warframe.com`, which their terms don't allow and which can get an IP blocked from logging in to the game
-- Prices: [warframe.market](https://warframe.market) API v2
+- Arbitration schedule and tiers: [browse.wf](https://browse.wf) (calamity-inc, MIT)
+- Prices and riven listings: [warframe.market](https://warframe.market) API v2
+- Relic values: WFInfo's price and relic tables, served by [warframestat.us](https://docs.warframestat.us)
 - Drop tables and item data: [warframestat.us](https://docs.warframestat.us)
-- Wiki summaries: [wiki.warframe.com](https://wiki.warframe.com) (MediaWiki API)
-- AI chat: [Claude API](https://platform.claude.com) (Anthropic)
+- Wiki: [wiki.warframe.com](https://wiki.warframe.com) (MediaWiki API, kept as a local index)
+- Game news: the world state's news and Warframe's official Steam announcements
+- AlecaFrame stats: [stats.alecaframe.com](https://alecaframe.com), only for members who link their own public token
 
 Not affiliated with Digital Extremes.
