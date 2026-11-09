@@ -15,6 +15,8 @@ export interface JobStats {
   lastMs: number | null;
   lastError: string | null;
   lastErrorAt: number | null;
+  /** The last round that finished threw (the error stays in `lastError` after the job recovers). */
+  lastFailed: boolean;
   nextAt: number | null;
 }
 
@@ -62,7 +64,7 @@ export class Scheduler {
       firstMs: opts.firstMs ?? 0,
       fn,
       handle: null,
-      stats: { name, everyMs, runs: 0, failures: 0, running: false, lastStartAt: null, lastMs: null, lastError: null, lastErrorAt: null, nextAt: null },
+      stats: { name, everyMs, runs: 0, failures: 0, running: false, lastStartAt: null, lastMs: null, lastError: null, lastErrorAt: null, lastFailed: false, nextAt: null },
     };
     this.jobs.set(name, job);
     if (this.started) this.plan(job, job.firstMs);
@@ -116,12 +118,14 @@ export class Scheduler {
     try {
       const result = await job.fn();
       s.runs++;
+      s.lastFailed = false;
       return typeof result === 'number' && Number.isFinite(result) ? Math.max(0, result) : null;
     } catch (err) {
       s.runs++;
       s.failures++;
       s.lastError = err instanceof Error ? err.message : String(err);
       s.lastErrorAt = this.clock.now();
+      s.lastFailed = true;
       console.error(`[jobs] ${job.name} failed:`, err);
       return null;
     } finally {

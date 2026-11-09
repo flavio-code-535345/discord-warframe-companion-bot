@@ -154,6 +154,7 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           runs: j.runs,
           failures: j.failures,
           running: j.running,
+          failing: j.lastFailed,
           lastRun: iso(j.lastStartAt),
           lastMs: j.lastMs,
           lastError: j.lastError && { message: j.lastError, at: iso(j.lastErrorAt) },

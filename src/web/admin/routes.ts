@@ -9,7 +9,7 @@ import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from
 import { modLog } from '../../moderation/service.js';
 import { UserError, assertChannelFree, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
 import { parseWhen } from '../../time.js';
-import { buildStatus, escapeHtml as e } from '../status.js';
+import { escapeHtml as e } from '../status.js';
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
@@ -28,11 +28,13 @@ import {
 } from './auth.js';
 import { syncChatTopic } from '../../discord/chat-topic.js';
 import { FEEDS } from '../../discord/feeds/index.js';
+import { skipCurrentWeek } from '../../discord/weekly.js';
 import { registerMessagesRoutes } from './messages-page.js';
+import { CHANNEL_SETTINGS, registerOverviewRoutes } from './overview-page.js';
 import { registerRivenRoutes } from './riven-page.js';
 import { registerSsTestRoutes } from './sstest-page.js';
 import { registerConfigRoutes } from './config-page.js';
-import { type Option, type PageContext, actionButton, badge, csrfField, deniedPage, head, layout, loginPage, notConfiguredPage, select, statCard } from './pages.js';
+import { type Option, type PageContext, actionButton, badge, csrfField, deniedPage, head, layout, loginPage, notConfiguredPage, select } from './pages.js';
 
 const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 const kb = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
@@ -181,32 +183,6 @@ export function adminRouter(ctx: AppContext): Router {
   }
   const nameOf = async (userId: string) => (await client.users.fetch(userId).catch(() => null))?.username ?? userId;
 
-  // --- overview ---
-
-  router.get('/', async (req, res) => {
-    const s = await buildStatus(ctx);
-    const settings = store.getSettings(guildId);
-    const latest = store.listBackups(guildId)[0];
-    const ch = (cid: string | null) => (cid ? `<code>#${e(client.channels.cache.get(cid) && 'name' in client.channels.cache.get(cid)! ? (client.channels.cache.get(cid) as { name: string }).name : cid)}</code>` : badge('off'));
-    const body = `${head('Overview', 'How Ordis and the clan server are doing right now.')}
-<div class="grid">
-${statCard('Bot', s.online ? 'Online' : 'Offline', `${s.pingMs !== null ? `${s.pingMs} ms ping · ` : ''}up ${Math.floor(s.uptimeSeconds / 3600)}h ${Math.floor((s.uptimeSeconds % 3600) / 60)}m`, { tone: s.online ? 'ok' : 'bad' })}
-${statCard('Discord members', e(String(s.server?.memberCount ?? '—')))}
-${statCard('Registered Tenno', String(s.registeredMembers))}
-${statCard('Upcoming events', String(s.upcomingEvents.length))}
-${statCard('Latest backup', latest ? `#${latest.id}` : '—', latest ? utc(latest.createdAt) : 'No backups yet')}
-</div>
-<h2>Bot channels</h2>
-<div class="card"><table>
-${FEEDS.map((f) => `<tr><td>${e(f.label)}</td><td>${ch(settings[f.channel])}</td></tr>`).join('\n')}
-<tr><td>Announcements &amp; events</td><td>${ch(settings.announcementsChannelId)}</td></tr>
-<tr><td>Moderation log</td><td>${ch(settings.modLogChannelId)}</td></tr>
-<tr><td>Welcome</td><td>${ch(settings.welcomeChannelId)}</td></tr>
-<tr><td>Honeypot</td><td>${settings.honeypotChannelId ? `${ch(settings.honeypotChannelId)} ${badge(honeypotAction(settings.honeypotAction), 'warn')}` : badge('off')}</td></tr>
-</table><p class="mt"><a href="/admin/settings">Change settings →</a></p></div>`;
-    html(res, layout('Overview', body, pc(res, 'overview', req)));
-  });
-
   // --- settings ---
 
   router.get('/settings', async (req, res) => {
@@ -216,16 +192,15 @@ ${FEEDS.map((f) => `<tr><td>${e(f.label)}</td><td>${ch(settings[f.channel])}</td
     const p = pc(res, 'settings', req);
     const activities = store.listActivities();
     const nameOfId = (cid: string | null, list: Option[]) => (cid ? e(list.find((o) => o.value === cid)?.label ?? cid) : '—');
-    const field = (label: string, name: keyof GuildSettings, opts: Option[]) => `<label>${label}${select(name, opts, s[name] as string | null)}</label>`;
-    const body = `${head('Settings', 'Where Ordis posts, and which safety tools are switched on.')}
+    const field = (label: string, name: keyof GuildSettings, opts: Option[], empty?: string) => `<label>${label}${select(name, opts, s[name] as string | null, empty)}</label>`;
+    const body = `${head('Settings', 'Where Ordis posts, who gets pinged, and which safety tools are switched on.')}
 <h2>Channels</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings">${csrfField(p.session)}
-<div class="row">
-${field('Announcements & events channel', 'announcementsChannelId', channels)}
-${field('Moderation log channel', 'modLogChannelId', channels)}
-${field('Welcome channel', 'welcomeChannelId', channels)}
-${field('Ordis chat channel', 'chatChannelId', channels)}
-</div><div><button>Save</button></div></form></div>
+${CHANNEL_SETTINGS.map(
+  (grp) => `<div class="formhead">${e(grp.title)}</div>
+<div class="row">${grp.fields.map((f) => field(e(f.label), f.key, f.kind === 'role' ? roles : channels, f.empty)).join('')}</div>`,
+).join('\n')}
+<div><button>Save channels</button></div></form></div>
 <h2>World State boards</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings/feeds">${csrfField(p.session)}
 <p class="muted">One live board per channel, kept current by Ordis; a channel holds one board. Members use its menus to get DMs, and the roles are pinged for what is new.</p>
@@ -280,22 +255,24 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
     action('settings', async (req, session) => {
       const g = await guild();
       await Promise.all([g.channels.fetch(), g.roles.fetch()]);
-      const ch = (k: string) => {
-        const v = id(req.body[k]);
-        if (v && !g.channels.cache.has(v)) throw new UserError('One of the channels no longer exists.');
-        return v;
-      };
-      const chatChannelId = ch('chatChannelId');
-      assertChannelFree(ctx, { chatChannelId });
-      store.updateSettings(guildId, {
-        announcementsChannelId: ch('announcementsChannelId'),
-        modLogChannelId: ch('modLogChannelId'),
-        welcomeChannelId: ch('welcomeChannelId'),
-        chatChannelId,
-      });
+      const before = store.getSettings(guildId);
+      const patch: Partial<GuildSettings> = {};
+      const changed: { name: string; value: string }[] = [];
+      for (const f of CHANNEL_SETTINGS.flatMap((grp) => grp.fields)) {
+        // Only the fields the form sent: a page opened before an update must not clear settings it did not show.
+        if (!Object.hasOwn(req.body, f.key)) continue;
+        const v = id(req.body[f.key]);
+        if (v && !(f.kind === 'role' ? g.roles.cache.has(v) : g.channels.cache.has(v))) throw new UserError(`${f.label}: that ${f.kind} no longer exists.`);
+        patch[f.key] = v;
+        if (v !== before[f.key]) changed.push({ name: f.label, value: v ? (f.kind === 'role' ? `<@&${v}>` : `<#${v}>`) : 'off' });
+      }
+      if (patch.chatChannelId !== undefined) assertChannelFree(ctx, { chatChannelId: patch.chatChannelId });
+      // A new weekly channel starts with the next Monday, like /setup weekly, instead of posting this week's reset late.
+      if (patch.weeklyChannelId && patch.weeklyChannelId !== before.weeklyChannelId) skipCurrentWeek(ctx);
+      store.updateSettings(guildId, patch);
       void syncChatTopic(ctx);
-      await audit(session, 'Changed bot channel settings');
-      return 'Settings saved.';
+      if (changed.length) await audit(session, 'Changed bot channel settings', changed);
+      return changed.length ? 'Settings saved.' : 'Nothing changed.';
     }),
   );
 
@@ -402,6 +379,7 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
     }),
   );
 
+  registerOverviewRoutes({ router, ctx, pc, html, guild });
   registerMessagesRoutes({ router, ctx, pc, html, audit, channelOptions: async () => channelOptions(await guild()) });
   registerSsTestRoutes({ router, ctx, pc, html });
   registerRivenRoutes({ router, ctx, pc, html, action, audit, channelOptions: async () => channelOptions(await guild()) });

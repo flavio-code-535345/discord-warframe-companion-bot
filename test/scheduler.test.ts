@@ -79,6 +79,30 @@ describe('scheduler', () => {
     assert.equal(s.failures, 3);
     assert.equal(s.lastError, 'boom');
     assert.equal(s.lastErrorAt, clock.now() - 500);
+    assert.equal(s.lastFailed, true);
+    assert.equal(jobs.stats().find((j) => j.name === 'good')!.lastFailed, false);
+  });
+
+  it('marks a job that recovered as no longer failing, in the same millisecond too', async () => {
+    const clock = fakeClock();
+    const jobs = new Scheduler(clock);
+    let n = 0;
+    jobs.every('flaky', 1_000, () => {
+      if (n++ === 0) throw new Error('first round fails');
+    });
+    const errors = console.error;
+    console.error = () => {};
+    try {
+      await jobs.runNow('flaky');
+      assert.equal(jobs.stats()[0]!.lastFailed, true);
+      await jobs.runNow('flaky');
+    } finally {
+      console.error = errors;
+    }
+    const [s] = jobs.stats();
+    assert.equal(s!.lastFailed, false);
+    assert.equal(s!.failures, 1);
+    assert.equal(s!.lastError, 'first round fails', 'the last error stays readable after the job recovers');
   });
 
   it('waits the delay a job returns instead of its interval', async () => {

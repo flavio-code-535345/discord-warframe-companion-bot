@@ -264,8 +264,8 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
   };
 }
 
-/** The footer's line about the world state source: off, or when it was last called and how that went. */
-function apiPill(a: StatusData['warframeApi']): string {
+/** One line about the world state source: off, or when it was last called and how that went (the status footer, the panel's overview). */
+export function worldStateLine(a: StatusData['warframeApi']): string {
   if (!a.enabled) return 'off';
   const cadence = a.smart ? `smart, at least every ${a.maxMinutes} min` : `every ${Math.round(a.intervalSeconds / 60)} min`;
   if (!a.lastCallAt) return `not called yet · ${cadence}`;
@@ -419,7 +419,7 @@ export function renderStatusPage(s: StatusData, nonce: string, iconOf: IconLooku
   const facts = [
     `${e(String(s.server?.memberCount ?? '—'))} members`,
     `up ${e(formatDuration(s.uptimeSeconds * 1000))}`,
-    `world state ${e(apiPill(s.warframeApi))}`,
+    `world state ${e(worldStateLine(s.warframeApi))}`,
     s.archive ? `wiki archive ${s.archive.pages.toLocaleString('en-US')}${s.archive.syncing ? ' · syncing' : ''}` : '',
   ].filter(Boolean).join(' · ');
 

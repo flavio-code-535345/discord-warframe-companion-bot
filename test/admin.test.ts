@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
 import { startHttpServer } from '../src/http.js';
+import { configureWorldState } from '../src/warframe/worldstate.js';
 import { SESSION_COOKIE, sessionSecret, sign, unsign } from '../src/web/admin/auth.js';
 
 const GUILD = '111111111111111111';
@@ -14,6 +15,7 @@ let baseUrl = '';
 let close: () => void = () => {};
 let store: Store;
 const testChannels = new Map<string, unknown>();
+const testRoles = new Map<string, unknown>();
 
 before(async () => {
   const config = loadConfig({
@@ -30,7 +32,7 @@ before(async () => {
     user: { id: 'bot' },
     users: { fetch: async (id: string) => ({ id, username: `user${id.slice(-3)}`, bot: false }) },
     channels: { cache: new Map() },
-    guilds: { fetch: async () => ({ id: GUILD, channels: { fetch: async (id?: string) => (id ? testChannels.get(id) ?? null : testChannels), cache: testChannels }, roles: { fetch: async () => new Map(), cache: new Map() } }) },
+    guilds: { fetch: async () => ({ id: GUILD, channels: { fetch: async (id?: string) => (id ? testChannels.get(id) ?? null : testChannels), cache: testChannels }, roles: { fetch: async () => testRoles, cache: testRoles } }) },
   } as unknown as Client;
   const ctx: AppContext = { config: { ...config, HTTP_PORT: 0 }, store, client };
   const server = startHttpServer(ctx);
@@ -284,4 +286,66 @@ test('the Events page offers an optional end time and shows it for a timed event
   assert.match(page, / → /, 'the table shows start to end');
   const bad = await post('/admin/events', { title: 'x', when: '2099-01-01T20:00', ends: 'soonish', _csrf: 'csrf-token' }, cookie);
   assert.match(decodeURIComponent((bad.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Could not read the end time/);
+});
+
+test('the Overview shows the jobs, the boards and where every feature posts', async () => {
+  // The overview reads the paced world state; keep this test off the network.
+  configureWorldState({ enabled: false });
+  const { cookie } = sessionCookie(OWNER);
+  testChannels.set('700000000000000010', { id: '700000000000000010', name: 'birthdays', type: ChannelType.GuildText, rawPosition: 3, parent: null });
+  testChannels.set('700000000000000011', { id: '700000000000000011', name: 'Squads', type: ChannelType.GuildCategory, rawPosition: 4, parent: null });
+  try {
+    store.updateSettings(GUILD, { birthdayChannelId: '700000000000000010', lfgVoiceCategoryId: '700000000000000011', auditLogChannelId: null });
+    const page = await get('/admin/', cookie);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /<a class="navlink on" href="\/admin\/">Overview<\/a>/);
+    for (const text of ['Background jobs', 'World State boards', 'Arbitrations', 'Start and stop reports', 'Weekly reset by DM to', 'Join-to-create voice', 'same as the moderation log', 'Off']) {
+      assert.ok(html.includes(text), text);
+    }
+    assert.ok(html.includes('<code>#birthdays</code>'), 'a text channel by name');
+    assert.ok(html.includes('<code>Squads</code>'), 'a category without the #');
+    assert.ok(html.includes('The jobs start once Ordis is connected'), 'no job has been registered in this test');
+  } finally {
+    testChannels.delete('700000000000000010');
+    testChannels.delete('700000000000000011');
+    store.updateSettings(GUILD, { birthdayChannelId: null, lfgVoiceCategoryId: null });
+  }
+});
+
+test('the Settings form sets every channel and ping role, keeps what it did not send and starts the weekly post next Monday', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
+  testChannels.set('700000000000000020', { id: '700000000000000020', name: 'weekly', type: ChannelType.GuildText, rawPosition: 5, parent: null });
+  testRoles.set('800000000000000001', { id: '800000000000000001', name: 'Weeklies', position: 2, managed: false });
+  try {
+    store.updateSettings(GUILD, { newsChannelId: '700000000000000020', weeklyChannelId: null });
+    const page = await (await get('/admin/settings', cookie)).text();
+    for (const name of ['announcementsChannelId', 'auditLogChannelId', 'statusChannelId', 'birthdayChannelId', 'weeklyChannelId', 'weeklyRoleId', 'promoChannelId', 'newsChannelId', 'levelChannelId', 'eventsRoleId', 'lfgRoleId']) {
+      assert.ok(page.includes(`name="${name}"`), name);
+    }
+    assert.match(page, /<option value="">— where the member is talking —<\/option>/);
+
+    const gone = await post('/admin/settings', { birthdayChannelId: '799999999999999999', _csrf: 'csrf-token' }, cookie);
+    assert.match(flash(gone), /Birthdays: that channel no longer exists/);
+
+    store.setMeta('weekly_posted', '');
+    const saved = await post('/admin/settings', { weeklyChannelId: '700000000000000020', weeklyRoleId: '800000000000000001', _csrf: 'csrf-token' }, cookie);
+    assert.match(flash(saved), /Settings saved/);
+    const s = store.getSettings(GUILD);
+    assert.equal(s.weeklyChannelId, '700000000000000020');
+    assert.equal(s.weeklyRoleId, '800000000000000001');
+    assert.equal(s.newsChannelId, '700000000000000020', 'a field the form did not send is kept');
+    assert.ok(store.getMeta('weekly_posted'), 'this week counts as posted, so the first post is next Monday');
+
+    const again = await post('/admin/settings', { weeklyChannelId: '700000000000000020', _csrf: 'csrf-token' }, cookie);
+    assert.match(flash(again), /Nothing changed/);
+    const off = await post('/admin/settings', { newsChannelId: '', _csrf: 'csrf-token' }, cookie);
+    assert.match(flash(off), /Settings saved/);
+    assert.equal(store.getSettings(GUILD).newsChannelId, null);
+  } finally {
+    testChannels.delete('700000000000000020');
+    testRoles.delete('800000000000000001');
+    store.updateSettings(GUILD, { weeklyChannelId: null, weeklyRoleId: null, newsChannelId: null });
+  }
 });
