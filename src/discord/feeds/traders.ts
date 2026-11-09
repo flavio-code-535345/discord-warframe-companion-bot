@@ -4,7 +4,7 @@ import { type WorldState, isBaroHere, resurgenceItemName } from '../../warframe/
 import { e, emojiUrl } from '../emoji.js';
 import { buttonRow, mineButton, notifyRow, roleButton } from './controls.js';
 import { DIVIDER, type Part, card, compact, fit, num, section } from './parts.js';
-import { type FeedInput, type FeedPing, STALE_NOTE } from './types.js';
+import { type FeedInput, type FeedPing, type PriceLookup, STALE_NOTE } from './types.js';
 
 /**
  * 🛒┃traders: Baro Ki'Teer in the first message (his whole inventory with ducats and credits while he is at a relay, else where and
@@ -15,8 +15,7 @@ const COLOR = { baro: 0x0891b2, others: 0xca8a04 } as const;
 /** The room Baro's list has in its message, below the heading. */
 const BARO_LIST_BUDGET = 3500;
 
-/** Plat prices per item name (lower case), when the market read has them; the board shows plat per ducat with them. */
-export type PriceLookup = (item: string) => number | null;
+export type { PriceLookup };
 
 function baroCard(ws: WorldState | null, now: number, prices: PriceLookup | null): ContainerBuilder {
   const t = ws?.voidTrader;
@@ -39,13 +38,25 @@ function baroCard(ws: WorldState | null, now: number, prices: PriceLookup | null
     return `**${i.item}** · ${cost}${value}`;
   };
   const rich = items.map((i) => line(i, true)).join('\n');
+  // The item that sells for the most plat per ducat spent, once the market read has priced some of the stock.
+  const resale = items
+    .map((i) => ({ i, plat: prices?.(i.item) ?? null }))
+    .filter((x): x is { i: (typeof items)[number]; plat: number } => x.plat !== null && Number(x.i.ducats) > 0)
+    .sort((a, b) => b.plat / Number(b.i.ducats) - a.plat / Number(a.i.ducats))[0];
   return card(COLOR.baro, [
     section(
-      [`## ${e('baro')} Baro Ki'Teer is here`, `At **${t.location}** · leaves ${discordTime(t.expiry, 'R')}`, `-# ${items.length} items · ${num(ducats)} ducats for one of each`].join('\n'),
+      [
+        `## ${e('baro')} Baro Ki'Teer is here`,
+        `At **${t.location}** · leaves ${discordTime(t.expiry, 'R')}`,
+        `-# ${items.length} items · ${num(ducats)} ducats for one of each`,
+        resale ? `-# Best resale: **${resale.i.item}** · ${resale.plat}p (${(resale.plat / Number(resale.i.ducats)).toFixed(2)}/ducat) · prices from warframe.market` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
       emojiUrl('baro'),
     ),
     DIVIDER,
-    rich.length <= BARO_LIST_BUDGET ? rich : items.map((i) => line(i, false)).join('\n'),
+    rich.length <= BARO_LIST_BUDGET ? rich : fit(items.map((i) => line(i, false)).join('\n'), BARO_LIST_BUDGET),
   ]);
 }
 

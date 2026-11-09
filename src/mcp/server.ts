@@ -10,6 +10,7 @@ import { searchDrops } from '../warframe/drops.js';
 import { lookupItem, summarizeLookup } from '../warframe/items.js';
 import { readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { priceCheck } from '../warframe/market.js';
+import { REFINEMENTS, RELIC_TIERS, bestRelics, findRelic, loadRelicBook, relicValue, valueFor } from '../warframe/relics.js';
 import { FISSURE_TIERS, filterFissures, getWorldState } from '../warframe/worldstate.js';
 import { webSearch } from '../warframe/websearch.js';
 import { registerAdminTools } from './admin.js';
@@ -85,6 +86,55 @@ export function createMcpServer(ctx: AppContext): McpServer {
       const p = await priceCheck(item, config.WARFRAME_PLATFORM);
       const order = (o: (typeof p.sell)[number]) => ({ platinum: o.platinum, quantity: o.quantity, rank: o.rank, seller: o.user.ingameName, status: o.user.status });
       return { item: p.item.name, url: p.url, platform: config.WARFRAME_PLATFORM, sell: p.sell.map(order), buy: p.buy.map(order) };
+    }),
+  );
+
+  server.registerTool(
+    'relic_values',
+    {
+      title: 'Relic values',
+      description:
+        "What relics are worth to open, from WFInfo's daily average prices (warframe.market trade statistics): with relic, that relic's rewards with their plat and ducats and its expected plat per run at every refinement, alone and in a radshare; without, the relics worth the most at a refinement.",
+      inputSchema: {
+        relic: z.string().min(3).optional().describe('e.g. "Axi A1"; leave out for the best relics'),
+        refinement: z.enum(REFINEMENTS).default('Radiant'),
+        squad: z.enum(['solo', 'radshare']).default('radshare').describe('Opened alone, or four players with the same relic each taking the best reward'),
+        vaulted: z.enum(['exclude', 'include', 'only']).default('exclude'),
+        tier: z.enum(RELIC_TIERS).optional(),
+        limit: z.number().int().min(1).max(30).default(10),
+      },
+      annotations: READ_ONLY,
+    },
+    tool(async ({ relic, refinement, squad, vaulted, tier, limit }) => {
+      const book = await loadRelicBook();
+      const plat = (n: number) => Math.round(n * 10) / 10;
+      const source = { prices: 'WFInfo (api.warframestat.us/wfinfo), averages of warframe.market trades', fetchedAt: new Date(book.fetchedAt).toISOString(), stale: book.stale };
+      if (relic) {
+        const found = findRelic(book, relic);
+        if (!found) throw new UserError(`No relic called "${relic}" in the price table (Requiem relics are not in it).`);
+        return {
+          relic: found.name,
+          vaulted: found.vaulted,
+          complete: found.complete,
+          rewards: found.rewards,
+          perRun: Object.fromEntries(
+            REFINEMENTS.map((r) => {
+              const v = relicValue(found, r);
+              return [r, { solo: plat(v.solo), radshare: plat(v.radshare), ducats: plat(v.ducats) }];
+            }),
+          ),
+          ...source,
+        };
+      }
+      const list = bestRelics(book, { refinement, squad, vaulted, tier: tier ?? null, limit });
+      return {
+        refinement,
+        squad,
+        vaulted,
+        tier: tier ?? null,
+        relics: list.map((r) => ({ relic: r.relic.name, vaulted: r.relic.vaulted, perRun: plat(valueFor(r.value, squad)), best: r.value.best && { item: r.value.best.item, plat: r.value.best.plat } })),
+        ...source,
+      };
     }),
   );
 

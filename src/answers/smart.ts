@@ -25,6 +25,7 @@ import { discordTime } from '../time.js';
 import { type DropGroup, searchDrops } from '../warframe/drops.js';
 import { lookupItem } from '../warframe/items.js';
 import { priceCheck } from '../warframe/market.js';
+import { loadRelicBook } from '../warframe/relics.js';
 import { type WikiResult, pageUrl, readWikiPage, searchWiki } from '../warframe/wiki.js';
 import { answerFrom } from '../wiki/answer.js';
 import { getWikiIndex } from '../wiki/index.js';
@@ -203,7 +204,8 @@ async function itemCard(name: string, line: string): Promise<SmartAnswer | null>
     drops = groups.find((g) => g.item.toLowerCase() === result.item.name.toLowerCase())?.locations;
   }
   const title = result.kind === 'relic' ? null : (namedPage(result.item.name) ?? result.item.name);
-  return { content: title ? `${line}\n${links([title])}` : line, embeds: [result.kind === 'relic' ? relicEmbed(result.relic) : lookupEmbed(result, drops)], found: true };
+  const embed = result.kind === 'relic' ? relicEmbed(result.relic, await loadRelicBook().catch(() => null)) : lookupEmbed(result, drops);
+  return { content: title ? `${line}\n${links([title])}` : line, embeds: [embed], found: true };
 }
 
 /**
@@ -242,7 +244,8 @@ async function exactAnswer(intent: Intent, question: string, ctx: AppContext): P
 
     case 'relic': {
       const result = await lookupItem(intent.name).catch(() => null);
-      return result?.kind === 'relic' ? { content: pick(LINES.relic!), embeds: [relicEmbed(result.relic)], found: true } : null;
+      if (result?.kind !== 'relic') return null;
+      return { content: pick(LINES.relic!), embeds: [relicEmbed(result.relic, await loadRelicBook().catch(() => null))], found: true };
     }
 
     case 'world': {

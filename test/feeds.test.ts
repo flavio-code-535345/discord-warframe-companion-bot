@@ -285,7 +285,8 @@ describe('World State boards', () => {
     const store = new Store(':memory:');
     store.updateSettings(G, { arbitrationsRoleId: 'r-arby', baroRoleId: 'r-baro' });
     for (const def of FEEDS) {
-      for (const input of [inputFor(store), inputFor(store, { stale: true }), inputFor(store, { ws: busyWorld(NOW, { baroHere: false }) })]) {
+      const priced = inputFor(store, { prices: (item: string) => 1000 + item.length });
+      for (const input of [inputFor(store), inputFor(store, { stale: true }), inputFor(store, { ws: busyWorld(NOW, { baroHere: false }) }), priced]) {
         for (const [i, message] of def.render(input).entries()) {
           const s = messageStats(message);
           assert.ok(s.text <= 4000, `${def.id} message ${i + 1} has ${s.text} characters of text`);
@@ -320,6 +321,17 @@ describe('World State boards', () => {
     assert.match(text, /Primed Very Long Mod Name 59/, 'the last of 60 items is listed');
     assert.doesNotMatch(text, /…and \d+ more/);
     assert.match(text, /ducats · 690k cr/);
+  });
+
+  it('value Baro\'s stock in plat per ducat once warframe.market has priced it', () => {
+    const store = new Store(':memory:');
+    const prices = (item: string) => (item === 'Primed Very Long Mod Name 59' ? 1500 : item === 'Primed Very Long Mod Name 55' ? 2000 : null);
+    const [baro] = FEEDS.find((f) => f.id === 'traders')!.render(inputFor(store, { prices }));
+    const text = JSON.stringify(baro!.map((c) => c.toJSON()));
+    assert.match(text, /Best resale: \*\*Primed Very Long Mod Name 55\*\* · 2000p \(3\.08\/ducat\) · prices from warframe\.market/);
+    assert.match(text, /Primed Very Long Mod Name 59\*\* · 690 ducats · 690k cr · 1500p \(2\.17\/ducat\)/);
+    const [unpriced] = FEEDS.find((f) => f.id === 'traders')!.render(inputFor(store));
+    assert.doesNotMatch(JSON.stringify(unpriced!.map((c) => c.toJSON())), /Best resale|\/ducat/, 'nothing about resale before the stock is priced');
   });
 
   it('name Varzia\'s stock as players know it', () => {

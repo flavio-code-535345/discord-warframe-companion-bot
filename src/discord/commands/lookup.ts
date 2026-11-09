@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from 'discord.js';
 import { UserError } from '../../services/clan.js';
 import { type DropLocation, searchDrops } from '../../warframe/drops.js';
 import { lookupItem, suggestItems } from '../../warframe/items.js';
+import { loadRelicBook } from '../../warframe/relics.js';
 import { searchWiki } from '../../warframe/wiki.js';
 import type { Command } from '../command.js';
 import { lookupEmbed, showsDrops, wikiEmbed } from '../lookup-embeds.js';
@@ -24,7 +25,9 @@ export const item: Command = {
       const groups = await searchDrops(result.item.name, 6, 10).catch(() => []);
       drops = groups.find((g) => g.item.toLowerCase() === result.item.name.toLowerCase())?.locations;
     }
-    await interaction.editReply({ embeds: [lookupEmbed(result, drops)] });
+    // A relic's card adds what its rewards trade for; without the price list it shows the chances only.
+    const book = result.kind === 'relic' ? await loadRelicBook().catch(() => null) : null;
+    await interaction.editReply({ embeds: [lookupEmbed(result, drops, book)] });
   },
 
   async autocomplete(interaction) {

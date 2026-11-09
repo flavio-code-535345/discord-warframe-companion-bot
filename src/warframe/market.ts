@@ -34,8 +34,8 @@ interface TopOrdersResponse {
   data: { sell: MarketOrder[]; buy: MarketOrder[] };
 }
 
-async function getJson<T>(path: string, kind: CacheKind, platform = 'pc'): Promise<{ data: T; stale: boolean; ageMs: number }> {
-  const r = await apiJson<T>(`${BASE}${path}`, { kind, headers: { Accept: 'application/json', Language: 'en', Platform: platform, Crossplay: 'true' } });
+async function getJson<T>(path: string, kind: CacheKind, platform = 'pc', opts: { background?: boolean; scope?: string } = {}): Promise<{ data: T; stale: boolean; ageMs: number }> {
+  const r = await apiJson<T>(`${BASE}${path}`, { kind, headers: { Accept: 'application/json', Language: 'en', Platform: platform, Crossplay: 'true' }, ...opts });
   if (r.data === null) throw new Error('Item not found on warframe.market.');
   return { data: r.data, stale: r.stale, ageMs: r.ageMs };
 }
@@ -84,19 +84,45 @@ export async function resolveItem(query: string): Promise<MarketItem | null> {
   return searchItems(await getItemIndex(), query, 1)[0] ?? null;
 }
 
+const active = (o: MarketOrder) => o.user.status === 'ingame' || o.user.status === 'online';
+
+/**
+ * The orders warframe.market shows first for an item: its cheapest sellers and best buyers who are online, of one rank when `rank` is
+ * given (a mod's unranked price). Prices move, so they have their own short lifetime; everyone asking in that time shares one request.
+ */
+export async function topOrders(slug: string, opts: { platform?: string; rank?: number; background?: boolean; scope?: string } = {}): Promise<{ sell: MarketOrder[]; buy: MarketOrder[]; stale: boolean; ageMs: number }> {
+  const query = opts.rank === undefined ? '' : `?rank=${opts.rank}`;
+  const send = { ...(opts.background ? { background: true } : {}), ...(opts.scope ? { scope: opts.scope } : {}) };
+  const { data: orders, stale, ageMs } = await getJson<TopOrdersResponse>(`/orders/item/${encodeURIComponent(slug)}/top${query}`, 'price', opts.platform ?? 'pc', send);
+  return {
+    sell: orders.data.sell.filter(active).sort((a, b) => a.platinum - b.platinum),
+    buy: orders.data.buy.filter(active).sort((a, b) => b.platinum - a.platinum),
+    stale,
+    ageMs,
+  };
+}
+
+/**
+ * What an item sells for: the median of its five cheapest online sellers, so one seller far below (or above) the rest doesn't set the
+ * price. Null without sellers.
+ */
+export function marketPrice(sell: readonly MarketOrder[]): number | null {
+  const prices = sell.map((o) => o.platinum).filter((p) => Number.isFinite(p) && p > 0).sort((a, b) => a - b).slice(0, 5);
+  if (!prices.length) return null;
+  const mid = Math.floor(prices.length / 2);
+  return prices.length % 2 ? prices[mid]! : Math.round((prices[mid - 1]! + prices[mid]!) / 2);
+}
+
 /** Cheapest sellers and highest buyers who are currently online or in game. */
 export async function priceCheck(query: string, platform = 'pc', limit = 5): Promise<PriceCheck> {
   const item = await resolveItem(query);
   if (!item) throw new Error(`No tradable item matches "${query}".`);
-  // Prices move, so they have their own short lifetime; everyone asking for the same item in that time shares one request.
-  const { data: orders, stale, ageMs } = await getJson<TopOrdersResponse>(`/orders/item/${encodeURIComponent(item.slug)}/top`, 'price', platform);
-  const { data } = orders;
-  const active = (o: MarketOrder) => o.user.status === 'ingame' || o.user.status === 'online';
+  const { sell, buy, stale, ageMs } = await topOrders(item.slug, { platform });
   return {
     item,
     url: `https://warframe.market/items/${item.slug}`,
-    sell: data.sell.filter(active).sort((a, b) => a.platinum - b.platinum).slice(0, limit),
-    buy: data.buy.filter(active).sort((a, b) => b.platinum - a.platinum).slice(0, limit),
+    sell: sell.slice(0, limit),
+    buy: buy.slice(0, limit),
     ...(stale ? { staleMs: ageMs } : {}),
   };
 }

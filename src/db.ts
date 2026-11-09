@@ -231,6 +231,16 @@ export interface PanelSession {
 /** What a channel's overwrite for one target said about sending before /lock, so /unlock can put it back. */
 export type LockPrevious = 'allow' | 'deny' | 'neutral';
 
+export interface AlecaLink {
+  userId: string;
+  /** AlecaFrame's public-link token: read-only, revocable in AlecaFrame. */
+  token: string;
+  username: string | null;
+  /** What the link shares (AlecaFrame's PublicLinkParts flags). */
+  parts: number;
+  linkedAt: number;
+}
+
 export interface Tracker {
   id: number;
   guildId: string;
@@ -748,6 +758,16 @@ const MIGRATIONS: string[] = [
   ALTER TABLE guild_settings ADD COLUMN traders_channel_id TEXT;
   ALTER TABLE guild_settings ADD COLUMN baro_role_id TEXT;
   ALTER TABLE guild_settings ADD COLUMN invasions_channel_id TEXT;
+  `,
+  // Members who linked their AlecaFrame stats (opt-in, /alecaframe link): the public-link token and what it shares.
+  `
+  CREATE TABLE alecaframe_links (
+    user_id TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    username TEXT,
+    parts INTEGER NOT NULL DEFAULT 0,
+    linked_at INTEGER NOT NULL
+  );
   `,
 ];
 
@@ -1643,6 +1663,34 @@ export class Store {
   memberActivity(guildId: string): Map<string, MemberActivity> {
     const rows = this.db.prepare('SELECT * FROM member_activity WHERE guild_id = ?').all(guildId) as Row[];
     return new Map(rows.map((r) => [String(r.user_id), { userId: String(r.user_id), lastMessageAt: num(r.last_message_at), lastVoiceAt: num(r.last_voice_at) }]));
+  }
+
+  // --- AlecaFrame links (a member's own public stats token; never shown to anyone else) ---
+
+  setAlecaLink(userId: string, link: { token: string; username: string | null; parts: number }, now = Date.now()): void {
+    this.db
+      .prepare(
+        'INSERT INTO alecaframe_links (user_id, token, username, parts, linked_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET token = excluded.token, username = excluded.username, parts = excluded.parts, linked_at = excluded.linked_at',
+      )
+      .run(userId, link.token, link.username, link.parts, now);
+  }
+
+  getAlecaLink(userId: string): AlecaLink | null {
+    const r = this.db.prepare('SELECT * FROM alecaframe_links WHERE user_id = ?').get(userId) as Row | undefined;
+    return r ? { userId: String(r.user_id), token: String(r.token), username: str(r.username), parts: Number(r.parts), linkedAt: Number(r.linked_at) } : null;
+  }
+
+  /** What AlecaFrame said on the latest read (the name and the shared parts can change in AlecaFrame without a new token). */
+  updateAlecaLink(userId: string, username: string | null, parts: number): void {
+    this.db.prepare('UPDATE alecaframe_links SET username = ?, parts = ? WHERE user_id = ?').run(username, parts, userId);
+  }
+
+  removeAlecaLink(userId: string): boolean {
+    return this.db.prepare('DELETE FROM alecaframe_links WHERE user_id = ?').run(userId).changes > 0;
+  }
+
+  countAlecaLinks(): number {
+    return Number((this.db.prepare('SELECT count(*) AS n FROM alecaframe_links').get() as Row).n);
   }
 
   // --- bot-wide key/value state ---

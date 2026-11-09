@@ -43,9 +43,11 @@ import { handleStickyModal, isStickyModal, sticky } from './commands/sticky.js';
 import { track } from './commands/track.js';
 import { vc } from './commands/vc.js';
 import { riven } from './commands/riven.js';
+import { relics } from './commands/relics.js';
+import { alecaframe } from './commands/alecaframe.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, riven, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [wf, item, price, relics, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ENABLE_MEMBER_LOGGING'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the

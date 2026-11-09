@@ -6,6 +6,9 @@ import type { WorldState } from '../../warframe/worldstate.js';
 export const FEED_IDS = ['alerts', 'arbitrations', 'fissures', 'sortie', 'cycles', 'traders', 'invasions'] as const;
 export type FeedId = (typeof FEED_IDS)[number];
 
+/** Plat prices per item name (any case), when the market read has them; the traders board shows plat per ducat with them. */
+export type PriceLookup = (item: string) => number | null;
+
 /** What every board is drawn from: one snapshot per round, so all boards agree with each other. */
 export interface FeedInput {
   now: number;
@@ -19,6 +22,8 @@ export interface FeedInput {
   settings: GuildSettings;
   /** The roles of the self-assign menu: a board offers a role button only for one of these (the button runs the same toggle). */
   selfRoles: ReadonlySet<string>;
+  /** What Baro's stock trades for (warframe/baro.ts), once the background read has priced some of it. */
+  prices?: PriceLookup | null;
 }
 
 /** Something new that the feed's role is pinged for: `key` is remembered (once ever), the note stays until `until`. */

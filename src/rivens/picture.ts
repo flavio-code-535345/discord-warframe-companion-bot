@@ -1,6 +1,6 @@
-import { PassThrough } from 'node:stream';
 import * as PImage from 'pureimage';
 import { FONT, FONT_BOLD, loadFonts } from '../imaging/font.js';
+import { encodePng } from '../imaging/png.js';
 import { decodeImage } from '../ssroles/emblem.js';
 import type { Box } from './pointer.js';
 import { statKey } from './ranges.js';
@@ -272,9 +272,5 @@ export async function rivenPicture(r: ScanResult, opts: { label?: string } = {})
     }
   }
 
-  const chunks: Buffer[] = [];
-  const sink = new PassThrough();
-  sink.on('data', (c: Buffer) => chunks.push(c));
-  await PImage.encodePNGToStream(img, sink);
-  return Buffer.concat(chunks);
+  return encodePng(img);
 }

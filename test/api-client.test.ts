@@ -223,6 +223,32 @@ describe('rate limiting', () => {
   });
 });
 
+describe('host rules', () => {
+  it('keeps the wider gap a host asks for, and only for that host', async () => {
+    const { client, calls } = setup(() => json({}));
+    client.configure({ limits: { minIntervalMs: 0, hostIntervalMs: { 'slow.test': 1_100 } } });
+    for (const i of [1, 2, 3]) await client.get(`https://slow.test/${i}`, { kind: 'live' });
+    await client.get('https://fast.test/', { kind: 'live' });
+    const at = calls.map((c) => c.at);
+    assert.ok(at[1]! - at[0]! >= 1_100 && at[2]! - at[1]! >= 1_100, 'one request per 1.1 s to the slow host');
+    assert.equal(at[3], at[2], 'another host is not held up');
+  });
+
+  it('hands back the statuses the caller reads itself: no retry, no cooldown', async () => {
+    const problem = JSON.stringify({ title: 'An error occurred while processing your request.', status: 500, detail: 'Invalid token' });
+    const { client, calls } = setup(() => new Response(problem, { status: 500 }));
+    const res = await client.send('https://stats.test/api?token=x', {}, { answer: [500] });
+    assert.equal(res.status, 500);
+    assert.equal(JSON.parse(await res.text()).detail, 'Invalid token');
+    assert.equal(calls.length, 1, 'a bad token is not asked again');
+    assert.equal(client.stats.retries, 0);
+    assert.deepEqual(client.cooldowns(), []);
+    // A 403 is not in the list, so it still pauses the host.
+    const blocked = setup(() => new Response('', { status: 403 }));
+    await assert.rejects(() => blocked.client.send('https://stats.test/api', {}, { answer: [500] }), ApiBlockedError);
+  });
+});
+
 describe('parseRetryAfter', () => {
   it('reads seconds and HTTP dates', () => {
     assert.equal(parseRetryAfter('30', 0), 30_000);

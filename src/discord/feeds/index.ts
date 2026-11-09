@@ -3,6 +3,7 @@ import type { AppContext } from '../../context.js';
 import type { GuildSettings } from '../../db.js';
 import { getSendableChannel } from '../../services/clan.js';
 import type { ArbitrationData, ArbitrationView } from '../../warframe/arbitrations.js';
+import { baroPriceLookup } from '../../warframe/baro.js';
 import { type WorldState, worldStateStaleNote } from '../../warframe/worldstate.js';
 import { type BoardChannel, type NoteChannel, boardMessageIds, clearBoard, expireNote, postNote, syncBoard } from '../board.js';
 import { alertBoard, alertPings } from './alerts.js';
@@ -48,7 +49,7 @@ export const FEEDS: readonly FeedDef[] = [
   { id: 'fissures', label: 'Void fissures', channel: 'fissuresChannelId', role: null, version: '1', needsWorldState: true, render: fissureBoard },
   { id: 'sortie', label: 'Sortie, Archon Hunt and Archimedea', channel: 'sortieChannelId', role: null, version: '1', needsWorldState: true, render: sortieBoard },
   { id: 'cycles', label: 'Open world cycles, Duviri and bounties', channel: 'cyclesChannelId', role: null, version: '1', needsWorldState: true, render: cycleBoard },
-  { id: 'traders', label: "Baro, Darvo, Varzia and Teshin", channel: 'tradersChannelId', role: 'baroRoleId', version: '1', needsWorldState: true, render: (i) => traderBoard(i), pings: traderPings },
+  { id: 'traders', label: "Baro, Darvo, Varzia and Teshin", channel: 'tradersChannelId', role: 'baroRoleId', version: '1', needsWorldState: true, render: (i) => traderBoard(i, i.prices ?? null), pings: traderPings },
   { id: 'invasions', label: 'Invasions', channel: 'invasionsChannelId', role: 'alertsRoleId', version: '1', needsWorldState: true, render: invasionBoard, pings: invasionPings },
 ];
 
@@ -102,6 +103,7 @@ export function feedInput(ctx: AppContext, round: { ws: WorldState | null; arbyD
     stale: round.ws ? worldStateStaleNote(round.now) !== null : false,
     settings: ctx.store.getSettings(guildId),
     selfRoles: new Set(ctx.store.listSelfRoles(guildId).map((r) => r.roleId)),
+    prices: baroPriceLookup(ctx.store, round.ws),
   };
 }
 

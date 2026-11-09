@@ -30,6 +30,8 @@ export interface ApiLimits {
   /** Cache lifetimes. `live` is chosen by the caller (the world state poll interval). */
   priceTtlMs: number;
   stableTtlMs: number;
+  /** A wider gap for the hosts that ask for one (host name → ms). */
+  hostIntervalMs: Readonly<Record<string, number>>;
 }
 
 export const DEFAULT_LIMITS: ApiLimits = {
@@ -39,6 +41,8 @@ export const DEFAULT_LIMITS: ApiLimits = {
   maxRetries: 2,
   priceTtlMs: 120_000,
   stableTtlMs: 24 * 3_600_000,
+  // AlecaFrame's public stats API allows one request per second per address.
+  hostIntervalMs: { 'stats.alecaframe.com': 1_100 },
 };
 
 /** How old cached data may be when it is served because the API cannot be used. */
@@ -189,7 +193,7 @@ export class ApiClient {
   // --- rate limiting ---
 
   /** Waits for this request's turn: the host's minimum gap, then room in the global per-minute window. */
-  private async takeSlot(host: string, background: boolean): Promise<void> {
+  private async takeSlot(host: string, background: boolean, gapMs: number): Promise<void> {
     const { now } = this.deps;
     const t = now();
     const cap = background ? Math.max(1, Math.floor(this.limits.perMinute / 2)) : this.limits.perMinute;
@@ -199,7 +203,7 @@ export class ApiClient {
     const recent = this.window.filter((at) => at > start - 60_000);
     if (recent.length >= cap) start = Math.max(start, recent[recent.length - cap]! + 60_000);
     if (start - t > MAX_QUEUE_WAIT_MS) throw new ApiBusyError();
-    this.nextSlot.set(host, start + this.limits.minIntervalMs);
+    this.nextSlot.set(host, start + gapMs);
     this.window.push(start);
     this.window.sort((a, b) => a - b);
     if (start > t) await this.deps.sleep(start - t);
@@ -215,12 +219,16 @@ export class ApiClient {
     return new ApiBlockedError(host, until, reason);
   }
 
-  /** One rate-limited request with retries. Returns any response that is not a rate limit, block or server failure (404 and 304 included). */
-  async send(url: string, headers: Record<string, string> = {}, opts: { background?: boolean; scope?: string } = {}): Promise<Response> {
+  /**
+   * One rate-limited request with retries. Returns any response that is not a rate limit, block or server failure (404 and 304 included).
+   * `answer`: statuses the caller reads itself (an API that reports a bad token as a 500), returned as they are: no retry, no cooldown.
+   */
+  async send(url: string, headers: Record<string, string> = {}, opts: { background?: boolean; scope?: string; answer?: readonly number[] } = {}): Promise<Response> {
     const u = new URL(url);
     // A scope gives one feature its own gap and its own cooldown on the host, so a 403 or 429 on an experimental endpoint can't take
     // the host's other calls (prices) down with it. The global per-minute window is shared either way.
     const host = opts.scope ? `${u.host}#${opts.scope}` : u.host;
+    const gap = Math.max(this.limits.minIntervalMs, Object.hasOwn(this.limits.hostIntervalMs, u.host) ? this.limits.hostIntervalMs[u.host]! : 0);
     for (let attempt = 0; ; attempt++) {
       const wait = this.blockedFor(host);
       if (wait > 0) {
@@ -228,7 +236,7 @@ export class ApiClient {
         const b = this.blockedUntil.get(host)!;
         throw new ApiBlockedError(host, b.until, b.reason);
       }
-      await this.takeSlot(host, Boolean(opts.background));
+      await this.takeSlot(host, Boolean(opts.background), gap);
       const t0 = this.deps.now();
       this.stats.requests++;
       let res: Response;
@@ -246,6 +254,7 @@ export class ApiClient {
         throw err;
       }
       this.deps.log(`[api] GET ${shortUrl(u)} -> HTTP ${res.status} (${this.deps.now() - t0} ms)`);
+      if (opts.answer?.includes(res.status)) return res;
       if (res.status === 429) {
         discard(res);
         this.stats.rateLimited++;
@@ -382,8 +391,8 @@ export function configureApi(opts: { limits?: Partial<ApiLimits>; store?: ApiCac
   api.configure(opts);
 }
 
-/** A rate-limited fetch (no caching) for callers that handle their own: world state, the wiki crawler. */
-export function apiFetch(url: string, headers: Record<string, string> = {}, opts: { background?: boolean; scope?: string } = {}): Promise<Response> {
+/** A rate-limited fetch (no caching) for callers that handle their own: world state, the wiki crawler, AlecaFrame (a member's token stays out of the cache). */
+export function apiFetch(url: string, headers: Record<string, string> = {}, opts: { background?: boolean; scope?: string; answer?: readonly number[] } = {}): Promise<Response> {
   return api.send(url, headers, opts);
 }
 

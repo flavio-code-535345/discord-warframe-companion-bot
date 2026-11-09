@@ -16,6 +16,8 @@ import { jobs } from '../jobs.js';
 import { emojiStatus } from '../discord/app-emojis.js';
 import { emojiReport } from '../discord/emoji.js';
 import { feedHealth } from '../discord/feeds/index.js';
+import { baroPriceState } from '../warframe/baro.js';
+import { relicBookState } from '../warframe/relics.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
 /**
@@ -176,6 +178,17 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
             fallingBack: report.filter((r) => !r.custom).map((r) => r.name),
           };
         })(),
+        // WFInfo's relic and price tables (relics.ts): null until something asked for a relic's value since the start.
+        relicBook: (() => {
+          const book = relicBookState();
+          return book && { ...book, fetchedAt: iso(book.fetchedAt) };
+        })(),
+        // warframe.market prices of Baro's stock for this visit (baro.ts): how many of his items have a price so far.
+        baroPrices: (() => {
+          const prices = baroPriceState(store);
+          return prices && { ...prices, visit: iso(prices.visit) };
+        })(),
+        alecaframeLinks: store.countAlecaLinks(),
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
         features: {
           statusReports: Boolean(s.statusChannelId),

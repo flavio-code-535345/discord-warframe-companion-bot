@@ -11,7 +11,9 @@ import {
   wikiUrl,
 } from '../warframe/items.js';
 import type { DropLocation } from '../warframe/drops.js';
+import { type RankedRelic, type Refinement, type RelicBook, type Squad, type VaultFilter, findRelic, priceOf, relicValue, valueFor } from '../warframe/relics.js';
 import type { WikiResult } from '../warframe/wiki.js';
+import { e, tierEmoji } from './emoji.js';
 import { COLORS, clampLines } from './embeds.js';
 import { footer, heading } from './style.js';
 
@@ -113,28 +115,70 @@ function withDrops(embed: EmbedBuilder, item: WfItem, drops?: DropLocation[]): E
   return embed;
 }
 
-export function relicEmbed(relic: RelicInfo): EmbedBuilder {
-  const icon: Record<string, string> = { Common: '🟤', Uncommon: '⚪', Rare: '🟡' };
-  const lines = relic.rewards.map(
-    (r) => `${icon[r.rarity] ?? '•'} ${r.item} — ${r.intact}%${r.radiant !== null ? ` → ${r.radiant}% radiant` : ''}`,
-  );
+/** Plat as shown next to a relic: whole above 10, one decimal below. */
+export const platText = (n: number): string => `${n >= 10 ? Math.round(n) : n.toFixed(1)}p`;
+
+/** `book`: WFInfo's prices (relics.ts), which add each reward's plat and what a run is worth; without it the card shows the chances only. */
+export function relicEmbed(relic: RelicInfo, book: RelicBook | null = null): EmbedBuilder {
+  const icon: Record<string, string> = { Common: e('common'), Uncommon: e('uncommon'), Rare: e('rare') };
+  const known = book ? findRelic(book, relic.name) : null;
+  const platOf = (item: string): number | null => {
+    if (!book) return null;
+    const inTable = known?.rewards.find((r) => r.item.toLowerCase() === item.toLowerCase());
+    return inTable ? inTable.plat : (priceOf(book.prices, item)?.plat ?? null);
+  };
+  const lines = relic.rewards.map((r) => {
+    const plat = platOf(r.item);
+    return `${icon[r.rarity] ?? '•'} ${r.item} — ${r.intact}%${r.radiant !== null ? ` → ${r.radiant}%` : ''}${plat ? ` · **${platText(plat)}**` : ''}`;
+  });
   const locations = relic.locations.slice(0, 6).map((l) => `${l.location}${typeof l.chance === 'number' ? ` — ${l.chance}%` : ''}`);
   const embed = new EmbedBuilder()
     .setColor(COLORS.void)
     .setTitle(heading('relic', relic.name))
     .setURL(`https://wiki.warframe.com/w/${encodeURIComponent(relic.name.replace(/ /g, '_'))}`)
     .setThumbnail(itemImage(relic.imageName))
-    .setDescription(clampLines(lines, 2000))
-    .addFields({
-      name: 'Where to get it',
-      value: relic.vaulted
-        ? '🔒 Vaulted: not in the drop tables. Trade for it or wait for a Prime Resurgence (`/wf resurgence`).'
-        : locations.length
-          ? field(locations.join('\n'))
-          : `Drops from regular missions; try \`/drops ${relic.name}\`.`,
+    .setDescription(clampLines(lines, 2000));
+  if (known) {
+    const intact = relicValue(known, 'Intact');
+    const radiant = relicValue(known, 'Radiant');
+    const gaps = !known.complete || known.rewards.some((r) => r.plat === null);
+    embed.addFields({
+      name: `${e('platinum')} Worth per run`,
+      value: [
+        `Alone: **${platText(intact.solo)}** intact · **${platText(radiant.solo)}** radiant`,
+        `Radshare: **${platText(radiant.radshare)}** each (four radiant)`,
+        `${e('ducats')} Ducats: about **${Math.round(intact.ducats)}** a run`,
+        gaps ? '-# A reward without a price counts as 0.' : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
     });
+  }
+  embed.addFields({
+    name: 'Where to get it',
+    value: relic.vaulted
+      ? '🔒 Vaulted: not in the drop tables. Trade for it or wait for a Prime Resurgence (`/wf resurgence`).'
+      : locations.length
+        ? field(locations.join('\n'))
+        : `Drops from regular missions; try \`/drops ${relic.name}\`.`,
+  });
   if (relic.marketSlug) embed.addFields({ name: 'Market', value: `[warframe.market](https://warframe.market/items/${relic.marketSlug}) · \`/price ${relic.name}\`` });
-  return embed.setFooter(footer('Chances: intact → radiant · data: warframestat.us'));
+  return embed.setFooter(footer(`Chances: intact → radiant · data: warframestat.us${known ? ' · prices: WFInfo' : ''}`));
+}
+
+/** /relics: the relics worth the most to open at a refinement, alone or in a radshare. */
+export function bestRelicsEmbed(list: readonly RankedRelic[], opts: { refinement: Refinement; squad: Squad; vaulted: VaultFilter; tier: string | null }, book: Pick<RelicBook, 'stale'>): EmbedBuilder {
+  const how = opts.squad === 'radshare' ? `${opts.refinement} radshare (four of the same relic, everyone takes the best reward)` : `${opts.refinement}, opened alone`;
+  const which = opts.vaulted === 'exclude' ? 'relics that drop now' : opts.vaulted === 'only' ? 'vaulted relics only' : 'vaulted relics included';
+  const lines = list.map(
+    (r, i) =>
+      `\`${String(i + 1).padStart(2)}\` ${tierEmoji(r.relic.tier)} **${r.relic.name}**${r.relic.vaulted ? ' 🔒' : ''} · **${platText(valueFor(r.value, opts.squad))}** a run${r.value.best?.plat ? ` · ${r.value.best.item} ${platText(r.value.best.plat)}` : ''}`,
+  );
+  return new EmbedBuilder()
+    .setColor(COLORS.void)
+    .setTitle(heading('relic', `Best ${opts.tier ? `${opts.tier} ` : ''}relics to open`))
+    .setDescription(`-# ${how} · ${which}\n${lines.length ? clampLines(lines, 3800) : 'No relic matches.'}`)
+    .setFooter(footer(`A run's worth is every reward's average price times its chance · prices: WFInfo${book.stale ? ' (cached)' : ''}`));
 }
 
 /** True when the item's embed shows drop sources, so callers know to fetch the full drop table. */
@@ -142,8 +186,8 @@ export function showsDrops(result: LookupResult): boolean {
   return result.kind === 'item' && !FRAME_CATEGORIES.has(result.item.category) && !WEAPON_CATEGORIES.has(result.item.category);
 }
 
-export function lookupEmbed(result: LookupResult, drops?: DropLocation[]): EmbedBuilder {
-  if (result.kind === 'relic') return relicEmbed(result.relic);
+export function lookupEmbed(result: LookupResult, drops?: DropLocation[], book: RelicBook | null = null): EmbedBuilder {
+  if (result.kind === 'relic') return relicEmbed(result.relic, book);
   const item = result.item;
   if (FRAME_CATEGORIES.has(item.category)) return frameEmbed(item);
   if (WEAPON_CATEGORIES.has(item.category)) return weaponEmbed(item);

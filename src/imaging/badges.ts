@@ -1,6 +1,6 @@
-import { PassThrough } from 'node:stream';
 import * as PImage from 'pureimage';
 import { FONT_BOLD, FONT_GREEK_BOLD, loadFonts } from './font.js';
+import { encodePng } from './png.js';
 
 /**
  * Emoji pictures Ordis draws itself because no wiki icon shows them (uploaded as application emojis by src/discord/app-emojis.ts): the
@@ -18,10 +18,10 @@ type Bitmap = ReturnType<typeof PImage.make>;
 type Ctx = ReturnType<Bitmap['getContext']>;
 type Gradient = ReturnType<Ctx['createLinearGradient']>;
 type Paint = string | Gradient;
-type Pt = readonly [number, number];
+export type Pt = readonly [number, number];
 
 /** Points on a circle from angle a0 to a1 (radians; y points down, so angles run clockwise on screen), about one per pixel. */
-function arc(cx: number, cy: number, r: number, a0 = 0, a1 = Math.PI * 2): Pt[] {
+export function arc(cx: number, cy: number, r: number, a0 = 0, a1 = Math.PI * 2): Pt[] {
   const steps = Math.max(8, Math.ceil(Math.abs(a1 - a0) * r));
   return Array.from({ length: steps + 1 }, (_, i) => {
     const a = a0 + ((a1 - a0) * i) / steps;
@@ -29,7 +29,7 @@ function arc(cx: number, cy: number, r: number, a0 = 0, a1 = Math.PI * 2): Pt[] 
   });
 }
 
-function roundRect(x: number, y: number, w: number, h: number, r: number): Pt[] {
+export function roundRect(x: number, y: number, w: number, h: number, r: number): Pt[] {
   const q = Math.PI / 2;
   return [...arc(x + w - r, y + r, r, -q, 0), ...arc(x + w - r, y + h - r, r, 0, q), ...arc(x + r, y + h - r, r, q, 2 * q), ...arc(x + r, y + r, r, 2 * q, 3 * q)];
 }
@@ -128,11 +128,7 @@ class Canvas {
         if (a) out.setPixelRGBA_i(x, y, Math.round(r / a), Math.round(g / a), Math.round(b / a), Math.round(a / (SS * SS)));
       }
     }
-    const chunks: Buffer[] = [];
-    const sink = new PassThrough();
-    sink.on('data', (c: Buffer) => chunks.push(c));
-    await PImage.encodePNGToStream(out, sink);
-    return Buffer.concat(chunks);
+    return encodePng(out);
   }
 }
 
