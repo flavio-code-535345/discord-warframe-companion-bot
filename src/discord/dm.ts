@@ -3,8 +3,7 @@ import type { AppContext } from '../context.js';
 import type { RivenListing } from '../rivens/types.js';
 import { discordTime } from '../time.js';
 import type { Trackable } from '../trackers.js';
-import { e, rewardEmoji, tierEmoji } from './emoji.js';
-import { CYCLE_EMOJI } from './feeds/cycles.js';
+import { cycleEmoji, e, rewardEmoji, tierEmoji } from './emoji.js';
 import { DIVIDER, type Part, card, section } from './feeds/parts.js';
 import { SELLER_KEY, listingLines } from './riven-embeds.js';
 import { COLORS } from './style.js';
@@ -23,7 +22,7 @@ export function trackableEmoji(item: Trackable): string {
     case 'fissure':
       return tierEmoji(item.fissure?.tier);
     case 'cycle':
-      return CYCLE_EMOJI[item.cycle?.state ?? ''] ?? e('cycle');
+      return cycleEmoji(item.cycle?.state) || e('cycle');
     case 'deal':
       return e('darvo');
     case 'resurgence':

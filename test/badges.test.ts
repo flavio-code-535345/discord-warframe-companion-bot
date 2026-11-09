@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { EMOJI_SIZE, cycleIcon, omniaIcon, shade, tierBadge } from '../src/imaging/badges.js';
+import { boltIcon, coldIcon, crescent, dayIcon, fassIcon, moodIcon, nightIcon, starIcon, vomeIcon, warmIcon } from '../src/imaging/icons.js';
 
 /** One pixel's red, green, blue and alpha. */
 function pixel(img: PNG, x: number, y: number) {
@@ -37,6 +38,40 @@ describe('drawn emojis', () => {
     const night = pixel(cycle, 88, 64);
     assert.ok(day.r > 200 && day.b < 150, `the left half is the sun, got ${JSON.stringify(day)}`);
     assert.ok(night.b > night.r, `the right half is the night, got ${JSON.stringify(night)}`);
+  });
+
+  it('draws the cycle states, the moods and the markers: 128 px, transparent corners, something drawn in the middle', async () => {
+    const all = [dayIcon, nightIcon, warmIcon, coldIcon, fassIcon, vomeIcon, starIcon, boltIcon, () => moodIcon('joy'), () => moodIcon('anger'), () => moodIcon('envy'), () => moodIcon('sorrow'), () => moodIcon('fear')];
+    for (const draw of all) {
+      const buf = await draw();
+      assert.ok(buf.length < 256 * 1024, 'under Discord’s emoji limit');
+      const img = PNG.sync.read(buf);
+      assert.equal(img.width, EMOJI_SIZE);
+      assert.equal(img.height, EMOJI_SIZE);
+      assert.equal(pixel(img, 0, 0).a, 0, 'the corner is transparent');
+      const filled = Array.from({ length: 128 }, (_, i) => pixel(img, i, 64)).filter((p) => p.a > 200).length;
+      assert.ok(filled > 20, 'the middle row has something drawn');
+    }
+    const fass = PNG.sync.read(await fassIcon());
+    const vome = PNG.sync.read(await vomeIcon());
+    assert.ok(pixel(fass, 30, 64).r > pixel(fass, 30, 64).b, 'Fass is orange');
+    assert.ok(pixel(vome, 30, 64).b > pixel(vome, 30, 64).r, 'Vome is blue');
+  });
+
+  it('cuts a crescent out of a circle', () => {
+    const c = crescent([58, 66], 46, [82, 52], 38);
+    const inside = (x: number, y: number) => {
+      // Even-odd test against the polygon.
+      let hit = false;
+      for (let i = 0, j = c.length - 1; i < c.length; j = i++) {
+        const [xi, yi] = c[i]!;
+        const [xj, yj] = c[j]!;
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+      }
+      return hit;
+    };
+    assert.ok(inside(24, 80), 'the left of the moon is lit');
+    assert.ok(!inside(86, 50), 'the part taken out by the second circle is empty');
   });
 
   it('mixes colours towards white or black', () => {

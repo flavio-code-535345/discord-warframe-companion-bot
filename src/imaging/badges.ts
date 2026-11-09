@@ -35,7 +35,7 @@ export function roundRect(x: number, y: number, w: number, h: number, r: number)
 }
 
 /** A four-pointed star with curved sides. */
-function sparkle(cx: number, cy: number, r: number): Pt[] {
+export function sparkle(cx: number, cy: number, r: number): Pt[] {
   const pts: Pt[] = [];
   for (let k = 0; k < 4; k++) {
     const a = (k * Math.PI) / 2 - Math.PI / 2;
@@ -66,9 +66,24 @@ function blank(size: number): Bitmap {
   return img;
 }
 
-class Canvas {
+export class Canvas {
   private readonly img = blank(FULL);
   private readonly ctx = this.img.getContext('2d');
+
+  /** A stroked line through the points with round ends and joints. Each piece is filled on its own, so overlaps leave no holes. */
+  line(points: readonly Pt[], width: number, paint: Paint): this {
+    const r = width / 2;
+    for (let i = 0; i + 1 < points.length; i++) {
+      const [x0, y0] = points[i]!;
+      const [x1, y1] = points[i + 1]!;
+      const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+      const nx = (-(y1 - y0) / len) * r;
+      const ny = ((x1 - x0) / len) * r;
+      this.fill([[[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]]], paint);
+    }
+    for (const [x, y] of points) this.fill([arc(x, y, r)], paint);
+    return this;
+  }
 
   /** Fills the polygons as one shape: one inside another cuts a hole (even-odd). Coordinates are in the final 128 px. */
   fill(polys: Pt[][], paint: Paint): this {

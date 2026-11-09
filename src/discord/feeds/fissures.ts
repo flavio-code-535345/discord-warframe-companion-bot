@@ -19,7 +19,7 @@ const FAST = /^(capture|extermination|sabotage|rescue|spy)$/i;
 function fissureLine(f: Fissure): string {
   const planet = planetOf(f.node);
   const faction = factionTag(f.enemy);
-  return `${FAST.test(f.missionType) ? '⚡ ' : ''}**${f.missionType}** · ${nodeName(f.node)}${planet ? `, ${planet}` : ''}${faction ? ` · ${faction}` : ''} · ${discordTime(f.expiry, 'R')}`;
+  return `${FAST.test(f.missionType) ? `${e('bolt')} ` : ''}**${f.missionType}** · ${nodeName(f.node)}${planet ? `, ${planet}` : ''}${faction ? ` · ${faction}` : ''} · ${discordTime(f.expiry, 'R')}`;
 }
 
 /** The fissures of one kind, a heading per tier (Lith first). */
@@ -61,7 +61,7 @@ export function fissureBoard(input: FeedInput): ContainerBuilder[][] {
     [kindCard(COLOR.steel, `${e('steelPath')} Steel Path fissures`, emojiUrl('steelPath'), steel, none)],
     [
       kindCard(COLOR.storm, `${e('storm')} Void Storms`, emojiUrl('storm'), storms, none, [
-        '-# Railjack missions: the relic is cracked in the Railjack or on the boarded ship. ⚡ marks the quick missions.',
+        `-# Railjack missions: the relic is cracked in the Railjack or on the boarded ship. ${e('bolt')} marks the quick missions.`,
         input.stale ? `-# ${STALE_NOTE}` : null,
         DIVIDER,
         notifyRow('fissures', '🔔 DM me when a fissure opens…'),

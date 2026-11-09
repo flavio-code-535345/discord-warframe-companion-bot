@@ -3,7 +3,7 @@ import { WEEK_MS, discordTime, weekStart } from '../../time.js';
 import { CETUS, DUVIRI_MOODS, DUVIRI_MOOD_MS, VALLIS, projectCycles } from '../../warframe/cycles.js';
 import { type WorldState, bountyStanding } from '../../warframe/worldstate.js';
 import { BOUNTY_SYNDICATES } from '../embeds.js';
-import { e, emojiFor, emojiUrl } from '../emoji.js';
+import { cycleEmoji, e, emojiFor, emojiUrl } from '../emoji.js';
 import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, cap, card, num, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
@@ -16,22 +16,7 @@ import { type FeedInput, STALE_NOTE } from './types.js';
 
 const COLOR = { worlds: 0x0f766e, duviri: 0x7c3aed } as const;
 
-export const CYCLE_EMOJI: Record<string, string> = {
-  day: '☀️',
-  night: '🌙',
-  warm: '🔥',
-  cold: '❄️',
-  fass: '🟠',
-  vome: '🔵',
-  corpus: '💠',
-  grineer: '🪖',
-  joy: '😄',
-  anger: '😠',
-  envy: '😒',
-  sorrow: '😢',
-  fear: '😨',
-};
-const state = (s: string) => `${CYCLE_EMOJI[s.toLowerCase()] ?? ''} ${cap(s.toLowerCase())}`.trim();
+const state = (s: string) => `${cycleEmoji(s)} ${cap(s.toLowerCase())}`.trim();
 
 /** The next `n` starts of a phase that repeats every `cycle` ms; `nextStart` is when it starts next. */
 const repeats = (nextStart: number, cycle: number, n = 3) => Array.from({ length: n }, (_, i) => nextStart + i * cycle);
@@ -71,7 +56,7 @@ function circuitPart(ws: WorldState, now: number): Part {
   const hard = d?.choices?.find((c) => c.category === 'hard')?.choices ?? [];
   if (!normal.length && !hard.length) return null;
   return [
-    `### 🔁 Duviri Circuit · resets ${discordTime(weekStart(now) + WEEK_MS, 'R')}`,
+    `### ${e('duviri')} Duviri Circuit · resets ${discordTime(weekStart(now) + WEEK_MS, 'R')}`,
     normal.length ? `**Warframes:** ${normal.join(', ')}` : '',
     hard.length ? `**Incarnon (Steel Path):** ${hard.join(', ')}` : '',
   ]
@@ -111,7 +96,7 @@ export function cycleBoard(input: FeedInput): ContainerBuilder[][] {
   const { ws, now } = input;
   if (!ws) {
     const off = 'The world state is not available right now.';
-    return [[card(COLOR.worlds, [`## 🌗 Open worlds`, off])], [card(COLOR.duviri, [`## 🔁 Duviri and bounties`, off, DIVIDER, notifyRow('cycles'), buttonRow(mineButton())])]];
+    return [[card(COLOR.worlds, [`## ${e('cycle')} Open worlds`, off])], [card(COLOR.duviri, [`## ${e('duviri')} Duviri and bounties`, off, DIVIDER, notifyRow('cycles'), buttonRow(mineButton())])]];
   }
   let worlds: string[] = [];
   try {
@@ -120,7 +105,7 @@ export function cycleBoard(input: FeedInput): ContainerBuilder[][] {
     console.warn('[feeds] cycles skipped:', (err as Error).message);
   }
   return [
-    [card(COLOR.worlds, [section(`## 🌗 Open worlds\n-# Worked out from the fixed cycle lengths, so they stay right between updates.`, emojiUrl('cycle')), DIVIDER, worlds.join('\n') || 'No cycle data right now.'])],
+    [card(COLOR.worlds, [section(`## ${e('cycle')} Open worlds\n-# Worked out from the fixed cycle lengths, so they stay right between updates.`, emojiUrl('cycle')), DIVIDER, worlds.join('\n') || 'No cycle data right now.'])],
     [
       card(COLOR.duviri, [
         circuitPart(ws, now),

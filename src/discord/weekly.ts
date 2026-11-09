@@ -42,11 +42,11 @@ export function weeklyCard(ws: WorldState, week: number, now: number, button = f
     hard.length ? `${e('steelPath')} **Steel Path Incarnons:** ${hard.join(', ')}` : null,
   ].filter(Boolean);
   const weeklies = (ws.nightwave?.activeChallenges ?? []).filter((c) => !c.isDaily);
-  const nightwave = weeklies.map((c) => `${c.isElite ? '⭐' : '•'} **${c.title}** · ${c.reputation.toLocaleString('en-US')}\n-# ${c.desc}`);
+  const nightwave = weeklies.map((c) => `${c.isElite ? e('star') : '•'} **${c.title}** · ${c.reputation.toLocaleString('en-US')}\n-# ${c.desc}`);
   return card(COLORS.brand, [
     `## ${e('weekly')} Weekly reset\nThe week of ${discordTime(week, 'D')} · the next reset is ${discordTime(week + WEEK_MS, 'R')}`,
     DIVIDER,
-    circuit.length ? `### 🔁 Duviri Circuit\n${circuit.join('\n')}` : null,
+    circuit.length ? `### ${e('duviri')} Duviri Circuit\n${circuit.join('\n')}` : null,
     DIVIDER,
     nightwave.length ? `### ${e('nightwave')} Nightwave this week\n${nightwave.join('\n')}` : null,
     DIVIDER,

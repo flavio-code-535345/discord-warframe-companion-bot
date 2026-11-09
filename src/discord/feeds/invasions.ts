@@ -28,7 +28,7 @@ export function invasionLines(inv: Invasion): string {
   const attacker = side(inv.attacker.faction, inv.vsInfestation ? '—' : rewardText(inv.attacker.reward));
   const defender = side(inv.defender.faction, rewardText(inv.defender.reward), true);
   return [
-    `${notable(inv) ? '⭐ ' : ''}**${nodeName(inv.node)}**${planet ? `, ${planet}` : ''} · ${inv.desc}`,
+    `${notable(inv) ? `${e('star')} ` : ''}**${nodeName(inv.node)}**${planet ? `, ${planet}` : ''} · ${inv.desc}`,
     `${attacker} \`${atk}%\` ${bar(atk)} \`${100 - atk}%\` ${defender}`,
   ].join('\n');
 }
@@ -42,7 +42,7 @@ export function invasionBoard(input: FeedInput): ContainerBuilder[][] {
     [
       card(COLOR, [
         section(
-          `## ${e('invasion')} Invasions\n-# ${open.length ? `${open.length} running${worth ? ` · ⭐ ${worth} worth running` : ''}` : ws ? 'None running right now.' : 'The world state is not available right now.'}`,
+          `## ${e('invasion')} Invasions\n-# ${open.length ? `${open.length} running${worth ? ` · ${e('star')} ${worth} worth running` : ''}` : ws ? 'None running right now.' : 'The world state is not available right now.'}`,
           emojiUrl('invasion'),
         ),
         DIVIDER,

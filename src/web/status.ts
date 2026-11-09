@@ -1,5 +1,5 @@
 import type { AppContext } from '../context.js';
-import { type EmojiName, emojiUrl } from '../discord/emoji.js';
+import { type EmojiName, cycleEmojiName, emojiUrl } from '../discord/emoji.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIER_HINT, arbitrationView, lastArbitrations } from '../warframe/arbitrations.js';
 import { projectCycles } from '../warframe/cycles.js';
@@ -23,6 +23,8 @@ export interface CycleStatus {
   name: string;
   state: string;
   icon: string;
+  /** The Warframe emoji for the state (rendered as a picture when the clan's emojis are known), else `icon` is shown. */
+  emoji?: EmojiName | undefined;
   endsAt: string | null;
   note?: string;
 }
@@ -128,6 +130,7 @@ function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
     name,
     state: key.charAt(0).toUpperCase() + key.slice(1) + (extra.suffix ?? ''),
     icon: ICONS[key.toLowerCase()] ?? '◆',
+    emoji: cycleEmojiName(key),
     endsAt: iso(expiry),
     note: extra.note,
   });
@@ -436,7 +439,7 @@ export function renderStatusPage(s: StatusData, nonce: string, iconOf: IconLooku
   const cycles = tile(
     'Day and night cycles',
     '',
-    s.cycles ? s.cycles.map((c) => row(`${c.icon} ${e(c.name)} <b>${e(c.state)}</b>`, countdown(c.endsAt), c.note ? e(c.note) : '')).join('') : unavailable,
+    s.cycles ? s.cycles.map((c) => row(`${icon(c.emoji) || c.icon} ${e(c.name)} <b>${e(c.state)}</b>`, countdown(c.endsAt), c.note ? e(c.note) : '')).join('') : unavailable,
     { icon: 'cycle' },
   );
 
@@ -511,7 +514,7 @@ export function renderStatusPage(s: StatusData, nonce: string, iconOf: IconLooku
     ?.filter((c) => c.endsAt && Date.parse(c.endsAt) > Date.now())
     .reduce<CycleStatus | null>((soonest, c) => (!soonest || Date.parse(c.endsAt!) < Date.parse(soonest.endsAt!) ? c : soonest), null);
   const strip = [
-    nextCycle ? stat('Next change', `${nextCycle.icon} ${e(nextCycle.name)}`, `${e(nextCycle.state)} ends ${countdown(nextCycle.endsAt)}`, 'cycle') : '',
+    nextCycle ? stat('Next change', `${icon(nextCycle.emoji) || nextCycle.icon} ${e(nextCycle.name)}`, `${e(nextCycle.state)} ends ${countdown(nextCycle.endsAt)}`, 'cycle') : '',
     w?.baro ? stat("Baro Ki'Teer", w.baro.here ? 'Here now' : 'Arriving', `${e(w.baro.location)} · ${countdown(w.baro.at)}`, 'baro') : '',
     arb?.now ? stat('Arbitration', `${tierBadge(arb.now.tier)}${e(arb.now.node)}`, `${e(arb.now.mission)} · ends ${countdown(arb.now.endsAt)}`, 'arbitration') : '',
     w?.sortie ? stat('Sortie', e(w.sortie.boss), `resets ${countdown(w.sortie.endsAt)}`, 'sortie') : '',

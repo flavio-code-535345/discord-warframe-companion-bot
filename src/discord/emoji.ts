@@ -30,6 +30,24 @@ export const EMOJI = {
   bounty: { names: ['wf_bounty'], fallback: '📜' },
   cycle: { names: ['wf_cycle'], fallback: '🌗' },
   lotus: { names: ['wf_lotus'], fallback: '🪷' },
+  duviri: { names: ['wf_duviri'], fallback: '🔁' },
+  relic: { names: ['wf_relic'], fallback: '🔮' },
+  // Markers: a reward worth a detour, a quick fissure mission
+  star: { names: ['wf_star'], fallback: '⭐' },
+  bolt: { names: ['wf_bolt'], fallback: '⚡' },
+  // States of the open worlds (Cetus and Earth: day and night, Orb Vallis: warm and cold, Cambion Drift: Fass and Vome)
+  day: { names: ['wf_day'], fallback: '☀️' },
+  night: { names: ['wf_night'], fallback: '🌙' },
+  warm: { names: ['wf_warm'], fallback: '🔥' },
+  cold: { names: ['wf_cold'], fallback: '❄️' },
+  fass: { names: ['wf_fass'], fallback: '🟠' },
+  vome: { names: ['wf_vome'], fallback: '🔵' },
+  // Duviri's moods
+  joy: { names: ['wf_joy'], fallback: '😄' },
+  anger: { names: ['wf_anger'], fallback: '😠' },
+  envy: { names: ['wf_envy'], fallback: '😒' },
+  sorrow: { names: ['wf_sorrow'], fallback: '😢' },
+  fear: { names: ['wf_fear'], fallback: '😨' },
   // Traders
   baro: { names: ['wf_baro'], fallback: '🛒' },
   darvo: { names: ['wf_darvo'], fallback: '🏷️' },
@@ -52,6 +70,29 @@ export const EMOJI = {
   nitain: { names: ['wf_nitain'], fallback: '🧪' },
   aya: { names: ['wf_aya'], fallback: '💠' },
   regalAya: { names: ['wf_regal_aya'], fallback: '💠' },
+  // Resources paid out by invasions and alerts. A reward line reads fine without an icon, so these have no Unicode stand-in.
+  orokinCell: { names: ['wf_orokin_cell'], fallback: '' },
+  neurodes: { names: ['wf_neurodes'], fallback: '' },
+  neuralSensors: { names: ['wf_neural_sensors'], fallback: '' },
+  gallium: { names: ['wf_gallium'], fallback: '' },
+  morphics: { names: ['wf_morphics'], fallback: '' },
+  tellurium: { names: ['wf_tellurium'], fallback: '' },
+  argon: { names: ['wf_argon'], fallback: '' },
+  controlModule: { names: ['wf_control_module'], fallback: '' },
+  detonite: { names: ['wf_detonite'], fallback: '' },
+  fieldron: { names: ['wf_fieldron'], fallback: '' },
+  mutagen: { names: ['wf_mutagen'], fallback: '' },
+  oxium: { names: ['wf_oxium'], fallback: '' },
+  nanoSpores: { names: ['wf_nano_spores'], fallback: '' },
+  plastids: { names: ['wf_plastids'], fallback: '' },
+  polymer: { names: ['wf_polymer'], fallback: '' },
+  rubedo: { names: ['wf_rubedo'], fallback: '' },
+  alloyPlate: { names: ['wf_alloy_plate'], fallback: '' },
+  ferrite: { names: ['wf_ferrite'], fallback: '' },
+  salvage: { names: ['wf_salvage'], fallback: '' },
+  circuits: { names: ['wf_circuits'], fallback: '' },
+  cryotic: { names: ['wf_cryotic'], fallback: '' },
+  hexenon: { names: ['wf_hexenon'], fallback: '' },
   // Archon shards
   shardCrimson: { names: ['taured'], fallback: '🔴' },
   shardAzure: { names: ['taublue'], fallback: '🔵' },
@@ -163,6 +204,31 @@ const FACTIONS: [RegExp, EmojiName][] = [
   [/anarch/i, 'anarchs'],
 ];
 
+const CYCLE_EMOJI = new Map<string, EmojiName>([
+  ['day', 'day'],
+  ['night', 'night'],
+  ['warm', 'warm'],
+  ['cold', 'cold'],
+  ['fass', 'fass'],
+  ['vome', 'vome'],
+  ['corpus', 'corpus'],
+  ['grineer', 'grineer'],
+  ['joy', 'joy'],
+  ['anger', 'anger'],
+  ['envy', 'envy'],
+  ['sorrow', 'sorrow'],
+  ['fear', 'fear'],
+]);
+
+/** The logical emoji name of a cycle state ("Day", "Fass", "Joy"), or undefined for a state with none. */
+export const cycleEmojiName = (s: string | null | undefined): EmojiName | undefined => CYCLE_EMOJI.get((s ?? '').toLowerCase());
+
+/** The emoji of a cycle state, or an empty string. */
+export function cycleEmoji(s: string | null | undefined): string {
+  const name = cycleEmojiName(s);
+  return name ? e(name) : '';
+}
+
 /** The emoji of a faction as the world state names it ("Grineer", "Corrupted", "The Murmur", "Crossfire" has none). */
 export function factionEmoji(faction: string | null | undefined): string {
   const hit = FACTIONS.find(([re]) => re.test(faction ?? ''));
@@ -219,6 +285,28 @@ const REWARDS: [RegExp, EmojiName][] = [
   [/void traces?/i, 'voidTraces'],
   [/steel essence/i, 'steelPath'],
   [/riven/i, 'legendary'],
+  [/orokin cell/i, 'orokinCell'],
+  [/neural sensors?/i, 'neuralSensors'],
+  [/neurodes?/i, 'neurodes'],
+  [/gallium/i, 'gallium'],
+  [/morphics?/i, 'morphics'],
+  [/tellurium/i, 'tellurium'],
+  [/argon crystals?/i, 'argon'],
+  [/control modules?/i, 'controlModule'],
+  [/detonite/i, 'detonite'],
+  [/fieldron/i, 'fieldron'],
+  [/mutagen mass/i, 'mutagen'],
+  [/oxium/i, 'oxium'],
+  [/nano spores?/i, 'nanoSpores'],
+  [/plastids?/i, 'plastids'],
+  [/polymer bundles?/i, 'polymer'],
+  [/rubedo/i, 'rubedo'],
+  [/alloy plates?/i, 'alloyPlate'],
+  [/ferrite/i, 'ferrite'],
+  [/salvage/i, 'salvage'],
+  [/\bcircuits\b/i, 'circuits'],
+  [/cryotic/i, 'cryotic'],
+  [/hexenon/i, 'hexenon'],
 ];
 
 export function rewardEmoji(reward: string | null | undefined): string {

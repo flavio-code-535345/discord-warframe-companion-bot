@@ -14,7 +14,7 @@ import { type FeedInput, type FeedPing, STALE_NOTE } from './types.js';
 const COLOR = { alerts: 0xf59e0b, nightwave: 0xbe123c } as const;
 
 function alertBlock(g: AlertGroup): string {
-  const star = g.notable ? '⭐ ' : '';
+  const star = g.notable ? `${e('star')} ` : '';
   const pay = `${rewardEmoji(g.reward)} ${g.reward}`.trim();
   const ends = toMs(g.alerts[0]!.expiry);
   if (g.alerts.length === 1) {
@@ -82,7 +82,7 @@ export function alertBoard(input: FeedInput): ContainerBuilder[][] {
   return [
     [
       card(COLOR.alerts, [
-        section(`## ${e('alert')} Alerts\n-# ${alerts.length ? `${alerts.reduce((n, g) => n + g.alerts.length, 0)} running · ⭐ marks a reward worth a detour` : 'None running right now.'}`, emojiUrl('alert')),
+        section(`## ${e('alert')} Alerts\n-# ${alerts.length ? `${alerts.reduce((n, g) => n + g.alerts.length, 0)} running · ${e('star')} marks a reward worth a detour` : 'None running right now.'}`, emojiUrl('alert')),
         alerts.length ? DIVIDER : null,
         fit(alerts.map(alertBlock).join('\n'), 2000),
         events.length ? DIVIDER : null,

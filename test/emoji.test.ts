@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { APP_EMOJIS, type EmojiLike, resetEmojiFailures, syncAppEmojis } from '../src/discord/app-emojis.js';
-import { EMOJI, e, emojiFor, emojiReport, factionEmoji, loadEmojis, rewardEmoji, shardEmoji, tierEmoji } from '../src/discord/emoji.js';
+import { EMOJI, cycleEmoji, cycleEmojiName, e, emojiFor, emojiReport, factionEmoji, loadEmojis, rewardEmoji, shardEmoji, tierEmoji } from '../src/discord/emoji.js';
 
 describe('emoji registry', () => {
   afterEach(() => loadEmojis([]));
@@ -36,7 +36,36 @@ describe('emoji registry', () => {
     assert.equal(shardEmoji('Emerald'), '<:tauemerald:3>');
     assert.equal(rewardEmoji('Forma Blueprint'), '<:wf_forma:4>');
     assert.equal(rewardEmoji('200,000 Kuva'), '<:kuva:5>');
-    assert.equal(rewardEmoji('Mutagen Mass'), '');
+    assert.equal(rewardEmoji('Mutalist Alad V Nav Coordinate'), '');
+  });
+
+  it('shows resources with their icon and leaves a plain reward line when the icon is missing', () => {
+    loadEmojis([
+      { id: '10', name: 'wf_orokin_cell' },
+      { id: '11', name: 'wf_neural_sensors' },
+      { id: '12', name: 'wf_mutagen' },
+    ]);
+    assert.equal(rewardEmoji('3x Orokin Cell'), '<:wf_orokin_cell:10>');
+    assert.equal(rewardEmoji('Neural Sensors'), '<:wf_neural_sensors:11>');
+    assert.equal(rewardEmoji('Mutagen Mass'), '<:wf_mutagen:12>');
+    // No emoji uploaded for Gallium: nothing is added before the text.
+    assert.equal(rewardEmoji('Gallium'), '');
+    assert.equal(rewardEmoji('Alloy Plate'), '');
+  });
+
+  it('names the emoji of a cycle state, with Unicode stand-ins until the pictures exist', () => {
+    loadEmojis([]);
+    assert.equal(cycleEmoji('Night'), '🌙');
+    assert.equal(cycleEmoji('fass'), '🟠');
+    assert.equal(cycleEmoji('Joy'), '😄');
+    assert.equal(cycleEmoji('Crossfire'), '');
+    assert.equal(cycleEmojiName('Warm'), 'warm');
+    assert.equal(cycleEmojiName(undefined), undefined);
+    loadEmojis([{ id: '20', name: 'wf_night' }, { id: '21', name: 'wf_fear' }]);
+    assert.equal(cycleEmoji('night'), '<:wf_night:20>');
+    assert.equal(cycleEmoji('Fear'), '<:wf_fear:21>');
+    assert.equal(e('star'), '⭐');
+    assert.equal(e('bolt'), '⚡');
   });
 });
 

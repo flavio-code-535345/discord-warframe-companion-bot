@@ -1,5 +1,6 @@
 import type { AppContext } from '../context.js';
 import { cycleIcon, omniaIcon, tierBadge } from '../imaging/badges.js';
+import { boltIcon, coldIcon, dayIcon, fassIcon, moodIcon, nightIcon, starIcon, vomeIcon, warmIcon } from '../imaging/icons.js';
 import type { ArbyTier } from '../warframe/arbitrations.js';
 import { apiFetch } from '../warframe/fetch.js';
 import { loadEmojis } from './emoji.js';
@@ -48,6 +49,31 @@ export const APP_EMOJIS: Record<string, EmojiSource> = {
   wf_madurai: 'Madurai_Pol(xWhite).png',
   wf_vazarin: 'Vazarin_Pol(xWhite).png',
   wf_naramon: 'Naramon_Pol(xWhite).png',
+  wf_relic: 'Relic.png',
+  wf_duviri: 'DuviriIcon.png',
+  // The resources that invasions and alerts pay out.
+  wf_orokin_cell: 'OrokinCell.png',
+  wf_neurodes: 'Neurodes.png',
+  wf_neural_sensors: 'NeuralSensors.png',
+  wf_gallium: 'Gallium.png',
+  wf_morphics: 'Morphics.png',
+  wf_tellurium: 'Tellurium.png',
+  wf_argon: 'ArgonCrystal.png',
+  wf_control_module: 'ControlModule.png',
+  wf_detonite: 'DetoniteInjector.png',
+  wf_fieldron: 'Fieldron.png',
+  wf_mutagen: 'MutagenMass.png',
+  wf_oxium: 'Oxium.png',
+  wf_nano_spores: 'NanoSpores.png',
+  wf_plastids: 'Plastids.png',
+  wf_polymer: 'PolymerBundle.png',
+  wf_rubedo: 'Rubedo.png',
+  wf_alloy_plate: 'AlloyPlate.png',
+  wf_ferrite: 'Ferrite.png',
+  wf_salvage: 'Salvage.png',
+  wf_circuits: 'Circuits.png',
+  wf_cryotic: 'Cryotic.png',
+  wf_hexenon: 'Hexenon.png',
   // Drawn: the wiki has no Arbitration tier badges, no Omnia fissure icon and no plain day/night icon.
   wf_tier_s: badge('S'),
   wf_tier_a: badge('A'),
@@ -57,6 +83,20 @@ export const APP_EMOJIS: Record<string, EmojiSource> = {
   wf_tier_f: badge('F'),
   wf_omnia: omniaIcon,
   wf_cycle: cycleIcon,
+  // Drawn: the states of the open worlds, Duviri's moods and two markers (src/imaging/icons.ts).
+  wf_day: dayIcon,
+  wf_night: nightIcon,
+  wf_warm: warmIcon,
+  wf_cold: coldIcon,
+  wf_fass: fassIcon,
+  wf_vome: vomeIcon,
+  wf_joy: () => moodIcon('joy'),
+  wf_anger: () => moodIcon('anger'),
+  wf_envy: () => moodIcon('envy'),
+  wf_sorrow: () => moodIcon('sorrow'),
+  wf_fear: () => moodIcon('fear'),
+  wf_star: starIcon,
+  wf_bolt: boltIcon,
 };
 
 const WIKI_API = 'https://wiki.warframe.com/api.php';
