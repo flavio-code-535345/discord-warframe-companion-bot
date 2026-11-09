@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ContainerBuilder, type MessageActionRowComponentBuilder, StringSelectMenuBuilder } from 'discord.js';
 import { discordTime } from '../../time.js';
-import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIERS, atLeast } from '../../warframe/arbitrations.js';
+import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIERS, TIER_HINT, atLeast } from '../../warframe/arbitrations.js';
 import { e, emojiUrl, factionTag } from '../emoji.js';
 import { buttonRow, mineButton, notifyRow, roleButton } from './controls.js';
 import { DIVIDER, GAP, card, section } from './parts.js';
@@ -17,14 +17,6 @@ const HOUR = 3_600_000;
 
 export const TIER_COLOR: Record<ArbyTier, number> = { S: 0xf5c542, A: 0xa855f7, B: 0x3b82f6, C: 0x22c55e, D: 0x94a3b8, F: 0x64748b };
 const TIER_NAME: Record<ArbyTier, string> = { S: 'S tier', A: 'A tier', B: 'B tier', C: 'C tier', D: 'D tier', F: 'F tier' };
-const TIER_HINT: Record<ArbyTier, string> = {
-  S: 'one of the best nodes to farm',
-  A: 'a very good node',
-  B: 'a good node',
-  C: 'an average node',
-  D: 'a weak node',
-  F: 'not worth farming',
-};
 
 export const tierBadge = (tier: ArbyTier): string => e(`tier${tier}`);
 

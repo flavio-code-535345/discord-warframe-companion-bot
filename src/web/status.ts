@@ -1,5 +1,7 @@
 import type { AppContext } from '../context.js';
+import { type EmojiName, emojiUrl } from '../discord/emoji.js';
 import { getWikiIndex } from '../wiki/index.js';
+import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIER_HINT, arbitrationView, lastArbitrations } from '../warframe/arbitrations.js';
 import { projectCycles } from '../warframe/cycles.js';
 import { formatDuration, relative, toMs } from '../time.js';
 import { STATUS_CSS } from './theme.js';
@@ -7,10 +9,9 @@ import {
   FISSURE_TIERS,
   isNotableReward,
   type WorldState,
-  activeArbitration,
   archimedeaName,
-  foldAlerts,
   getWorldState,
+  groupAlerts,
   worldStateInfo,
   SOURCE_LAG_MS,
   isBaroHere,
@@ -39,9 +40,8 @@ export interface WorldTiles {
   archimedea: { name: string; endsAt: string | null; missions: string[] }[];
   nightwave: { season: number; endsAt: string | null; challenges: { title: string; kind: string; reputation: number }[] } | null;
   resurgence: { endsAt: string | null; items: string[] } | null;
-  arbitration: { type: string; node: string; enemy: string; flags: string[]; endsAt: string | null } | null;
-  /** Alerts for display: an event's repeated resource missions are one group. */
-  alerts: { name: string; count: number; where: string[]; reward: string; endsAt: string | null }[];
+  /** Alerts for display (`groupAlerts`): an event's resource missions are one group; `where` is "Type · Node" per mission. */
+  alerts: { name: string; count: number; where: string[]; reward: string; notable: boolean; endsAt: string | null }[];
   /** Every open fissure (at most 100), for the page's filters. */
   fissureList: { tier: string; mission: string; node: string; enemy: string; steelPath: boolean; storm: boolean; endsAt: string | null }[];
 }
@@ -62,7 +62,53 @@ export interface StatusData {
   /** null when the worldstate could not be loaded. */
   cycles: CycleStatus[] | null;
   world: WorldTiles | null;
+  /** From the Arbitration schedule, so it is there while the world state is not; null when neither knows the current hour. */
+  arbitration: ArbitrationStatus | null;
   generatedAt: string;
+}
+
+export interface ArbitrationHour {
+  tier: ArbyTier;
+  /** "Casta" */
+  node: string;
+  planet: string;
+  mission: string;
+  faction: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface ArbitrationStatus {
+  now: ArbitrationHour | null;
+  /** The next hours, in order. */
+  next: ArbitrationHour[];
+  /** The S and A tier hours of the next 7 days. */
+  best: ArbitrationHour[];
+  /** False when the schedule and the game disagree: then only `now` (from the world state) is known. */
+  trusted: boolean;
+}
+
+const NEXT_HOURS = 6;
+const BEST_SHOWN = 8;
+
+function arbitrationOf(data: ArbitrationData | null, ws: WorldState | null, now: number): ArbitrationStatus | null {
+  const view = arbitrationView(data, ws, now, { hours: NEXT_HOURS + 1, bestDays: 7, bestTier: 'A' });
+  if (!view.current && !view.upcoming.length) return null;
+  const hour = (s: ArbitrationSlot): ArbitrationHour => ({
+    tier: s.tier,
+    node: s.name,
+    planet: s.planet,
+    mission: s.mission,
+    faction: s.faction,
+    startsAt: new Date(s.start).toISOString(),
+    endsAt: new Date(s.end).toISOString(),
+  });
+  return {
+    now: view.current ? hour(view.current) : null,
+    next: view.upcoming.slice(0, NEXT_HOURS).map(hour),
+    best: view.best.slice(0, BEST_SHOWN).map(hour),
+    trusted: view.scheduleTrusted,
+  };
 }
 
 const ICONS: Record<string, string> = {
@@ -195,11 +241,18 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
       const v = ws.vaultTrader;
       return v?.inventory?.length && live(v.expiry) ? { endsAt: iso(v.expiry), items: v.inventory.map((i) => resurgenceItemName(i.item)) } : null;
     }, null),
-    arbitration: part(() => {
-      const a = activeArbitration(ws, now);
-      return a ? { type: a.type ?? 'Unknown', node: a.node, enemy: a.enemy ?? '', flags: [a.archwing ? 'Archwing' : '', a.sharkwing ? 'Sharkwing' : ''].filter(Boolean), endsAt: iso(a.expiry) } : null;
-    }, null),
-    alerts: part(() => foldAlerts((ws.alerts ?? []).filter((a) => live(a.expiry))).map((g) => ({ name: g.name, count: g.count, where: g.where, reward: g.reward, endsAt: iso(g.endsAt) })), []),
+    alerts: part(
+      () =>
+        groupAlerts((ws.alerts ?? []).filter((a) => live(a.expiry))).map((g) => ({
+          name: g.name,
+          count: g.alerts.length,
+          where: g.alerts.map((a) => [a.mission.type, a.mission.node].filter(Boolean).join(' · ')),
+          reward: g.reward,
+          notable: g.notable,
+          endsAt: iso(g.alerts[0]!.expiry),
+        })),
+      [],
+    ),
     fissureList: part(() => {
       const order = (tier: string) => (FISSURE_TIERS as readonly string[]).indexOf(tier) + 1 || 99;
       return (ws.fissures ?? [])
@@ -211,7 +264,7 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
   };
 }
 
-/** Collects everything the public status page shows. Uses only cached Discord data, so page views cost no API calls. */
+/** The footer's line about the world state source: off, or when it was last called and how that went. */
 function apiPill(a: StatusData['warframeApi']): string {
   if (!a.enabled) return 'off';
   const cadence = a.smart ? `smart, at least every ${a.maxMinutes} min` : `every ${Math.round(a.intervalSeconds / 60)} min`;
@@ -243,7 +296,16 @@ function warframeApiStatus(): StatusData['warframeApi'] {
   };
 }
 
-export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise<WorldState> = getWorldState): Promise<StatusData> {
+/**
+ * Collects everything the public status page shows. Uses only cached Discord data, the paced world state and the Arbitration
+ * schedule the world-state job read last (`lastArbitrations`, no request), so page views cost no API calls. The tests pass their
+ * own loaders.
+ */
+export async function buildStatus(
+  ctx: AppContext,
+  loadWorldState: () => Promise<WorldState> = getWorldState,
+  loadArbitrations: () => ArbitrationData | null = lastArbitrations,
+): Promise<StatusData> {
   const { client, config, store } = ctx;
   const online = client.isReady();
   const guild = online ? client.guilds.cache.get(config.DISCORD_GUILD_ID) : undefined;
@@ -251,8 +313,9 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
 
   let cycles: CycleStatus[] | null = null;
   let world: WorldTiles | null = null;
+  let ws: WorldState | null = null;
   try {
-    const ws = await loadWorldState();
+    ws = await loadWorldState();
     // Each part on its own: a feed that lacks one cycle must not take the sortie, the fissures and the rest of the page down with it.
     try {
       cycles = cyclesOf(ws);
@@ -266,6 +329,12 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
     }
   } catch {
     // The notifier already logs worldstate failures; the page just shows those tiles as unavailable.
+  }
+  let arbitration: ArbitrationStatus | null = null;
+  try {
+    arbitration = arbitrationOf(loadArbitrations(), ws, Date.now());
+  } catch {
+    // The tile says the schedule can't be read.
   }
 
   return {
@@ -290,6 +359,7 @@ export async function buildStatus(ctx: AppContext, loadWorldState: () => Promise
       }),
     cycles,
     world,
+    arbitration,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -298,18 +368,19 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-/** Server-side fallback text; the page script replaces it with the reader's local time. */
+/** Server-side fallback text; the page script replaces it with the reader's local time (`data-local`, or `data-local="t"` for the clock only). */
 const utc = (isoTime: string) => `${new Date(isoTime).toUTCString().slice(0, 22)} UTC`;
+const utcClock = (isoTime: string) => `${isoTime.slice(11, 16)} UTC`;
 
 const countdown = (isoTime: string | null) =>
   isoTime ? `<span class="cd" data-until="${isoTime}">${escapeHtml(relative(isoTime))}</span>` : '<span class="cd">—</span>';
 
 const SCRIPT = `
 const fmt=ms=>{const d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5),m=Math.floor(ms%36e5/6e4),s=Math.floor(ms%6e4/1e3);return d?d+'d '+h+'h':h?h+'h '+m+'m':m?m+'m '+s+'s':s+'s'};
-const local=new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const local=new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),clock=new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'});
 let kind='all',tier='all',last=Date.now(),busy=false;
 try{const s=JSON.parse(sessionStorage.getItem('fissures')||'{}');kind=s.kind||'all';tier=s.tier||'all'}catch(e){}
-function localize(){document.querySelectorAll('time[data-local]').forEach(t=>{t.textContent=local.format(new Date(t.dateTime))})}
+function localize(){document.querySelectorAll('time[data-local]').forEach(t=>{t.textContent=(t.dataset.local==='t'?clock:local).format(new Date(t.dateTime))})}
 function filt(){
 document.querySelectorAll('.chip').forEach(c=>{const on=c.dataset.kind!==undefined?c.dataset.kind===kind:c.dataset.tier===tier;c.classList.toggle('on',on)});
 let n=0;document.querySelectorAll('tr[data-tier]').forEach(r=>{const show=(kind==='all'||r.dataset.kind===kind)&&(tier==='all'||r.dataset.tier===tier);r.hidden=!show;if(show)n++});
@@ -320,14 +391,29 @@ function tick(){const now=Date.now();let over=false;document.querySelectorAll('[
 localize();filt();tick();setInterval(tick,1000);setInterval(refresh,60000);
 `;
 
-export function renderStatusPage(s: StatusData, nonce: string): string {
+/** A Warframe icon for the page: the clan's custom emoji on Discord's CDN, or null when only a Unicode stand-in exists. */
+export type IconLookup = (name: EmojiName) => string | null;
+
+const RELIC_ICON: Record<string, EmojiName> = { Lith: 'lith', Meso: 'meso', Neo: 'neo', Axi: 'axi', Requiem: 'requiem', Omnia: 'omnia' };
+
+export function renderStatusPage(s: StatusData, nonce: string, iconOf: IconLookup = (name) => emojiUrl(name, 48)): string {
   const e = escapeHtml;
   const w = s.world;
+  const icon = (name: EmojiName | undefined): string => {
+    const url = name ? iconOf(name) : null;
+    return url ? `<img class="ico" src="${e(url)}" alt="" width="18" height="18" loading="lazy">` : '';
+  };
   const row = (k: string, v = '', note = '') => `<div class="r"><span class="k">${k}${note ? `<span class="n">${note}</span>` : ''}</span><span class="v">${v}</span></div>`;
-  const tile = (title: string, aside: string, body: string) => `<section class="tile"><h2><span>${title}</span>${aside}</h2>${body}</section>`;
+  const tile = (title: string, aside: string, body: string, opts: { icon?: EmojiName; cls?: string } = {}) =>
+    `<section class="tile${opts.cls ? ` ${opts.cls}` : ''}"><h2><span>${icon(opts.icon)}${title}</span>${aside}</h2>${body}</section>`;
   const none = (text: string) => `<p class="empty">${e(text)}</p>`;
   const unavailable = none('World state unavailable right now.');
   const more = (n: number) => (n > 0 ? row(`<span class="n">…and ${n} more</span>`) : '');
+  const heading = (text: string) => `<div class="sec">${text}</div>`;
+  const tierBadge = (t: ArbyTier) => `<span class="tier tier-${t.toLowerCase()}" title="${t} tier">${t}</span>`;
+  const plat = (n: number) => (icon('platinum') ? `${n} ${icon('platinum')}` : `${n}p`);
+  /** Escaped reward text whose amounts stay on one line with their unit ("10,000 cr", "3 Forma"). */
+  const reward = (text: string) => e(text).replace(/(\d) (?=[A-Za-z])/g, '$1&nbsp;');
 
   const status = s.online ? `<span class="live"><span class="dot"></span>Online${s.pingMs !== null ? ` · ${s.pingMs} ms` : ''}</span>` : '<span class="live off"><span class="dot"></span>Offline</span>';
   const facts = [
@@ -351,58 +437,91 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
     'Day and night cycles',
     '',
     s.cycles ? s.cycles.map((c) => row(`${c.icon} ${e(c.name)} <b>${e(c.state)}</b>`, countdown(c.endsAt), c.note ? e(c.note) : '')).join('') : unavailable,
+    { icon: 'cycle' },
   );
 
   const fissureTotal = w ? w.fissures.reduce((n, f) => n + f.normal + f.steelPath + f.storm, 0) : 0;
-  const chip = (attr: string, value: string, label: string) => `<button type="button" class="chip" data-${attr}="${e(value)}">${e(label)}</button>`;
+  /** `label` is HTML: the callers escape what they put in. */
+  const chip = (attr: string, value: string, label: string) => `<button type="button" class="chip" data-${attr}="${e(value)}">${label}</button>`;
   const fissures = tile(
     'Void fissures',
     w ? `<span class="x">${fissureTotal} active · <span data-fcount>${w.fissureList.length} shown</span></span>` : '',
     !w
       ? unavailable
       : w.fissureList.length
-        ? `<div class="chips">${[chip('kind', 'all', 'All'), chip('kind', 'normal', 'Normal'), chip('kind', 'sp', '🔱 Steel Path'), chip('kind', 'storm', '🌀 Storm')].join('')}</div>
-<div class="chips">${[chip('tier', 'all', 'Every tier'), ...w.fissures.map((f) => chip('tier', f.tier, `${f.tier} ${f.normal + f.steelPath + f.storm}`))].join('')}</div>
+        ? `<div class="chips">${[chip('kind', 'all', 'All'), chip('kind', 'normal', 'Normal'), chip('kind', 'sp', `${icon('steelPath')}Steel Path`), chip('kind', 'storm', `${icon('storm')}Void Storm`)].join('')}</div>
+<div class="chips">${[chip('tier', 'all', 'Every tier'), ...w.fissures.map((f) => chip('tier', f.tier, `${icon(RELIC_ICON[f.tier])}${e(f.tier)} <span class="u">${f.normal + f.steelPath + f.storm}</span>`))].join('')}</div>
 <div class="scroll"><table class="fx"><tbody>${w.fissureList
             .map((f) => {
               const k = f.storm ? 'storm' : f.steelPath ? 'sp' : 'normal';
-              return `<tr data-tier="${e(f.tier)}" data-kind="${k}"><td class="t">${e(f.tier)}</td><td>${e(f.mission)}<span class="n">${e(f.node)}${f.enemy ? ` · ${e(f.enemy)}` : ''}${f.steelPath ? ' · 🔱 Steel Path' : ''}${f.storm ? ' · 🌀 Storm' : ''}</span></td><td class="v">${countdown(f.endsAt)}</td></tr>`;
+              const kind = f.storm ? ' · Void Storm' : f.steelPath ? ' · Steel Path' : '';
+              return `<tr data-tier="${e(f.tier)}" data-kind="${k}"><td class="t">${icon(RELIC_ICON[f.tier])}${e(f.tier)}</td><td>${e(f.mission)}<span class="n">${e(f.node)}${f.enemy ? ` · ${e(f.enemy)}` : ''}${kind}</span></td><td class="v">${countdown(f.endsAt)}</td></tr>`;
             })
             .join('')}</tbody></table></div>`
         : none('No fissures right now.'),
-  ).replace('class="tile"', 'class="tile wide"');
-
-  const arbitration = tile(
-    'Arbitration',
-    w?.arbitration ? countdown(w.arbitration.endsAt) : '',
-    !w
-      ? unavailable
-      : w.arbitration
-        ? `<div class="lead">${e(w.arbitration.type)} — ${e(w.arbitration.node)}</div>${w.arbitration.enemy ? row('Enemy', e(w.arbitration.enemy)) : ''}${w.arbitration.flags.length ? row('Mode', e(w.arbitration.flags.join(', '))) : ''}<p class="n">Endless, changes every hour, drops Vitus Essence.</p>`
-        : none('None running right now. /track arbitration pings you when the next one starts.'),
+    { icon: 'fissure', cls: 'span2' },
   );
 
+  // The Arbitration comes from the schedule, so it is shown while the world state is not.
+  const arb = s.arbitration;
+  const place = (h: ArbitrationHour) => `<b>${e(h.node)}</b>${h.planet ? `, ${e(h.planet)}` : ''}`;
+  const what = (h: ArbitrationHour) => e([h.mission, h.faction].filter(Boolean).join(' · '));
+  const arbRow = (h: ArbitrationHour, when: string, note: string) =>
+    `<div class="r arb">${tierBadge(h.tier)}<span class="k">${place(h)}<span class="n">${note}</span></span><span class="v">${when}</span></div>`;
+  const arbitration = tile(
+    'Arbitration',
+    arb?.now ? `<span class="x">ends ${countdown(arb.now.endsAt)}</span>` : '',
+    !arb
+      ? none('The Arbitration schedule can not be read right now; it comes back on its own.')
+      : [
+          arb.now
+            ? `<div class="hero">${tierBadge(arb.now.tier)}<div><div class="lead">${place(arb.now)}</div><span class="n">${what(arb.now)} · ${e(TIER_HINT[arb.now.tier])}</span></div></div>`
+            : none('No Arbitration is known for this hour.'),
+          arb.next.length ? heading('Next hours') + arb.next.map((h) => arbRow(h, `<time datetime="${h.startsAt}" data-local="t">${utcClock(h.startsAt)}</time>`, what(h))).join('') : '',
+          arb.best.length
+            ? heading('Best of the week') + arb.best.map((h) => arbRow(h, countdown(h.startsAt), `<time datetime="${h.startsAt}" data-local>${e(utc(h.startsAt))}</time> · ${what(h)}`)).join('')
+            : '',
+          arb.trusted ? '' : '<p class="n">The schedule and the game disagree right now, so only the current hour is shown until they agree again.</p>',
+          '<p class="src">Tiers by the Arbitration Goons · schedule from browse.wf</p>',
+        ].join(''),
+    { icon: 'arbitration' },
+  );
+
+  const alertCount = w ? w.alerts.reduce((n, a) => n + a.count, 0) : 0;
   const alerts = w?.alerts.length
-    ? tile('Alerts', `<span class="x">${w.alerts.length}</span>`, w.alerts.map((a) => row(`<b>${e(a.name)}</b>`, countdown(a.endsAt), `${e(a.where.join('; '))} · ${e(a.reward)}`)).join(''))
+    ? tile(
+        'Alerts',
+        `<span class="x">${alertCount}</span>`,
+        w.alerts
+          .map((a) =>
+            row(
+              `${a.notable ? '<span class="star">★</span> ' : ''}<b>${e(a.name)}</b>${a.count > 1 ? ` <span class="u">×${a.count}</span>` : ''}`,
+              countdown(a.endsAt),
+              `${e(a.where.slice(0, 3).join('; '))}${a.count > 3 ? ` · …and ${a.count - 3} more` : ''} · ${reward(a.reward)}${a.count > 1 ? ' each' : ''}`,
+            ),
+          )
+          .join(''),
+        { icon: 'alert' },
+      )
     : '';
 
   // The headline numbers above the tiles: what changes next, at a glance.
-  const stat = (label: string, value: string, sub: string) => `<div class="stat"><span class="sl">${label}</span><b class="sv">${value}</b><span class="ss">${sub}</span></div>`;
+  const stat = (label: string, value: string, note: string, ico: EmojiName) => `<div class="stat"><span class="sl">${icon(ico)}${label}</span><b class="sv">${value}</b><span class="ss">${note}</span></div>`;
   const nextCycle = s.cycles
     ?.filter((c) => c.endsAt && Date.parse(c.endsAt) > Date.now())
     .reduce<CycleStatus | null>((soonest, c) => (!soonest || Date.parse(c.endsAt!) < Date.parse(soonest.endsAt!) ? c : soonest), null);
   const strip = [
-    nextCycle ? stat('Next change', `${nextCycle.icon} ${e(nextCycle.name)}`, `${e(nextCycle.state)} ends ${countdown(nextCycle.endsAt)}`) : '',
-    w?.baro ? stat("Baro Ki'Teer", w.baro.here ? 'Here now' : 'Arriving', `${e(w.baro.location)} · ${countdown(w.baro.at)}`) : '',
-    w ? stat('Arbitration', w.arbitration ? e(w.arbitration.type) : 'None', w.arbitration ? `${e(w.arbitration.node)} · ends ${countdown(w.arbitration.endsAt)}` : 'between missions') : '',
-    w?.sortie ? stat('Sortie', e(w.sortie.boss), `resets ${countdown(w.sortie.endsAt)}`) : '',
+    nextCycle ? stat('Next change', `${nextCycle.icon} ${e(nextCycle.name)}`, `${e(nextCycle.state)} ends ${countdown(nextCycle.endsAt)}`, 'cycle') : '',
+    w?.baro ? stat("Baro Ki'Teer", w.baro.here ? 'Here now' : 'Arriving', `${e(w.baro.location)} · ${countdown(w.baro.at)}`, 'baro') : '',
+    arb?.now ? stat('Arbitration', `${tierBadge(arb.now.tier)}${e(arb.now.node)}`, `${e(arb.now.mission)} · ends ${countdown(arb.now.endsAt)}`, 'arbitration') : '',
+    w?.sortie ? stat('Sortie', e(w.sortie.boss), `resets ${countdown(w.sortie.endsAt)}`, 'sortie') : '',
   ].join('');
 
   const group = (title: string, hint: string, tiles: string, open = false) =>
     tiles.trim() ? `<details class="group" data-g="${e(title)}"${open ? ' open' : ''}><summary><h3>${title}</h3><span>${hint}</span></summary><div class="grid">${tiles}</div></details>` : '';
 
   const sortie = !w
-    ? tile('Sortie', '', unavailable)
+    ? tile('Sortie', '', unavailable, { icon: 'sortie' })
     : w.sortie
       ? tile(
           'Sortie',
@@ -410,33 +529,42 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
           `<div class="lead">${e(w.sortie.boss)}${w.sortie.faction ? ` · ${e(w.sortie.faction)}` : ''}</div>${w.sortie.missions
             .map((m, i) => row(`${i + 1}. ${e(m.type)}`, e(m.node), e(m.modifier)))
             .join('')}`,
+          { icon: 'sortie' },
         )
       : '';
 
   const archon = w?.archon
-    ? tile('Archon Hunt', countdown(w.archon.endsAt), `<div class="lead">${e(w.archon.boss)}</div>${w.archon.missions.map((m, i) => row(`${i + 1}. ${e(m.type)}`, e(m.node))).join('')}`)
+    ? tile('Archon Hunt', countdown(w.archon.endsAt), `<div class="lead">${e(w.archon.boss)}</div>${w.archon.missions.map((m, i) => row(`${i + 1}. ${e(m.type)}`, e(m.node))).join('')}`, { icon: 'archon' })
     : '';
 
+  const ducats = icon('ducats') || '<span class="u">ducats</span>';
   const baro = w?.baro
     ? tile(
         "Baro Ki'Teer",
         countdown(w.baro.at),
         `<div class="lead">${w.baro.here ? `Here at ${e(w.baro.location)}` : `Arrives at ${e(w.baro.location)}`}</div>${w.baro.items
           .slice(0, 5)
-          .map((i) => row(e(i.name), `${i.ducats} <span class="u">ducats</span>`))
+          .map((i) => row(e(i.name), `${i.ducats} ${ducats}`))
           .join('')}${more(w.baro.items.length - 5)}`,
+        { icon: 'baro' },
       )
     : '';
 
   const steel = w?.steelPath
-    ? tile('Steel Path honors', countdown(w.steelPath.endsAt), row(`<b>${e(w.steelPath.current)}</b>`, `${w.steelPath.cost} essence`) + (w.steelPath.next ? row(`Next week: ${e(w.steelPath.next)}`) : ''))
+    ? tile(
+        'Steel Path honors',
+        countdown(w.steelPath.endsAt),
+        row(`<b>${e(w.steelPath.current)}</b>`, `${w.steelPath.cost} ${icon('steelPath') || 'essence'}`) + (w.steelPath.next ? row(`Next week: ${e(w.steelPath.next)}`) : ''),
+        { icon: 'steelPath' },
+      )
     : '';
 
   const darvo = w?.darvo
     ? tile(
         "Darvo's deal",
         countdown(w.darvo.endsAt),
-        row(`<b>${e(w.darvo.item)}</b>`, `<b>${w.darvo.price}p</b> <s>${w.darvo.original}p</s>`, `-${w.darvo.discount}% · ${w.darvo.left > 0 ? `${w.darvo.left} of ${w.darvo.total} left` : 'sold out'}`),
+        row(`<b>${e(w.darvo.item)}</b>`, `<b>${plat(w.darvo.price)}</b> <s>${w.darvo.original}</s>`, `-${w.darvo.discount}% · ${w.darvo.left > 0 ? `${w.darvo.left} of ${w.darvo.total} left` : 'sold out'}`),
+        { icon: 'darvo' },
       )
     : '';
 
@@ -446,13 +574,16 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
         `<span class="x">${w.invasions.length} active</span>`,
         w.invasions
           .slice(0, 4)
-          .map((i) => row(`${i.notable ? '<span class="star">★</span> ' : ''}${e(i.node)}`, `${i.completion}%`, e(i.rewards)))
+          .map((i) => row(`${i.notable ? '<span class="star">★</span> ' : ''}${e(i.node)}`, `${i.completion}%`, reward(i.rewards)))
           .join('') + more(w.invasions.length - 4),
+        { icon: 'invasion' },
       )
     : '';
 
   const events = w?.events.length
-    ? tile('Events', '', w.events.map((ev) => row(e(ev.name), countdown(ev.endsAt), [ev.progress !== null ? `${ev.progress}% done` : '', e(ev.rewards)].filter(Boolean).join(' · '))).join(''))
+    ? tile('Events', '', w.events.map((ev) => row(e(ev.name), countdown(ev.endsAt), [ev.progress !== null ? `${ev.progress}% done` : '', reward(ev.rewards)].filter(Boolean).join(' · '))).join(''), {
+        icon: 'event',
+      })
     : '';
 
   const nightwave = w?.nightwave
@@ -463,6 +594,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
           .slice(0, 5)
           .map((c) => row(`${e(c.title)}<span class="tag">${c.kind}</span>`, c.reputation.toLocaleString('en-US')))
           .join('') + more(w.nightwave.challenges.length - 5),
+        { icon: 'nightwave' },
       )
     : '';
 
@@ -475,6 +607,7 @@ export function renderStatusPage(s: StatusData, nonce: string): string {
         'Prime Resurgence',
         countdown(w.resurgence.endsAt),
         `<p class="n">${e(w.resurgence.items.slice(0, 12).join(' · '))}${w.resurgence.items.length > 12 ? ` · …and ${w.resurgence.items.length - 12} more` : ''}</p>`,
+        { icon: 'varzia' },
       )
     : '';
 
@@ -499,7 +632,7 @@ ${status}
 ${strip ? `<div class="strip">${strip}</div>` : ''}
 <div class="groups">
 ${group('Open worlds', 'cycles and the Void Trader', cycles + baro, true)}
-${group('The Void', 'fissures and Arbitration', fissures + arbitration, true)}
+${group('The Void', 'fissures and the Arbitration schedule', fissures + arbitration, true)}
 ${group('Resets', 'daily, weekly and seasonal', sortie + archon + steel + archimedea + nightwave)}
 ${group('Events and trading', 'the clan, alerts, invasions and deals', clan + alerts + invasions + events + darvo + resurgence)}
 </div>

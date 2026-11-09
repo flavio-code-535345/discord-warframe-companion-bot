@@ -12,7 +12,7 @@ import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
 import { BOUNTY_SYNDICATES } from '../src/discord/embeds.js';
 import { EMOJI, loadEmojis } from '../src/discord/emoji.js';
-import { alertPings, groupAlerts } from '../src/discord/feeds/alerts.js';
+import { alertPings } from '../src/discord/feeds/alerts.js';
 import { arbitrationPings, planMessage } from '../src/discord/feeds/arbitrations.js';
 import { TRACK_OPTIONS, notifyRow, sameSpec } from '../src/discord/feeds/controls.js';
 import { handleFeedSelect } from '../src/discord/feeds/handlers.js';
@@ -23,7 +23,7 @@ import { traderPings } from '../src/discord/feeds/traders.js';
 import { FEED_IDS, type FeedInput } from '../src/discord/feeds/types.js';
 import { MAX_TRACKERS_PER_USER, parseSpec } from '../src/trackers.js';
 import { type ArbitrationData, ArbitrationSchedule, arbitrationView, parseTiers } from '../src/warframe/arbitrations.js';
-import { type WorldState, resurgenceItemName } from '../src/warframe/worldstate.js';
+import { type WorldState, groupAlerts, resurgenceItemName } from '../src/warframe/worldstate.js';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -335,9 +335,32 @@ describe('World State boards', () => {
     const groups = groupAlerts(busyWorld().alerts);
     assert.equal(groups.length, 11);
     const event = groups.find((g) => g.alerts.length > 1)!;
-    assert.equal(event.name, 'Event mission (Survival)');
+    assert.equal(event.name, 'Event missions');
     assert.equal(event.alerts.length, 8);
+    assert.equal(event.notable, false);
     assert.equal(groups.at(-1), event, 'a resource mission comes after every Gift of the Lotus');
+    assert.ok(groups.slice(0, 10).every((g) => g.notable && g.alerts.length === 1));
+  });
+
+  it("fold an event's missions of different types too, but never two alerts with their own titles", () => {
+    const at = (min: number) => iso(NOW + min * MIN);
+    const tumor = reward([], 0, [{ type: 'Rotting Tumor', count: 50 }]);
+    const alert = (id: string, description: string, type: string, expiry: string, r = tumor) => ({ id, expiry, mission: { description, type, node: `${id} (Eris)`, reward: r } });
+    const groups = groupAlerts([
+      alert('a', 'Event Alert Title', 'Defense', at(50)),
+      alert('b', 'Event Alert Title', 'Survival', at(20)),
+      alert('c', 'Event Alert Title', 'Survival', at(40), reward(['Forma Blueprint'])),
+      alert('d', 'Gift of the Lotus', 'Spy', at(30), reward(['Forma Blueprint'])),
+    ] as unknown as WorldState['alerts']);
+    assert.deepEqual(
+      groups.map((g) => [g.name, g.alerts.map((a) => a.id)]),
+      [
+        ['Gift of the Lotus', ['d']],
+        ['Event mission (Survival)', ['c']],
+        ['Event missions', ['b', 'a']],
+      ],
+      'worthwhile rewards first, then the soonest; a folded group soonest first',
+    );
   });
 
   it('are found by their channel', () => {

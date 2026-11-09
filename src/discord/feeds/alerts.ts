@@ -1,6 +1,6 @@
 import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
-import { type WorldState, alertName, isNotableReward, rewardText } from '../../warframe/worldstate.js';
+import { type AlertGroup, type WorldState, alertName, groupAlerts, isNotableReward, rewardText } from '../../warframe/worldstate.js';
 import { e, emojiUrl, factionTag, rewardEmoji } from '../emoji.js';
 import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, bar, card, fit, nodeName, num, planetOf, section } from './parts.js';
@@ -8,39 +8,15 @@ import { type FeedInput, type FeedPing, STALE_NOTE } from './types.js';
 
 /**
  * 🚨┃alerts: alerts and Gifts of the Lotus, then the running events with their goals, in the first message; Nightwave's daily and
- * weekly acts with the controls in the second. An event's endless resource missions (several alerts with the same title and reward)
- * are folded into one line.
+ * weekly acts with the controls in the second. An event's endless resource missions are folded into one line (`groupAlerts`).
  */
 
 const COLOR = { alerts: 0xf59e0b, nightwave: 0xbe123c } as const;
-type Alert = WorldState['alerts'][number];
-
-interface AlertGroup {
-  name: string;
-  reward: string;
-  alerts: Alert[];
-}
-
-/** Alerts that share a title and a reward (an event's missions) become one group; the rest stay one each, worthwhile ones first. */
-export function groupAlerts(alerts: Alert[]): AlertGroup[] {
-  const groups = new Map<string, AlertGroup>();
-  for (const a of alerts) {
-    const name = alertName(a);
-    const reward = rewardText(a.mission.reward);
-    const key = `${name}\u0000${reward}`;
-    const g = groups.get(key) ?? { name, reward, alerts: [] };
-    g.alerts.push(a);
-    groups.set(key, g);
-  }
-  return [...groups.values()].sort(
-    (a, b) => Number(isNotableReward(b.reward)) - Number(isNotableReward(a.reward)) || Math.min(...a.alerts.map((x) => toMs(x.expiry))) - Math.min(...b.alerts.map((x) => toMs(x.expiry))),
-  );
-}
 
 function alertBlock(g: AlertGroup): string {
-  const star = isNotableReward(g.reward) ? '⭐ ' : '';
+  const star = g.notable ? '⭐ ' : '';
   const pay = `${rewardEmoji(g.reward)} ${g.reward}`.trim();
-  const ends = Math.min(...g.alerts.map((a) => toMs(a.expiry)));
+  const ends = toMs(g.alerts[0]!.expiry);
   if (g.alerts.length === 1) {
     const a = g.alerts[0]!;
     const m = a.mission;

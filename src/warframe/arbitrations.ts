@@ -28,6 +28,16 @@ export const TIERS: readonly ArbyTier[] = ['S', 'A', 'B', 'C', 'D', 'F'];
 /** True when `tier` is `min` or better (S is best). */
 export const atLeast = (tier: ArbyTier, min: ArbyTier): boolean => TIERS.indexOf(tier) <= TIERS.indexOf(min);
 
+/** What a tier means to a player, for the board and the status page. */
+export const TIER_HINT: Record<ArbyTier, string> = {
+  S: 'one of the best nodes to farm',
+  A: 'a very good node',
+  B: 'a good node',
+  C: 'an average node',
+  D: 'a weak node',
+  F: 'not worth farming',
+};
+
 export interface NodeInfo {
   /** "Casta (Ceres)" */
   node: string;

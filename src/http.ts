@@ -42,13 +42,14 @@ export function startHttpServer(ctx: AppContext): Server {
   // Admin panel: Discord login, whitelisted admins only (off until DISCORD_CLIENT_SECRET and PUBLIC_URL are set).
   app.use('/admin', adminRouter(ctx));
 
-  // Public status page. Page and JSON show aggregate clan data only (no member names or IDs).
+  // Public status page. Page and JSON show aggregate clan data only (no member names or IDs). Its Warframe icons are the clan's
+  // custom emojis, loaded from Discord's CDN.
   app.get('/', async (_req, res, next) => {
     try {
       const nonce = randomBytes(16).toString('base64');
       res
         .set({
-          'Content-Security-Policy': `default-src 'none'; img-src 'self'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+          'Content-Security-Policy': `default-src 'none'; img-src 'self' https://cdn.discordapp.com; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
           'Cache-Control': 'no-store',
           'X-Content-Type-Options': 'nosniff',
         })
