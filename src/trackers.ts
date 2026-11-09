@@ -18,7 +18,12 @@ export type TrackerSpec =
   | { kind: 'sortie'; mission?: string }
   | { kind: 'archon' }
   | { kind: 'price'; slug: string; name: string; below: number }
-  | { kind: 'weekly' };
+  | { kind: 'weekly' }
+  /**
+   * A riven for sale on warframe.market (rivens/watch.ts): this weapon, these bonuses (more are fine), the curse rule, at most `maxPrice`.
+   * `label` is the filter in words, kept so the tracker list needs no stat names.
+   */
+  | { kind: 'riven'; weapon: string; weaponName: string; positives: string[]; negative?: string; noCurse?: boolean; maxPrice: number; label: string };
 
 export const MAX_TRACKERS_PER_USER = 15;
 
@@ -69,7 +74,7 @@ export type TrackableSource =
 export interface Trackable {
   /** Stable identity: the same item keeps its key across polls, a new rotation gets a new one. */
   key: string;
-  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly'>;
+  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly' | 'riven'>;
   source: TrackableSource;
   title: string;
   /** Searchable reward text for reward trackers. */
@@ -223,7 +228,10 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
   return out;
 }
 
-/** Price and weekly trackers never match here: prices are checked against warframe.market (discord/price-alerts.ts), the weekly post is sent by discord/weekly.ts, and no trackable has either kind. */
+/**
+ * Price, riven and weekly trackers never match here: prices are checked against warframe.market (discord/price-alerts.ts), so are rivens
+ * (rivens/watch.ts), the weekly post is sent by discord/weekly.ts, and no trackable has any of these kinds.
+ */
 /** null when `t` doesn't match; otherwise the matching reward rows (empty for non-reward trackers). */
 export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
   if (spec.kind !== t.kind) return null;
@@ -295,6 +303,8 @@ export function describeTracker(spec: TrackerSpec): string {
       return `${spec.name} at ${spec.below}p or less on warframe.market`;
     case 'weekly':
       return 'The weekly reset summary (Mondays)';
+    case 'riven':
+      return `${spec.weaponName} riven with ${spec.label} at ${spec.maxPrice.toLocaleString('en-US')}p or less`;
   }
 }
 

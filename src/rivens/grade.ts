@@ -106,6 +106,8 @@ export interface Grade {
   /** warframe.market was asked what is for sale with these bonuses (so a null `comparable` really means nobody is selling them). */
   marketChecked: boolean;
   negative: { slug: string; share: number; rank: number | null } | null;
+  /** The weapon's most wanted bonus stats: the three most common among its expensive listings, most common first. */
+  wanted: string[];
 }
 
 export function gradeRiven(all: RivenListing[], input: GradeInput, minPrice: number, market?: MarketComparable | null): Grade | null {
@@ -136,7 +138,16 @@ export function gradeRiven(all: RivenListing[], input: GradeInput, minPrice: num
     negative = { slug: wantNeg, share: negShares.get(wantNeg) ?? 0, rank: at === -1 ? null : at + 1 };
   }
 
-  return { letter, bracket: { high: high.length, total: bracket.total, threshold: bracket.threshold, adaptive: bracket.adaptive }, stats, exact, comparable, marketChecked: Boolean(market), negative };
+  return {
+    letter,
+    bracket: { high: high.length, total: bracket.total, threshold: bracket.threshold, adaptive: bracket.adaptive },
+    stats,
+    exact,
+    comparable,
+    marketChecked: Boolean(market),
+    negative,
+    wanted: order.slice(0, 3),
+  };
 }
 
 function comparableFrom(listings: RivenListing[], wantKey: string, wantNeg: string | null, complete: boolean, source: Comparable['source']): Comparable | null {

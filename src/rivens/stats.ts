@@ -108,3 +108,22 @@ export function parseStatList(text: string, attrs: RivenAttribute[]): StatInput[
   if (unknown.length) throw new UserError(`I don't know the riven stat${unknown.length > 1 ? 's' : ''} "${unknown.join('", "')}". Use names like Critical Chance, or short forms like cc, cd, ms, sc, dmg.`);
   return out;
 }
+
+/** How the market writes a stat's value when its list does not say: faction stats multiply, combo duration is seconds, a few are plain numbers. */
+function unitOf(slug: string): string {
+  if (statKey(slug) === 'faction') return 'multiply';
+  if (/combo_duration/.test(slug)) return 'seconds';
+  if (/^(punch_through|range)$/.test(slug)) return '';
+  return 'percent';
+}
+
+/**
+ * A rolled value the way the game writes it: "+90.2%", "−58.2%" (the market keeps a curse's own sign: −58.2 Zoom, but +28 Recoil),
+ * "x0.59" for a faction stat, "+8.5s" for combo duration, "+2.1" for punch through. Empty when the value is unknown.
+ */
+export function formatStatValue(slug: string, value: number | null | undefined, unit?: string): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '';
+  const u = unit ?? unitOf(slug);
+  if (u === 'multiply') return `x${value}`;
+  return `${value < 0 ? '−' : '+'}${Math.abs(value)}${u === 'percent' ? '%' : u === 'seconds' ? 's' : ''}`;
+}

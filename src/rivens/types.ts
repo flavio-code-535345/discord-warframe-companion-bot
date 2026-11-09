@@ -5,6 +5,9 @@ export interface RivenStat {
   positive: boolean;
 }
 
+/** Where a seller is on warframe.market right now: in the game (can trade at once), on the website only, or away. */
+export type SellerStatus = 'ingame' | 'online' | 'offline';
+
 /** One riven someone is selling on warframe.market. Nothing about the seller is kept. */
 export interface RivenListing {
   id: string;
@@ -15,6 +18,16 @@ export interface RivenListing {
   polarity: string;
   rerolls: number;
   stats: RivenStat[];
+  /**
+   * The riven's own name ("visitis"), its mastery requirement and rank, where the seller is right now, their platform when it is not PC,
+   * and when it was listed. Read for /riven find and the riven watch only: the database keeps price, polarity, re-rolls and stats.
+   */
+  name?: string;
+  mastery?: number;
+  rank?: number;
+  seller?: SellerStatus;
+  platform?: string;
+  listedAt?: number;
 }
 
 /** When a weapon's listings were last read, and how that went. */
@@ -42,4 +55,6 @@ export interface RivenAttribute {
   name: string;
   positiveOnly: boolean;
   negativeOnly: boolean;
+  /** How the market writes its value: `percent` (+90.2%), `multiply` (x0.59, the faction stats), `seconds` (combo duration), or none (punch through, range). */
+  unit?: string;
 }

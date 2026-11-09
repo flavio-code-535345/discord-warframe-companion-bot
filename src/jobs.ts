@@ -9,6 +9,7 @@ import { endDueGiveaways } from './giveaways/service.js';
 import { VOICE_XP_MS, awardVoiceXp } from './leveling/service.js';
 import { SWEEP_INTERVAL_MS, sweepVoice } from './lfg/voice.js';
 import { RIVEN_FIRST_MS, type RivenCrawler } from './rivens/crawler.js';
+import { RIVEN_WATCH_MS, checkRivenWatches } from './rivens/watch.js';
 import { Scheduler } from './scheduler.js';
 import { WIKI_CHECK_MS, WIKI_FIRST_MS, type WikiCrawler } from './wiki/crawler.js';
 
@@ -30,6 +31,7 @@ export function registerJobs(ctx: AppContext, parts: { rivenCrawler: RivenCrawle
     .every('promo-codes', MIN, () => updatePromoCodes(ctx), { firstMs: MIN })
     .every('news', MIN, () => newsJob(ctx), { firstMs: 30_000 })
     .every('price-alerts', PRICE_CHECK_MS, () => checkPriceTrackers(ctx), { firstMs: 2 * MIN })
+    .every('riven-watch', RIVEN_WATCH_MS, () => checkRivenWatches(ctx), { firstMs: 3 * MIN })
     .every('world-state', MIN, () => worldStateJob(ctx), { firstMs: 5_000 })
     .every('squad-voice', SWEEP_INTERVAL_MS, () => sweepVoice(ctx), { firstMs: SWEEP_INTERVAL_MS })
     .every('voice-xp', VOICE_XP_MS, () => awardVoiceXp(ctx), { firstMs: VOICE_XP_MS })

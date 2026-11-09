@@ -44,6 +44,10 @@ export const APP_EMOJIS: Record<string, EmojiSource> = {
   wf_darvo: 'Darvo.png',
   wf_teshin: 'Teshin.png',
   wf_varzia: 'Varzia.png',
+  wf_riven: 'RivenIcon64.png',
+  wf_madurai: 'Madurai_Pol(xWhite).png',
+  wf_vazarin: 'Vazarin_Pol(xWhite).png',
+  wf_naramon: 'Naramon_Pol(xWhite).png',
   // Drawn: the wiki has no Arbitration tier badges, no Omnia fissure icon and no plain day/night icon.
   wf_tier_s: badge('S'),
   wf_tier_a: badge('A'),

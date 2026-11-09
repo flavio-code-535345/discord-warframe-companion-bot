@@ -1665,6 +1665,16 @@ export class Store {
     return this.db.prepare('INSERT OR IGNORE INTO seen_worldstate (key, seen_at) VALUES (?, ?)').run(key, Date.now()).changes > 0;
   }
 
+  /**
+   * Like markSeen, but a key seen again has its time renewed, so something that stays (a riven listed for months) is never pruned and
+   * announced a second time. True only the first time.
+   */
+  refreshSeen(key: string): boolean {
+    const now = Date.now();
+    if (this.db.prepare('UPDATE seen_worldstate SET seen_at = ? WHERE key = ?').run(now, key).changes > 0) return false;
+    return this.db.prepare('INSERT OR IGNORE INTO seen_worldstate (key, seen_at) VALUES (?, ?)').run(key, now).changes > 0;
+  }
+
   /** Whether `key` was recorded by markSeen (without recording it). */
   hasSeen(key: string): boolean {
     return this.db.prepare('SELECT 1 FROM seen_worldstate WHERE key = ?').get(key) !== undefined;

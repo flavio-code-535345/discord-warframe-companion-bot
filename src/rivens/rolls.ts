@@ -1,5 +1,5 @@
 import type { StatInput } from './grade.js';
-import { CATEGORIES, DEFAULT_MULTIPLIER, baseOf, categoryOf, statKey } from './ranges.js';
+import { CATEGORIES, type Category, DEFAULT_MULTIPLIER, baseOf, categoryOf, statKey } from './ranges.js';
 import type { RivenListing, RivenWeapon } from './types.js';
 
 /**
@@ -43,6 +43,16 @@ export interface RollGrade {
   samples: number;
 }
 
+/** What a riven's rolls were measured against, said under the grades so the numbers can be checked. */
+export type RollBasis =
+  /**
+   * The game's fixed ranges for this kind of weapon, with `multiplier` the weapon's own disposition (`disposition`: the number the market
+   * lists for it, which an older riven was rolled with) or the current constant every riven has had since hotfix 44.1.3.
+   */
+  | { source: 'table'; kind: Category; multiplier: number; disposition: boolean }
+  /** No range held every stat, so the rolls other people list for the weapon were the guide. */
+  | { source: 'listings' };
+
 /** The letter for a deviation (percent, + is better). */
 export function letterFor(deviation: number): string {
   const bands: [number, string][] = [[8, 'A+'], [6, 'A'], [3.5, 'A-'], [1.5, 'B+'], [-0.5, 'B'], [-2.5, 'B-'], [-4.5, 'C+'], [-6.5, 'C'], [-9.5, 'C-']];
@@ -80,7 +90,7 @@ const clampDeviation = (d: number): number => Math.max(-10, Math.min(10, d));
  * it says; otherwise every kind is tried and the first whose ranges hold every stat is taken (a rifle's damage range is not a pistol's).
  * Null when no combination fits (then the rolls other people are selling are the only guide).
  */
-function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon: Pick<RivenWeapon, 'type' | 'disposition'> | null | undefined): RollGrade[] | null {
+function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon: Pick<RivenWeapon, 'type' | 'disposition'> | null | undefined): { rolls: RollGrade[]; basis: RollBasis } | null {
   const bonuses = positives.length;
   const hasCurse = negative !== null;
   const stats = [...positives.map((s) => ({ s, curse: false })), ...(negative ? [{ s: negative, curse: true }] : [])];
@@ -107,7 +117,7 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
         const d = clampDeviation(deviation);
         out.push({ ...none, deviation: d, letter: letterFor(d) });
       }
-      if (fits) return out;
+      if (fits) return { rolls: out, basis: { source: 'table', kind, multiplier: k, disposition: k === weapon?.disposition } };
     }
   }
   return null;
@@ -169,8 +179,21 @@ export function repairValues(
 
 /** Grades every stat of a riven (bonuses first, then the curse). */
 export function gradeRolls(listings: RivenListing[], positives: StatInput[], negative: StatInput | null, weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null): RollGrade[] {
-  const fixed = gradeByTable(positives, negative, weapon);
-  if (fixed) return fixed;
+  return gradeRollsWithBasis(listings, positives, negative, weapon).rolls;
+}
+
+/** `gradeRolls`, and what the rolls were measured against. */
+export function gradeRollsWithBasis(
+  listings: RivenListing[],
+  positives: StatInput[],
+  negative: StatInput | null,
+  weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null,
+): { rolls: RollGrade[]; basis: RollBasis } {
+  return gradeByTable(positives, negative, weapon) ?? { rolls: gradeFromListings(listings, positives, negative), basis: { source: 'listings' } };
+}
+
+/** The second choice (see the top of the file): each stat's range estimated from the rolls other people list for the weapon. */
+function gradeFromListings(listings: RivenListing[], positives: StatInput[], negative: StatInput | null): RollGrade[] {
   const seen = units(listings);
   const bonuses = positives.length;
   const hasCurse = negative !== null;

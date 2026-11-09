@@ -1,8 +1,14 @@
 import { EmbedBuilder } from 'discord.js';
+import { own } from '../own.js';
+import { type FoundRivens, type RivenFilter, describeFilter } from '../rivens/find.js';
 import type { Letter } from '../rivens/grade.js';
 import { MIN_LISTINGS } from '../rivens/grade.js';
+import { auctionUrl } from '../rivens/market.js';
 import type { ScanResult } from '../rivens/scan.js';
 import type { GradeReport, RivenStatus, TopReport } from '../rivens/service.js';
+import { formatStatValue } from '../rivens/stats.js';
+import type { RivenListing, SellerStatus } from '../rivens/types.js';
+import { type EmojiName, e } from './emoji.js';
 import { COLORS } from './embeds.js';
 
 const LETTER_COLOR: Record<Letter, number> = { S: 0xf1c40f, A: 0x2ecc71, B: 0x3498db, C: 0xe67e22, D: 0xe74c3c };
@@ -174,4 +180,51 @@ export function rivenStatusEmbed(s: RivenStatus): EmbedBuilder {
     );
   if (s.failing.length) embed.addFields({ name: 'Recent problems', value: s.failing.map((f) => `${f.weapon}: ${f.error}`).join('\n').slice(0, 1000) });
   return embed;
+}
+
+/** Where the seller is: in the game (can trade at once), on the website, or away. */
+const SELLER_DOT: Record<SellerStatus, string> = { ingame: '🟢', online: '🟡', offline: '⚫' };
+export const SELLER_KEY = '🟢 in game · 🟡 online · ⚫ offline';
+const POLARITY: Record<string, EmojiName> = { madurai: 'madurai', vazarin: 'vazarin', naramon: 'naramon' };
+
+/**
+ * One riven for sale in two lines: the seller's status, the price (a link to the listing, where the seller's name and a ready whisper
+ * are), mastery, re-rolls, polarity and the riven's name; then its stats as the game writes them, the curse last. `units` is how the
+ * market writes each stat (attribute slug → percent, multiply, seconds).
+ */
+export function listingLines(l: RivenListing, names: Record<string, string>, units: Record<string, string> = {}): string {
+  const name = (slug: string) => names[slug] ?? slug.replace(/_/g, ' ');
+  const polarity = own(POLARITY, l.polarity);
+  const head = [
+    `${l.seller ? SELLER_DOT[l.seller] : '⚪'} **[${plat(l.price)}](${auctionUrl(l.id)})**`,
+    l.mastery !== undefined ? `MR ${l.mastery}` : null,
+    l.rerolls === 0 ? 'unrolled' : `${l.rerolls} re-roll${l.rerolls === 1 ? '' : 's'}`,
+    polarity ? e(polarity) : null,
+    l.name ? `*${l.name.charAt(0).toUpperCase()}${l.name.slice(1)}*` : null,
+    l.platform ? l.platform.toUpperCase() : null,
+  ].filter(Boolean);
+  const stat = (s: RivenListing['stats'][number]) => `${s.positive ? '' : '🔻 '}${formatStatValue(s.slug, s.value, own(units, s.slug))} ${name(s.slug)}`.trim();
+  const stats = [...l.stats.filter((s) => s.positive), ...l.stats.filter((s) => !s.positive)].map(stat).join(' · ');
+  return `${head.join(' · ')}\n${stats}`;
+}
+
+/** Shown per answer; ten keep the embed short and are what someone shopping looks at. */
+export const FIND_SHOWN = 10;
+
+/** /riven find: the cheapest rivens for sale that match, cheapest first. */
+export function rivenFindEmbed(filter: RivenFilter, found: FoundRivens, names: Record<string, string>, units: Record<string, string>, opts: { inGame?: boolean } = {}): EmbedBuilder {
+  const list = opts.inGame ? found.listings.filter((l) => l.seller === 'ingame') : found.listings;
+  const what = `${e('riven')} ${describeFilter(filter, names)}${opts.inGame ? ', seller in game now' : ''}`;
+  const embed = new EmbedBuilder().setColor(list.length ? COLORS.brand : COLORS.muted).setTitle(`🎲 ${filter.weapon.name} rivens for sale`);
+  if (!list.length) {
+    return embed
+      .setDescription(`${what}\n\nNobody is selling one like that right now. \`/riven watch\` sends you a DM as soon as one is listed.`)
+      .setFooter({ text: `${FOOTER} · fixed prices only` });
+  }
+  const count = found.complete ? `**${list.length}** for sale` : `**${list.length}+** for sale (warframe.market sends the cheapest 100)`;
+  const shown = list.slice(0, FIND_SHOWN).map((l) => listingLines(l, names, units));
+  const more = list.length > FIND_SHOWN ? `\n\n-# …and ${list.length - FIND_SHOWN} more, on warframe.market` : '';
+  return embed
+    .setDescription(`${what}\n${count}, cheapest first\n-# ${SELLER_KEY}\n\n${shown.join('\n\n')}${more}`.slice(0, 4096))
+    .setFooter({ text: `${FOOTER} · fixed prices only` });
 }

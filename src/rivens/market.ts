@@ -1,5 +1,5 @@
 import { ApiHttpError, apiJson } from '../warframe/fetch.js';
-import type { RivenAttribute, RivenListing, RivenStat, RivenWeapon } from './types.js';
+import type { RivenAttribute, RivenListing, RivenStat, RivenWeapon, SellerStatus } from './types.js';
 
 /**
  * Riven data from warframe.market. The weapon and attribute lists come from the v2 API; the listings come from the auctions
@@ -44,7 +44,7 @@ export async function getRivenAttributes(): Promise<RivenAttribute[]> {
     const slug = typeof a.slug === 'string' ? a.slug : null;
     if (!slug) continue;
     const name = (obj(obj(a.i18n)?.en)?.name as string | undefined) ?? slug;
-    list.push({ slug, name, positiveOnly: a.positiveOnly === true, negativeOnly: a.negativeOnly === true });
+    list.push({ slug, name, positiveOnly: a.positiveOnly === true, negativeOnly: a.negativeOnly === true, ...(typeof a.unit === 'string' && a.unit ? { unit: a.unit } : {}) });
   }
   if (list.length) attributes = { at: Date.now(), list };
   return list;
@@ -82,6 +82,12 @@ export function parseAuctions(body: unknown, weapon: string): RivenListing[] {
       stats.push({ slug, value: num(st.value), positive: (st.positive ?? st.postive) !== false });
     }
     if (stats.length < 2) continue;
+    const status = obj(a.owner)?.status;
+    const seller: SellerStatus | null = status === 'ingame' || status === 'online' || status === 'offline' ? status : null;
+    const mastery = num(item.mastery_level ?? item.masteryLevel);
+    const rank = num(item.mod_rank ?? item.modRank);
+    const listedAt = typeof a.created === 'string' ? Date.parse(a.created) : Number.NaN;
+    const platform = typeof a.platform === 'string' && a.platform !== 'pc' ? a.platform : null;
     out.push({
       id,
       weapon,
@@ -89,9 +95,28 @@ export function parseAuctions(body: unknown, weapon: string): RivenListing[] {
       polarity: typeof item.polarity === 'string' ? item.polarity : '',
       rerolls: num(item.re_rolls ?? item.reRolls) ?? 0,
       stats,
+      ...(typeof item.name === 'string' && item.name ? { name: item.name } : {}),
+      ...(mastery !== null ? { mastery } : {}),
+      ...(rank !== null ? { rank } : {}),
+      ...(seller ? { seller } : {}),
+      ...(platform ? { platform } : {}),
+      ...(Number.isFinite(listedAt) ? { listedAt } : {}),
     });
   }
   return out;
+}
+
+/** A listing's own page on warframe.market (the seller's name and a ready-made whisper are there). */
+export const auctionUrl = (id: string): string => `https://warframe.market/auction/${encodeURIComponent(id)}`;
+
+/** warframe.market's own riven search with these filters, cheapest first. */
+export function searchPageUrl(weapon: string, positives: string[], negative: string | null): string {
+  const params = new URLSearchParams({ type: 'riven', weapon_url_name: weapon });
+  if (positives.length) params.set('positive_stats', positives.join(','));
+  if (negative) params.set('negative_stats', negative);
+  params.set('polarity', 'any');
+  params.set('sort_by', 'price_asc');
+  return `https://warframe.market/auctions/search?${params.toString().replace(/%2C/g, ',')}`;
 }
 
 /**
@@ -118,19 +143,31 @@ export const resetRivenFilter = (): void => {
 };
 
 /**
- * What is for sale with exactly these bonus stats (and this curse, when given), cheapest first, asked of warframe.market itself with
- * its own filters. The stored listings are only a weapon's priciest, so prices read from them lean high; this one request, made when
- * someone grades a roll (cached for `ttlMs`, never stored), gives the real floor. Only listings that really carry all the stats are
- * kept, so a filter the market ignores can't make a wrong price look right. `complete` is true when fewer than a page came back, i.e.
- * that is everything for sale. Throws when the search can't be used; the caller falls back.
+ * What is for sale with these bonus stats (and this curse, when given), cheapest first and only at a fixed buyout price, asked of
+ * warframe.market itself with its own filters. The stored listings are only a weapon's priciest, so prices read from them lean high;
+ * this one request (cached for `ttlMs`, never stored) gives the real floor. The market returns rivens that have these bonuses and maybe
+ * one more, so the caller keeps the ones it means (an exact set for a grade, a superset for /riven find), and a filter the market
+ * ignores can't make a wrong price look right. `complete` is true when fewer than a page came back, i.e. that is everything for sale.
+ * `background` is the riven watch, which gets half the request budget. Throws when the search can't be used; the caller falls back.
  */
-export async function fetchComparable(weapon: string, positives: string[], negative: string | null, opts: { ttlMs: number }): Promise<{ listings: RivenListing[]; complete: boolean }> {
+export async function fetchComparable(
+  weapon: string,
+  positives: string[],
+  negative: string | null,
+  opts: { ttlMs: number; background?: boolean },
+): Promise<{ listings: RivenListing[]; complete: boolean }> {
   if (Date.now() < filterUnsupportedUntil) throw new Error('the filtered riven search was refused earlier');
   const params = new URLSearchParams({ type: 'riven', weapon_url_name: weapon, sort_by: 'price_asc', buyout_policy: 'direct' });
   params.set('positive_stats', positives.join(','));
   if (negative) params.set('negative_stats', negative);
   try {
-    const r = await apiJson<unknown>(`${AUCTIONS_URL}?${params.toString().replace(/%2C/g, ',')}`, { kind: 'live', ttlMs: opts.ttlMs, headers: HEADERS, scope: RIVEN_SCOPE });
+    const r = await apiJson<unknown>(`${AUCTIONS_URL}?${params.toString().replace(/%2C/g, ',')}`, {
+      kind: 'live',
+      ttlMs: opts.ttlMs,
+      headers: HEADERS,
+      scope: RIVEN_SCOPE,
+      ...(opts.background ? { background: true } : {}),
+    });
     if (r.data === null) return { listings: [], complete: true };
     return { listings: parseAuctions(r.data, weapon), complete: auctionCount(r.data) < PAGE_SIZE };
   } catch (err) {

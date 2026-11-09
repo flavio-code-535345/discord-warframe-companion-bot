@@ -4,7 +4,7 @@ import { ApiBlockedError, api } from '../warframe/fetch.js';
 import { searchItems } from '../warframe/market.js';
 import { type Grade, type MarketComparable, type StatInput, type TopRolls, gradeRiven, topRolls } from './grade.js';
 import { RIVEN_SCOPE, fetchComparable, fetchListings, getRivenAttributes, getRivenWeapons } from './market.js';
-import { type RollGrade, gradeRolls } from './rolls.js';
+import { type RollBasis, type RollGrade, gradeRollsWithBasis } from './rolls.js';
 import { parseStatList, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenListing, RivenWeapon } from './types.js';
 
@@ -13,7 +13,7 @@ const USER_MAX_AGE_MS = 6 * 3_600_000;
 /** A read someone asked for may be served from the API client's cache for this long. */
 const USER_TTL_MS = 30 * 60_000;
 /** A rolled value written after a stat name ("zoom -40"), which the negative option ignores. */
-const NUMBER_TAIL = /-?\d+(?:[.,]\d+)?\s*%?/g;
+export const NUMBER_TAIL = /-?\d+(?:[.,]\d+)?\s*%?/g;
 
 export const attributeNames = (attrs: RivenAttribute[]): Record<string, string> => Object.fromEntries(attrs.map((a) => [a.slug, a.name]));
 
@@ -36,8 +36,11 @@ export async function resolveWeapon(query: string): Promise<RivenWeapon> {
   return hit;
 }
 
+/** warframe.market's riven stats, or a UserError that says why they could not be loaded. */
+export const loadAttributes = (): Promise<RivenAttribute[]> => listOf('stat', getRivenAttributes);
+
 /** Explains a failed read in words a player understands. */
-function describeFailure(err: unknown): string {
+export function describeFailure(err: unknown): string {
   if (err instanceof ApiBlockedError) return `warframe.market asked the bot to back off, so riven reads are paused for about ${Math.max(1, Math.ceil((err.until - Date.now()) / 60_000))} min (${err.reason}).`;
   return err instanceof Error ? err.message : String(err);
 }
@@ -95,6 +98,8 @@ export interface GradeReport {
   grade: Grade | null;
   /** How good each rolled value is, stat by stat (see rolls.ts). */
   rolls: RollGrade[];
+  /** What the rolls were measured against (the kind of weapon and its multiplier, or the listed rolls). */
+  basis: RollBasis;
   listings: number;
   fetchedAt: number | null;
   stale: boolean;
@@ -102,7 +107,7 @@ export interface GradeReport {
 }
 
 export async function gradeFor(ctx: AppContext, opts: { weapon: string; positives: string; negative?: string | undefined }): Promise<GradeReport> {
-  const [weapon, attrs] = await Promise.all([resolveWeapon(opts.weapon), listOf('stat', getRivenAttributes)]);
+  const [weapon, attrs] = await Promise.all([resolveWeapon(opts.weapon), loadAttributes()]);
   const positives = parseStatList(opts.positives, attrs);
   let negative: StatInput | null = null;
   if (opts.negative?.trim()) {
@@ -128,7 +133,18 @@ export async function gradeResolved(ctx: AppContext, weapon: RivenWeapon, attrs:
   }
   const loaded = await loadListings(ctx, weapon);
   const market = await comparableFor(weapon.slug, positives.map((p) => p.slug), negative?.slug ?? null);
-  return { weapon, names: attributeNames(attrs), rolls: gradeRolls(loaded.listings, positives, negative, weapon), grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
+  const { rolls, basis } = gradeRollsWithBasis(loaded.listings, positives, negative, weapon);
+  return {
+    weapon,
+    names: attributeNames(attrs),
+    rolls,
+    basis,
+    grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market),
+    listings: loaded.listings.length,
+    fetchedAt: loaded.fetchedAt,
+    stale: loaded.stale,
+    minPrice: ctx.config.RIVEN_HIGH_PRICE,
+  };
 }
 
 export interface TopReport {
@@ -142,7 +158,7 @@ export interface TopReport {
 }
 
 export async function topFor(ctx: AppContext, weaponQuery: string): Promise<TopReport> {
-  const [weapon, attrs] = await Promise.all([resolveWeapon(weaponQuery), listOf('stat', getRivenAttributes)]);
+  const [weapon, attrs] = await Promise.all([resolveWeapon(weaponQuery), loadAttributes()]);
   const loaded = await loadListings(ctx, weapon);
   return { weapon, names: attributeNames(attrs), top: topRolls(loaded.listings, ctx.config.RIVEN_HIGH_PRICE), listings: loaded.listings.length, fetchedAt: loaded.fetchedAt, stale: loaded.stale, minPrice: ctx.config.RIVEN_HIGH_PRICE };
 }

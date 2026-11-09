@@ -82,6 +82,11 @@ export const EMOJI = {
   scaldra: { names: ['wf_scaldra'], fallback: '🟤' },
   techrot: { names: ['wf_techrot'], fallback: '🦠' },
   anarchs: { names: ['wf_anarchs'], fallback: '⚫' },
+  // Rivens and mod polarities (a riven is Madurai, Vazarin or Naramon)
+  riven: { names: ['wf_riven'], fallback: '🎲' },
+  madurai: { names: ['wf_madurai'], fallback: '`V`' },
+  vazarin: { names: ['wf_vazarin'], fallback: '`D`' },
+  naramon: { names: ['wf_naramon'], fallback: '`—`' },
   // General
   warframe: { names: ['wf'], fallback: '🔹' },
   ayatan: { names: ['anasa'], fallback: '🏺' },

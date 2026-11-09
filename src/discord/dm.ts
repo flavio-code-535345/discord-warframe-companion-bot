@@ -1,10 +1,12 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ContainerBuilder, type MessageActionRowComponentBuilder, MessageFlags } from 'discord.js';
 import type { AppContext } from '../context.js';
+import type { RivenListing } from '../rivens/types.js';
 import { discordTime } from '../time.js';
 import type { Trackable } from '../trackers.js';
 import { e, rewardEmoji, tierEmoji } from './emoji.js';
 import { CYCLE_EMOJI } from './feeds/cycles.js';
 import { DIVIDER, type Part, card, section } from './feeds/parts.js';
+import { SELLER_KEY, listingLines } from './riven-embeds.js';
 import { COLORS } from './style.js';
 
 /**
@@ -73,6 +75,31 @@ export function priceDm(p: { name: string; price: number; below: number; seller:
     ),
     open,
     `-# Tracker #${p.trackerId} · Ordis tells you again once the price has gone back above your limit.`,
+  ]);
+}
+
+/** Listings shown in one riven DM; the button opens the rest. */
+const RIVENS_PER_DM = 5;
+
+/** The DM when rivens a member watches for (/riven watch) get listed on warframe.market, cheapest first. */
+export function rivenDm(
+  w: { weaponName: string; label: string; maxPrice: number; trackerId: number; listings: RivenListing[]; names: Record<string, string>; units: Record<string, string>; searchUrl: string },
+  avatar: string | null,
+): ContainerBuilder {
+  const n = w.listings.length;
+  const article = /^[aeiou]/i.test(w.weaponName) ? 'An' : 'A';
+  const title = n === 1 ? `${article} ${w.weaponName} riven you watch for is for sale` : `${n} new ${w.weaponName} rivens you watch for are for sale`;
+  const shown = w.listings.slice(0, RIVENS_PER_DM).map((l) => listingLines(l, w.names, w.units)).join('\n\n');
+  const more = n > RIVENS_PER_DM ? `\n-# …and ${n - RIVENS_PER_DM} more on warframe.market` : '';
+  const open = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(w.searchUrl).setLabel('Open the search on warframe.market'),
+  );
+  return card(COLORS.success, [
+    section(`### ${e('riven')} ${title}\n${w.label}, at most **${w.maxPrice.toLocaleString('en-US')}p**.`, avatar),
+    DIVIDER,
+    `${shown}${more}\n-# ${SELLER_KEY}`,
+    open,
+    `-# Tracker #${w.trackerId} · Asking prices on warframe.market: open a listing to whisper its seller. Remove it with /track remove.`,
   ]);
 }
 

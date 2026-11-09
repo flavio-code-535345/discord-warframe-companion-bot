@@ -1,13 +1,14 @@
-import type { AttachmentBuilder, EmbedBuilder, Message } from 'discord.js';
+import type { Message } from 'discord.js';
 import type { AppContext } from '../context.js';
 import { QueueFullError, screenshotQueue } from '../queue.js';
 import { UserError, assertChannelFree, getSendableChannel } from '../services/clan.js';
 import { withTimeout } from '../timeout.js';
-import { rivenReply } from './reply.js';
+import { rivenReplies } from './reply.js';
 import { type ScanResult, scanCard } from './scan.js';
 
 /**
- * The riven channel (/setup rivens): members post screenshots of their rivens and Ordis answers each one with a short grade card.
+ * The riven channel (/setup rivens): members post screenshots of their rivens and Ordis answers each one with a picture of its grades.
+ * Two or three pictures of the same weapon's rivens in one message (a riven before and after cycling) also get which one to keep.
  * Nothing is deleted or stored: the picture only lives in memory while it is read, and the member's message stays where it is.
  * Messages without a PNG/JPEG/WebP picture are left alone, so people can still talk in the channel.
  */
@@ -77,10 +78,10 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
   const { config, store } = ctx;
   seen.messages++;
   seen.lastChannelId = message.channelId;
-  if (!message.inGuild() || message.guildId !== config.DISCORD_GUILD_ID || message.author.bot) return false;
+  if (!message.inGuild() || message.guildId !== config.DISCORD_GUILD_ID) return false;
   const channelId = store.getSettings(config.DISCORD_GUILD_ID).rivenChannelId;
   seen.configured = channelId ?? null;
-  if (!channelId || message.channelId !== channelId) return false;
+  if (message.author.bot || !channelId || message.channelId !== channelId) return false;
 
   // Without the Message Content intent the gateway delivers messages with no attachments at all; reading the message again over REST
   // returns them, so the channel works whether or not the privileged intent is switched on.
@@ -119,22 +120,20 @@ export async function handleRivenMessage(message: Message, ctx: AppContext, scan
       await clearReactions();
       await message.react(WORKING).catch(() => {});
     }
-    const embeds: EmbedBuilder[] = [];
-    const files: AttachmentBuilder[] = [];
-    await withTimeout(
+    const reply = await withTimeout(
       (async () => {
+        const results: ScanResult[] = [];
         for (const { bytes, mime } of await downloads) {
           const result = await scan(ctx, bytes, mime);
           recordResult('channel', message.author.username, result);
-          const part = await rivenReply(result, `riven-${files.length + embeds.length + 1}.png`);
-          embeds.push(...part.embeds);
-          files.push(...part.files);
+          results.push(result);
         }
+        return rivenReplies(results);
       })(),
       SCAN_LIMIT_MS,
       () => new UserError('That took too long, so I gave up.'),
     );
-    await message.reply({ embeds, files, allowedMentions: { repliedUser: false } });
+    await message.reply({ ...(reply.content ? { content: reply.content } : {}), embeds: reply.embeds, files: reply.files, allowedMentions: { repliedUser: false } });
   } catch (err) {
     if (!(err instanceof UserError)) console.error('[riven] channel scan failed:', err instanceof Error ? err.message : err);
     recordScan({ via: 'channel', userName: message.author.username, weapon: null, letter: null, ms: 0, ok: false, note: err instanceof Error ? err.message : 'error' });
