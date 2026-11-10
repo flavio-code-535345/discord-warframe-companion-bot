@@ -3,6 +3,7 @@ import { type EmojiName, cycleEmojiName, emojiUrl } from '../discord/emoji.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIER_HINT, arbitrationView, lastArbitrations } from '../warframe/arbitrations.js';
 import { projectCycles } from '../warframe/cycles.js';
+import { own } from '../own.js';
 import { formatDuration, relative, toMs } from '../time.js';
 import { STATUS_CSS } from './theme.js';
 import {
@@ -129,7 +130,7 @@ function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
   const cycle = (name: string, key: string, expiry: Date | string | number | undefined, extra: { suffix?: string; note?: string } = {}): CycleStatus => ({
     name,
     state: key.charAt(0).toUpperCase() + key.slice(1) + (extra.suffix ?? ''),
-    icon: ICONS[key.toLowerCase()] ?? '◆',
+    icon: own(ICONS, key.toLowerCase()) ?? '◆',
     emoji: cycleEmojiName(key),
     endsAt: iso(expiry),
     note: extra.note,
@@ -148,6 +149,11 @@ function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
 /** Each part is read defensively: one malformed section must not blank the whole page. */
 function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
   const live = (d: Date | string | undefined) => toMs(d) > now;
+  // The feed is someone else's JSON: what the page writes as a number is made one here (anything else becomes 0).
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
   const part = <T>(fn: () => T, fallback: T): T => {
     try {
       return fn();
@@ -175,7 +181,7 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
         here,
         location: t.location ?? '',
         at: iso(here ? t.expiry : t.activation),
-        items: here ? [...(t.inventory ?? [])].sort((x, y) => (y.ducats ?? 0) - (x.ducats ?? 0)).map((i) => ({ name: i.item, ducats: i.ducats ?? 0 })) : [],
+        items: here ? [...(t.inventory ?? [])].sort((x, y) => num(y.ducats) - num(x.ducats)).map((i) => ({ name: i.item, ducats: num(i.ducats) })) : [],
       };
     }, null),
     steelPath: part(() => {
@@ -183,11 +189,11 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
       if (!sp?.currentReward) return null;
       const rot = sp.rotation ?? [];
       const idx = rot.findIndex((r) => r.name === sp.currentReward!.name);
-      return { current: sp.currentReward.name, cost: sp.currentReward.cost, next: idx >= 0 ? (rot[(idx + 1) % rot.length]?.name ?? null) : null, endsAt: iso(sp.expiry) };
+      return { current: sp.currentReward.name, cost: num(sp.currentReward.cost), next: idx >= 0 ? (rot[(idx + 1) % rot.length]?.name ?? null) : null, endsAt: iso(sp.expiry) };
     }, null),
     darvo: part(() => {
       const d = ws.dailyDeals?.find((x) => live(x.expiry));
-      return d ? { item: d.item, price: d.salePrice, original: d.originalPrice, discount: d.discount, left: d.total - d.sold, total: d.total, endsAt: iso(d.expiry) } : null;
+      return d ? { item: d.item, price: num(d.salePrice), original: num(d.originalPrice), discount: num(d.discount), left: num(d.total) - num(d.sold), total: num(d.total), endsAt: iso(d.expiry) } : null;
     }, null),
     fissures: part(
       () =>
@@ -203,7 +209,7 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
           .filter((i) => !i.completed)
           .map((i) => {
             const rewards = (i.vsInfestation ? [i.defender] : [i.attacker, i.defender]).map((side) => rewardText(side.reward)).filter((r) => r !== '—').join(' / ');
-            return { node: i.node, rewards, completion: Math.round(i.completion), notable: isNotableReward(rewards) };
+            return { node: i.node, rewards, completion: Math.round(num(i.completion)), notable: isNotableReward(rewards) };
           })
           .sort((a, b) => Number(b.notable) - Number(a.notable)),
       [],
@@ -214,7 +220,7 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
           .filter((ev) => live(ev.expiry))
           .map((ev) => ({
             name: ev.description,
-            progress: ev.maximumScore > 1 ? Math.round((ev.currentScore / ev.maximumScore) * 100) : null,
+            progress: num(ev.maximumScore) > 1 ? Math.round((num(ev.currentScore) / num(ev.maximumScore)) * 100) : null,
             endsAt: iso(ev.expiry),
             rewards: (ev.rewards ?? []).map(rewardText).filter((r) => r !== '—').join(', '),
           })),
@@ -233,11 +239,11 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
       const nw = ws.nightwave;
       if (!nw) return null;
       return {
-        season: nw.season,
+        season: num(nw.season),
         endsAt: iso(nw.expiry),
         challenges: [...nw.activeChallenges]
           .sort((a, b) => Number(b.isDaily) - Number(a.isDaily) || Number(a.isElite) - Number(b.isElite))
-          .map((c) => ({ title: c.title, kind: c.isDaily ? 'daily' : c.isElite ? 'elite' : 'weekly', reputation: c.reputation })),
+          .map((c) => ({ title: c.title, kind: c.isDaily ? 'daily' : c.isElite ? 'elite' : 'weekly', reputation: num(c.reputation) })),
       };
     }, null),
     resurgence: part(() => {
@@ -367,8 +373,9 @@ export async function buildStatus(
   };
 }
 
-export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+/** Escapes text for HTML. Takes anything: a value that should have been text (a number or nothing from a feed) is written as text, never thrown on. */
+export function escapeHtml(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
 /** Server-side fallback text; the page script replaces it with the reader's local time (`data-local`, or `data-local="t"` for the clock only). */
@@ -453,12 +460,12 @@ export function renderStatusPage(s: StatusData, nonce: string, iconOf: IconLooku
       ? unavailable
       : w.fissureList.length
         ? `<div class="chips">${[chip('kind', 'all', 'All'), chip('kind', 'normal', 'Normal'), chip('kind', 'sp', `${icon('steelPath')}Steel Path`), chip('kind', 'storm', `${icon('storm')}Void Storm`)].join('')}</div>
-<div class="chips">${[chip('tier', 'all', 'Every tier'), ...w.fissures.map((f) => chip('tier', f.tier, `${icon(RELIC_ICON[f.tier])}${e(f.tier)} <span class="u">${f.normal + f.steelPath + f.storm}</span>`))].join('')}</div>
+<div class="chips">${[chip('tier', 'all', 'Every tier'), ...w.fissures.map((f) => chip('tier', f.tier, `${icon(own(RELIC_ICON, f.tier))}${e(f.tier)} <span class="u">${f.normal + f.steelPath + f.storm}</span>`))].join('')}</div>
 <div class="scroll"><table class="fx"><tbody>${w.fissureList
             .map((f) => {
               const k = f.storm ? 'storm' : f.steelPath ? 'sp' : 'normal';
               const kind = f.storm ? ' · Void Storm' : f.steelPath ? ' · Steel Path' : '';
-              return `<tr data-tier="${e(f.tier)}" data-kind="${k}"><td class="t">${icon(RELIC_ICON[f.tier])}${e(f.tier)}</td><td>${e(f.mission)}<span class="n">${e(f.node)}${f.enemy ? ` · ${e(f.enemy)}` : ''}${kind}</span></td><td class="v">${countdown(f.endsAt)}</td></tr>`;
+              return `<tr data-tier="${e(f.tier)}" data-kind="${k}"><td class="t">${icon(own(RELIC_ICON, f.tier))}${e(f.tier)}</td><td>${e(f.mission)}<span class="n">${e(f.node)}${f.enemy ? ` · ${e(f.enemy)}` : ''}${kind}</span></td><td class="v">${countdown(f.endsAt)}</td></tr>`;
             })
             .join('')}</tbody></table></div>`
         : none('No fissures right now.'),

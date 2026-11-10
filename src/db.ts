@@ -1220,6 +1220,32 @@ export class Store {
     return { entries: Number(r.n), bytes: Number(r.b) };
   }
 
+  /**
+   * Keeps the cache within a size: when it holds more than `maxBytes`, the oldest answers are removed until it fits. Every different
+   * search is its own entry and stays 30 days, so without this a stream of different searches could fill the disk. Returns how many went.
+   */
+  trimApiCache(maxBytes: number): number {
+    let over = this.apiCacheSize().bytes - maxBytes;
+    if (over <= 0) return 0;
+    const oldest = this.db.prepare('SELECT key, LENGTH(body) AS b FROM api_cache ORDER BY fetched_at ASC').all() as Row[];
+    const drop: string[] = [];
+    for (const r of oldest) {
+      if (over <= 0) break;
+      drop.push(String(r.key));
+      over -= Number(r.b);
+    }
+    const remove = this.db.prepare('DELETE FROM api_cache WHERE key = ?');
+    this.db.exec('BEGIN');
+    try {
+      for (const key of drop) remove.run(key);
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+    return drop.length;
+  }
+
   // --- riven listings (see rivens/) ---
 
   /** Replaces everything held for a weapon with what was just read (the market's current top listings), in one go. */

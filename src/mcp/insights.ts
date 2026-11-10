@@ -141,7 +141,13 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
         },
         warframeApi: { enabled: ws.enabled, everySeconds: ws.intervalSeconds, lastCall: iso(ws.lastCallAt), lastOk: ws.lastOk, detail: ws.lastDetail },
         queues: { screenshots: { ...screenshotQueue.snapshot(), ...screenshotQueue.stats, concurrency: screenshotQueue.config.concurrency } },
-        apiClient: { ...api.stats, limits: api.limits, pausedHosts: api.cooldowns().map((c) => ({ host: c.host, until: new Date(c.until).toISOString(), reason: c.reason })) },
+        apiClient: {
+          ...api.stats,
+          limits: api.limits,
+          pausedHosts: api.cooldowns().map((c) => ({ host: c.host, until: new Date(c.until).toISOString(), reason: c.reason })),
+          // What the response cache holds: in memory (bounded by count and size) and in the database (trimmed to its size limit).
+          cache: { memory: api.memoryUse(), stored: store.apiCacheSize() },
+        },
         screenshotReaders: {
           localModel: config.LOCAL_AI_URL ? (config.LOCAL_AI_MODEL ?? null) : null,
           localSkippedAfterFailure: config.LOCAL_AI_URL ? !localAvailable() : null,

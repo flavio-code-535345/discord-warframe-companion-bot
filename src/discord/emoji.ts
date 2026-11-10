@@ -1,4 +1,5 @@
 import type { APIMessageComponentEmoji } from 'discord.js';
+import { own } from '../own.js';
 
 /**
  * The Warframe icons Ordis writes with. Each logical name lists the custom emojis that can show it (the clan server's own, which staff
@@ -157,8 +158,14 @@ export function loadEmojis(emojis: Iterable<{ id: string; name: string | null; a
   return next.size;
 }
 
+/**
+ * The registry entry of a logical name. The names come from code, but some are worked out from outside data (a relic tier or a cycle
+ * state in the world state), so a name the registry doesn't define is "no emoji", never an exception that takes a board down.
+ */
+const entry = (name: EmojiName): { names: readonly string[]; fallback: string } | undefined => own(EMOJI, String(name));
+
 function custom(name: EmojiName): CustomEmoji | null {
-  for (const n of EMOJI[name].names) {
+  for (const n of entry(name)?.names ?? []) {
     const hit = known.get(n);
     if (hit) return hit;
   }
@@ -168,13 +175,13 @@ function custom(name: EmojiName): CustomEmoji | null {
 /** The emoji as message text: the custom one when it exists, else its Unicode stand-in. */
 export function e(name: EmojiName): string {
   const c = custom(name);
-  return c ? `<${c.animated ? 'a' : ''}:${c.name}:${c.id}>` : EMOJI[name].fallback;
+  return c ? `<${c.animated ? 'a' : ''}:${c.name}:${c.id}>` : (entry(name)?.fallback ?? '');
 }
 
 /** The emoji for a button or a select option. */
 export function emojiFor(name: EmojiName): APIMessageComponentEmoji {
   const c = custom(name);
-  return c ? { id: c.id, name: c.name, animated: c.animated } : { name: EMOJI[name].fallback };
+  return c ? { id: c.id, name: c.name, animated: c.animated } : { name: entry(name)?.fallback || '🔹' };
 }
 
 /** Whether a custom emoji is in use for this name (the admin panel lists what is missing). */
@@ -221,7 +228,7 @@ const CYCLE_EMOJI = new Map<string, EmojiName>([
 ]);
 
 /** The logical emoji name of a cycle state ("Day", "Fass", "Joy"), or undefined for a state with none. */
-export const cycleEmojiName = (s: string | null | undefined): EmojiName | undefined => CYCLE_EMOJI.get((s ?? '').toLowerCase());
+export const cycleEmojiName = (s: string | null | undefined): EmojiName | undefined => CYCLE_EMOJI.get(String(s ?? '').toLowerCase());
 
 /** The emoji of a cycle state, or an empty string. */
 export function cycleEmoji(s: string | null | undefined): string {
@@ -248,7 +255,7 @@ const TIERS: Record<string, EmojiName> = { lith: 'lith', meso: 'meso', neo: 'neo
 
 /** The emoji of a relic tier ("Lith" … "Omnia"). */
 export function tierEmoji(tier: string | null | undefined): string {
-  const name = TIERS[(tier ?? '').toLowerCase()];
+  const name = own(TIERS, String(tier ?? '').toLowerCase());
   return name ? e(name) : e('fissure');
 }
 
@@ -263,7 +270,7 @@ const SHARDS: Record<string, EmojiName> = {
 
 /** The emoji of an archon shard by its colour, or of the Archon Hunt itself. */
 export function shardEmoji(colour: string | null | undefined): string {
-  const key = Object.keys(SHARDS).find((k) => (colour ?? '').toLowerCase().includes(k));
+  const key = Object.keys(SHARDS).find((k) => String(colour ?? '').toLowerCase().includes(k));
   return e(key ? SHARDS[key]! : 'archon');
 }
 

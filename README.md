@@ -303,6 +303,7 @@ npm run dev
 - **Every request** re-checks the whitelist, so removing an admin signs them out immediately.
 - **Forms** carry a CSRF token. Destructive buttons need a "sure" tick.
 - **Logging:** every change is posted to the mod log.
+- **Every web answer** (panel, status page, MCP) is sent with `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and a `Referrer-Policy`, plus `Strict-Transport-Security` when `PUBLIC_URL` is an `https://` address. A failed request is logged and answered with one short line, never a stack trace.
 
 ## Web endpoints
 

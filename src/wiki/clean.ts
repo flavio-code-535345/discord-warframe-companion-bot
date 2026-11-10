@@ -1,5 +1,7 @@
 /** Turns MediaWiki source into plain text and searchable chunks. Pure, so it is tested without the network. */
 
+import { own } from '../own.js';
+
 export interface Chunk {
   section: string;
   body: string;
@@ -77,7 +79,8 @@ function decodeEntities(text: string): string {
       const code = e[1]?.toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
     }
-    return ENTITIES[e.toLowerCase()] ?? m;
+    // Only the entities listed: `&constructor;` on a page must stay as it is, not become the text of a built-in function.
+    return own(ENTITIES, e.toLowerCase()) ?? m;
   });
 }
 

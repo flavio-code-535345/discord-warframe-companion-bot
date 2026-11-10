@@ -4,6 +4,12 @@ const bool = z
   .enum(['true', 'false', '1', '0', 'yes', 'no'])
   .transform((v) => v === 'true' || v === '1' || v === 'yes');
 
+/** An address the bot calls or is reached at: a web address only (http or https), never `file:`, `data:` or another scheme. */
+const httpUrl = z
+  .string()
+  .url()
+  .refine((v) => /^https?:\/\//i.test(v), 'must start with http:// or https://');
+
 export const EnvSchema = z.object({
   DISCORD_TOKEN: z.string({ error: 'is required (bot token from the Discord Developer Portal)' }),
   DISCORD_GUILD_ID: z
@@ -16,7 +22,7 @@ export const EnvSchema = z.object({
   /** Fetch the live world state (from warframestat.us) at all. Off by default; alerts, fissures and the world tiles are paused while it is off. */
   WORLDSTATE_ENABLED: bool.default(false),
   /** A warframestat.us-compatible world state endpoint to read instead of api.warframestat.us/<platform>, e.g. a self-hosted one. */
-  WORLDSTATE_URL: z.string().url().optional(),
+  WORLDSTATE_URL: httpUrl.optional(),
   /** Refresh when something in the world state is due to change instead of on a fixed timer (see nextRefreshDelay in warframe/worldstate.ts). */
   WORLDSTATE_SMART_POLL: bool.default(false),
   /** The longest the world state is left without a refresh when smart polling is on. */
@@ -35,25 +41,21 @@ export const EnvSchema = z.object({
   WIKI_INDEX: bool.default(true),
   /** Optional free-tier vision model (any OpenAI-compatible API) that reads profile screenshots OCR can't. Off without a key. */
   FREE_AI_KEY: z.string().min(8).optional(),
-  FREE_AI_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
+  FREE_AI_URL: httpUrl.default('https://generativelanguage.googleapis.com/v1beta/openai'),
   FREE_AI_MODEL: z.string().default('gemini-flash-latest'),
   FREE_AI_FALLBACK_MODEL: z.string().default('gemini-3.5-flash-lite'),
   FREE_AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(150),
   /** Self-hosted Ollama (OpenAI-compatible, e.g. http://100.64.0.1:11434/v1), tried before the free cloud endpoint. */
-  LOCAL_AI_URL: z.string().url().optional(),
+  LOCAL_AI_URL: httpUrl.optional(),
   LOCAL_AI_MODEL: z.string().optional(),
   LOCAL_AI_KEY: z.string().optional(),
   LOCAL_AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
   /** Watchtower's HTTP API inside the stack, so an admin can trigger an update from the MCP without opening Portainer. */
-  WATCHTOWER_URL: z.string().url().optional(),
+  WATCHTOWER_URL: httpUrl.optional(),
   WATCHTOWER_TOKEN: z.string().min(8).optional(),
   // Web admin panel (/admin): Discord login, whitelisted admins only. Off until both are set.
   DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
-  PUBLIC_URL: z
-    .string()
-    .url()
-    .optional()
-    .transform((v) => v?.replace(/\/+$/, '')),
+  PUBLIC_URL: httpUrl.optional().transform((v) => v?.replace(/\/+$/, '')),
   /** Always-admins who can't be removed from the panel; others are added in the panel itself. */
   PANEL_OWNER_IDS: z
     .string()
@@ -76,7 +78,7 @@ export const EnvSchema = z.object({
   RIVEN_REFRESH_DAYS: z.coerce.number().int().min(1).max(30).default(3),
   RIVEN_HIGH_PRICE: z.coerce.number().int().min(50).max(100_000).default(1000),
   /** A self-hosted SearXNG (JSON format enabled), e.g. http://192.168.178.45:8888: adds fresh Warframe web results to answers. */
-  SEARXNG_URL: z.string().url().optional(),
+  SEARXNG_URL: httpUrl.optional(),
   MCP_ALLOWED_HOSTS: z
     .string()
     .optional()

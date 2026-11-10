@@ -2,12 +2,12 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Server } from 'node:http';
 import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import express, { type RequestHandler } from 'express';
+import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import type { AppContext } from './context.js';
 import { LOGO_PATH, SS_EXAMPLE_PATH, SS_RANK_EXAMPLE_PATH } from './discord/identity.js';
 import { createMcpServer } from './mcp/server.js';
 import { adminRouter } from './web/admin/routes.js';
-import { buildStatus, renderStatusPage } from './web/status.js';
+import { type StatusData, buildStatus, renderStatusPage } from './web/status.js';
 
 /** Constant-time bearer token check (hashing first makes the compared buffers equal length). */
 export function bearerAuth(token: string): RequestHandler {
@@ -27,11 +27,59 @@ const methodNotAllowed: RequestHandler = (_req, res) => {
   res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null });
 };
 
+/** How long one reading of the status data serves every visitor. The page counts down on its own, so a few seconds change nothing a visitor sees. */
+export const STATUS_TTL_MS = 5_000;
+
+/**
+ * Headers every answer carries: no MIME sniffing, no framing by another site, no address sent along to sites the pages link to, and,
+ * when the bot is published over HTTPS, a note for browsers to keep using HTTPS.
+ */
+export function securityHeaders(publicUrl: string | undefined): RequestHandler {
+  const https = publicUrl?.startsWith('https://') ?? false;
+  return (_req, res, next) => {
+    res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' });
+    if (https) res.set('Strict-Transport-Security', 'max-age=15552000');
+    next();
+  };
+}
+
+/**
+ * The last stop for a failed request: the failure goes to the log and the visitor gets a short answer with nothing of the bot's insides
+ * in it (Express's own handler prints the stack unless NODE_ENV says production). A body the parser refused keeps its 400 or 413.
+ */
+export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const e = (err ?? {}) as { status?: unknown; statusCode?: unknown };
+  const given = Number(e.status ?? e.statusCode);
+  const status = Number.isInteger(given) && given >= 400 && given < 500 ? given : 500;
+  if (status === 500) console.error(`[http] ${req.method} ${req.path} failed:`, err);
+  const message = status === 413 ? 'That request is too large.' : status === 500 ? 'Something went wrong. The error has been logged.' : 'That request could not be read.';
+  if (req.path === '/mcp') res.status(status).json({ jsonrpc: '2.0', error: { code: status === 500 ? -32603 : -32700, message }, id: null });
+  else res.status(status).type('text/plain').send(message);
+};
+
 /** Serves the status page (/, /status.json, /logo.png), /health and, when MCP_AUTH_TOKEN is set, POST /mcp. */
 export function startHttpServer(ctx: AppContext): Server {
   const { config, client } = ctx;
   const app = express();
   app.disable('x-powered-by');
+  app.use(securityHeaders(config.PUBLIC_URL));
+
+  // The page and its JSON are open to everyone, and building them reads the database: one reading is shared for a few seconds, so
+  // a burst of visitors (or someone hammering the address) costs one reading, not one each.
+  let reading: { at: number; data: Promise<StatusData> } | null = null;
+  const status = (): Promise<StatusData> => {
+    const now = Date.now();
+    if (!reading || now - reading.at >= STATUS_TTL_MS) {
+      const data = buildStatus(ctx);
+      reading = { at: now, data };
+      // A failed reading is not kept: the next visitor tries again.
+      data.catch(() => {
+        if (reading?.data === data) reading = null;
+      });
+    }
+    return reading.data;
+  };
 
   // Registered before any Host validation so container health checks against 127.0.0.1 always work.
   app.get('/health', (_req, res) => {
@@ -51,17 +99,16 @@ export function startHttpServer(ctx: AppContext): Server {
         .set({
           'Content-Security-Policy': `default-src 'none'; img-src 'self' https://cdn.discordapp.com; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
           'Cache-Control': 'no-store',
-          'X-Content-Type-Options': 'nosniff',
         })
         .type('html')
-        .send(renderStatusPage(await buildStatus(ctx), nonce));
+        .send(renderStatusPage(await status(), nonce));
     } catch (err) {
       next(err);
     }
   });
   app.get('/status.json', async (_req, res, next) => {
     try {
-      res.set('Cache-Control', 'no-store').json(await buildStatus(ctx));
+      res.set('Cache-Control', 'no-store').json(await status());
     } catch (err) {
       next(err);
     }
@@ -109,6 +156,8 @@ export function startHttpServer(ctx: AppContext): Server {
   } else {
     console.warn('[mcp] MCP_AUTH_TOKEN is not set: the MCP endpoint is disabled.');
   }
+
+  app.use(errorHandler);
 
   // Express 5 reports listen failures (e.g. port already in use) through this callback, not by throwing.
   return app.listen(config.HTTP_PORT, config.HTTP_HOST, (err) => {

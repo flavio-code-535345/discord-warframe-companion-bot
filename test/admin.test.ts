@@ -349,3 +349,24 @@ test('the Settings form sets every channel and ping role, keeps what it did not 
     store.updateSettings(GUILD, { weeklyChannelId: null, weeklyRoleId: null, newsChannelId: null });
   }
 });
+
+test('an ID in the address must be a Discord ID before anything is looked up with it', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const form = { confirm: 'yes', _csrf: 'csrf-token' };
+  const errOf = (res: Response) => new URL(res.headers.get('location') ?? '', baseUrl).searchParams.get('err') ?? '';
+  store.upsertMember({ guildId: GUILD, userId: '333333333333333333', ign: 'RatKing', masteryRank: null, platform: null });
+
+  // "../guilds/1" would otherwise be put into the address of a request to Discord.
+  for (const bad of ['..%2Fguilds%2F1', 'constructor', '12345', '333333333333333333x']) {
+    for (const path of [`/admin/members/${bad}/remove`, `/admin/warnings/${bad}/clear`, `/admin/admins/${bad}/remove`]) {
+      const res = await post(path, form, cookie);
+      assert.equal(res.status, 302, path);
+      assert.equal(errOf(res), 'That is not a Discord ID.', path);
+    }
+  }
+  assert.equal(store.listMembers(GUILD).length, 1, 'nothing was removed');
+
+  const removed = await post('/admin/members/333333333333333333/remove', form, cookie);
+  assert.match(removed.headers.get('location') ?? '', /\/admin\/members\?ok=/);
+  assert.equal(store.listMembers(GUILD).length, 0);
+});

@@ -40,6 +40,12 @@ const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace('
 const kb = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 const id = (v: unknown) => (typeof v === 'string' && /^\d{15,22}$/.test(v) ? v : null);
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+/** A Discord ID from the address (/members/<id>/remove): anything else is refused before it reaches Discord or the database. */
+const idParam = (v: unknown): string => {
+  const found = id(v);
+  if (!found) throw new UserError('That is not a Discord ID.');
+  return found;
+};
 
 /** The /admin web panel: Discord login, whitelist check on every request, CSRF token on every form. */
 export function adminRouter(ctx: AppContext): Router {
@@ -499,8 +505,9 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
     '/members/:user/remove',
     action('members', async (req, session) => {
       if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
-      if (!store.removeMember(guildId, String(req.params.user))) throw new UserError('That member is not on the roster.');
-      await audit(session, `Removed ${await nameOf(String(req.params.user))} from the roster`);
+      const userId = idParam(req.params.user);
+      if (!store.removeMember(guildId, userId)) throw new UserError('That member is not on the roster.');
+      await audit(session, `Removed ${await nameOf(userId)} from the roster`);
       return 'Removed from the roster.';
     }),
   );
@@ -509,8 +516,9 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
     '/warnings/:user/clear',
     action('members', async (req, session) => {
       if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
-      const n = store.clearWarnings(guildId, String(req.params.user));
-      await audit(session, `Cleared ${n} warning(s) for ${await nameOf(String(req.params.user))}`);
+      const userId = idParam(req.params.user);
+      const n = store.clearWarnings(guildId, userId);
+      await audit(session, `Cleared ${n} warning(s) for ${await nameOf(userId)}`);
       return `Cleared ${n} warning${n === 1 ? '' : 's'}.`;
     }),
   );
@@ -604,7 +612,7 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
     '/admins/:user/remove',
     action('admins', async (req, session) => {
       if (req.body.confirm !== 'yes') throw new UserError('Tick "sure" to confirm.');
-      const userId = String(req.params.user);
+      const userId = idParam(req.params.user);
       if (config.PANEL_OWNER_IDS.includes(userId)) throw new UserError('Owners are set in PANEL_OWNER_IDS and can only be removed there.');
       if (!store.removePanelAdmin(userId)) throw new UserError('That user is not an admin.');
       await audit(session, `Removed ${await nameOf(userId)} as a panel admin`);

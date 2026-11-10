@@ -54,7 +54,13 @@ const DEFAULT_RETRY_AFTER_MS = 30_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 8_000;
 const MEMORY_ENTRIES = 300;
+/** The most text the in-memory cache holds, in characters; one answer over a quarter of it is not held in memory at all. */
+const MEMORY_CHARS = 48 * 1024 * 1024;
 const MAX_STORED_BYTES = 1_500_000;
+/** The most the cache may take in the database; past it the oldest answers go, so searches for many different things can't fill the disk. */
+const MAX_STORE_BYTES = 200 * 1024 * 1024;
+/** The largest answer that is read at all: a broken or hostile host can't make the bot hold a body of any size. */
+export const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const PRUNE_AFTER_MS = 30 * 24 * 3_600_000;
 
 /** The host is off limits for now (cooldown after a 403, or a 429's Retry-After). No request was made. */
@@ -100,6 +106,8 @@ export interface ApiCacheStore {
   getApiCache(key: string): CacheEntry | null;
   putApiCache(key: string, entry: CacheEntry): void;
   pruneApiCache(before: number): void;
+  /** Removes the oldest answers until the cache holds at most this much; returns how many were removed. */
+  trimApiCache?(maxBytes: number): number;
 }
 
 export interface ApiResult {
@@ -158,6 +166,31 @@ export function parseRetryAfter(value: string | null, now: number): number | nul
 
 const shortUrl = (u: URL) => `${u.host}${u.pathname}${u.search ? '?…' : ''}`.slice(0, 90);
 
+/** The body as text, read piece by piece: an answer larger than `maxBytes` is given up on instead of being held in memory whole. */
+export async function readText(res: Response, maxBytes = MAX_BODY_BYTES): Promise<string> {
+  const tooLarge = () => new Error(`the answer is larger than ${Math.round(maxBytes / (1024 * 1024))} MB`);
+  if (Number(res.headers.get('content-length')) > maxBytes) {
+    discard(res);
+    throw tooLarge();
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return res.text();
+  const decoder = new TextDecoder();
+  let text = '';
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 export class ApiClient {
   limits: ApiLimits = { ...DEFAULT_LIMITS };
   readonly stats: ApiStats = { requests: 0, cacheHits: 0, deduped: 0, revalidated: 0, staleServed: 0, rateLimited: 0, blocked: 0, retries: 0, failures: 0 };
@@ -165,6 +198,7 @@ export class ApiClient {
   private readonly nextSlot = new Map<string, number>();
   private window: number[] = [];
   private readonly memory = new Map<string, CacheEntry>();
+  private memoryChars = 0;
   private readonly inflight = new Map<string, Promise<ApiResult>>();
   private store: ApiCacheStore | null = null;
   private lastPrune = 0;
@@ -297,9 +331,25 @@ export class ApiClient {
     return stored;
   }
 
+  private forget(key: string): void {
+    const old = this.memory.get(key);
+    if (!old) return;
+    this.memoryChars -= old.body.length;
+    this.memory.delete(key);
+  }
+
+  /** Keeps an answer in memory, within a count and a size: the oldest go first, and one enormous answer is not kept at all. */
   private remember(key: string, entry: CacheEntry): void {
-    if (this.memory.size >= MEMORY_ENTRIES) this.memory.delete(this.memory.keys().next().value!);
+    this.forget(key);
+    if (entry.body.length > MEMORY_CHARS / 4) return;
     this.memory.set(key, entry);
+    this.memoryChars += entry.body.length;
+    while (this.memory.size > MEMORY_ENTRIES || this.memoryChars > MEMORY_CHARS) this.forget(this.memory.keys().next().value!);
+  }
+
+  /** What the in-memory cache holds right now (for the tests and the health check). */
+  memoryUse(): { entries: number; chars: number } {
+    return { entries: this.memory.size, chars: this.memoryChars };
   }
 
   private writeEntry(key: string, entry: CacheEntry): void {
@@ -311,6 +361,8 @@ export class ApiClient {
       if (now - this.lastPrune > 3_600_000) {
         this.lastPrune = now;
         this.store.pruneApiCache(now - PRUNE_AFTER_MS);
+        const trimmed = this.store.trimApiCache?.(MAX_STORE_BYTES) ?? 0;
+        if (trimmed) this.deps.log(`[api] the response cache was over its size: removed its ${trimmed} oldest answers`);
       }
     } catch (err) {
       this.deps.warn(`[api] could not save a response to the cache: ${err instanceof Error ? err.message : String(err)}`);
@@ -356,7 +408,7 @@ export class ApiClient {
         this.stats.revalidated++;
         return { body: fresh.body, status: fresh.status, fetchedAt: now, stale: false, source: 'revalidated' };
       }
-      const body = await res.text();
+      const body = await readText(res);
       // A maintenance or proxy page answered with 200 is not data: saved, it would be served (and fail to parse) for the whole lifetime of the kind.
       // It counts as a failure instead, so the previous answer is used while it is still young enough, and the next call asks again.
       if (res.ok && jsonOnly && !JSON_START.test(body)) throw new Error(`${new URL(url).host} answered HTTP ${res.status} with something that is not JSON`);
@@ -376,6 +428,7 @@ export class ApiClient {
   /** Test hook: forget everything held in memory and any cooldown. */
   reset(): void {
     this.memory.clear();
+    this.memoryChars = 0;
     this.inflight.clear();
     this.blockedUntil.clear();
     this.nextSlot.clear();

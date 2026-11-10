@@ -69,6 +69,11 @@ services:
       - "127.0.0.1:${BOT_LOCAL_PORT:-3000}:3000"
     labels:
       com.centurylinklabs.watchtower.enable: "true"
+    # The bot runs as the unprivileged "node" user and needs no special rights: it can't gain any either.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     logging: *logging
 
   caddy:

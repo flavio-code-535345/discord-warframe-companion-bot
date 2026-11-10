@@ -49,6 +49,9 @@ import { drops, price, wf } from './commands/warframe.js';
 
 export const COMMANDS: Command[] = [wf, item, price, relics, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
+/** What a message may ping when it doesn't say: the members it mentions and the member it replies to, never a role or everyone. */
+export const DEFAULT_MENTIONS = { parse: ['users'], repliedUser: true } as const satisfies { parse: readonly ['users']; repliedUser: boolean };
+
 export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MESSAGE_CONTENT' | 'ENABLE_MEMBER_LOGGING'>): Client {
   // GuildMessages and DirectMessages are not privileged; without Message Content the bot still sees the
   // text of messages that mention it and of DMs, which is all mention-based chat needs.
@@ -60,7 +63,9 @@ export function createClient(config: Pick<Config, 'ENABLE_WELCOME' | 'ENABLE_MES
   if (config.ENABLE_WELCOME || config.ENABLE_MEMBER_LOGGING) intents.push(GatewayIntentBits.GuildMembers);
   if (config.ENABLE_MESSAGE_CONTENT) intents.push(GatewayIntentBits.MessageContent);
   // DM channels aren't cached up front; the Channel partial lets their first message through.
-  return new Client({ intents, partials: [Partials.Channel, Partials.Message] });
+  // Unless a message says otherwise, text Ordis sends never pings @everyone, @here or a role: only the places that mean to ping a
+  // role name it in their own allowedMentions. So a name or a reason typed by a member can't make Ordis ping the server.
+  return new Client({ intents, partials: [Partials.Channel, Partials.Message], allowedMentions: DEFAULT_MENTIONS });
 }
 
 async function replyError(interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction, err: unknown): Promise<void> {

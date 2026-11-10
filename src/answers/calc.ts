@@ -3,6 +3,8 @@
  * recursive-descent parser, never eval, so a typed expression can't run anything.
  */
 
+import { own } from '../own.js';
+
 const FUNCTIONS: Record<string, (...n: number[]) => number> = {
   sqrt: Math.sqrt,
   abs: Math.abs,
@@ -57,7 +59,8 @@ export function calculate(expression: string): number {
         const name = /^[a-z]+/i.exec(src.slice(pos))![0].toLowerCase();
         pos += name.length;
         if (src[pos] === '(') {
-          const fn = FUNCTIONS[name];
+          // Only the functions listed above: `FUNCTIONS[name]` would also find what every object inherits ("constructor").
+          const fn = own(FUNCTIONS, name);
           if (!fn) return fail(`unknown function "${name}"`);
           pos++;
           const args: number[] = [sum()];
@@ -69,7 +72,7 @@ export function calculate(expression: string): number {
           pos++;
           return fn(...args);
         }
-        const k = CONSTANTS[name];
+        const k = own(CONSTANTS, name);
         return k ?? fail(`unknown name "${name}"`);
       }
       const n = number();

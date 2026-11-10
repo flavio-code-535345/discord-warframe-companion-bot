@@ -16,12 +16,13 @@ import type { WikiResult } from '../warframe/wiki.js';
 import { e, tierEmoji } from './emoji.js';
 import { COLORS, clampLines } from './embeds.js';
 import { footer, heading } from './style.js';
+import { own } from '../own.js';
 
 const POLARITY: Record<string, string> = {
   madurai: 'Madurai (V)', vazarin: 'Vazarin (D)', naramon: 'Naramon (—)', zenurik: 'Zenurik (=)',
   unairu: 'Unairu', penjaga: 'Penjaga', umbra: 'Umbra', aura: 'Aura', any: 'Any',
 };
-const pol = (p: unknown) => (typeof p === 'string' ? (POLARITY[p] ?? p) : '—');
+const pol = (p: unknown) => (typeof p === 'string' ? (own(POLARITY, p) ?? p) : '—');
 const pct = (x: unknown) => (typeof x === 'number' ? `${Math.round(x * 1000) / 10}%` : '—');
 const num = (x: unknown, digits = 2) => (typeof x === 'number' ? String(Math.round(x * 10 ** digits) / 10 ** digits) : '—');
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

@@ -1,6 +1,7 @@
 // Only the parser's types are used: the world state comes already parsed from warframestat.us, as JSON.
 import type WorldStateParser from 'warframe-worldstate-parser';
 import { readFile, writeFile } from 'node:fs/promises';
+import { own } from '../own.js';
 import { toMs } from '../time.js';
 import { UserError } from '../services/clan.js';
 import { ApiBlockedError, api, apiFetch } from './fetch.js';
@@ -421,7 +422,7 @@ export function isBaroHere(ws: WorldState, now = Date.now()): boolean {
 const ARCHIMEDEA_NAMES: Record<string, string> = { CT_LAB: 'Deep Archimedea', CT_HEX: 'Temporal Archimedea' };
 /** The parser spaces out camel-cased internal names ("C T_ L A B", "M P V Protea Prime Single Pack"). */
 const despace = (s: string) => s.replace(/\s+/g, '');
-export const archimedeaName = (type: string) => ARCHIMEDEA_NAMES[despace(type)] ?? type;
+export const archimedeaName = (type: string): string => own(ARCHIMEDEA_NAMES, despace(String(type ?? ''))) ?? String(type ?? '');
 
 const RELIC_TIERS = ['Lith', 'Meso', 'Neo', 'Axi'];
 /**

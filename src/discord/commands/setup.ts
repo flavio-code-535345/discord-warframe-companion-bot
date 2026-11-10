@@ -316,6 +316,8 @@ export const setup: Command = {
       case 'ssroles': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const files = [interaction.options.getAttachment('reference'), interaction.options.getAttachment('reference2')].filter((f) => f !== null);
+        // Checked before the download: Discord says how big the file is, and nothing over the limit is fetched into memory.
+        if (files.some((f) => f.size > 8 * 1024 * 1024)) throw new UserError('A reference image is over 8 MB.');
         const references = await Promise.all(
           files.map(async (file) => {
             const res = await fetch(file.url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
