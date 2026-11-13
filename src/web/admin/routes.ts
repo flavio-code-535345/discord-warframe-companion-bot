@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { ChannelType, type Guild } from 'discord.js';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
+import { KEEP_AUTO_COPIES, copyDatabase, listDatabaseCopies } from '../../backup/database.js';
 import { summaryOf, takeBackup } from '../../backup/service.js';
 import type { AppContext } from '../../context.js';
 import type { GuildSettings, PanelSession } from '../../db.js';
@@ -526,8 +528,54 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
 <div class="card"><form class="stack" method="post" action="/admin/backups">${csrfField(p.session)}
 <div class="row"><label>Label (optional)<input name="label" maxlength="80"></label></div>
 <div class="actions"><button>Back up now</button> <span class="muted">Restoring is done in Discord with <code>/backup load</code>, which previews every change first.</span></div></form></div>
-<div class="card">${list.length ? `<table><tr><th>#</th><th>Taken</th><th>Kind</th><th>Contents</th><th></th></tr>${rows}</table>` : '<p class="muted">No backups yet.</p>'}</div>`;
+<div class="card">${list.length ? `<table><tr><th>#</th><th>Taken</th><th>Kind</th><th>Contents</th><th></th></tr>${rows}</table>` : '<p class="muted">No backups yet.</p>'}</div>
+<h2>Database copies</h2>
+<div class="card"><p class="muted">Ordis's own database: members, trackers, levels, settings, the riven and relic data, and the server backups above. One copy is made every night and the newest ${KEEP_AUTO_COPIES} are kept in <code>data/backups</code> on the server. A copy leaves out the API cache and the panel logins. Putting one back is described in the README.</p>
+<form class="inline" method="post" action="/admin/database">${csrfField(p.session)}<button>Copy now</button></form></div>
+<div class="card">${copyTable(p.session)}</div>`;
     html(res, layout('Backups', body, p));
+  });
+
+  /** A database copy holds everything Ordis knows about the members, so only an owner may take one off the server. */
+  const isOwner = (session: PanelSession | null) => Boolean(session && config.PANEL_OWNER_IDS.includes(session.userId));
+  const copyTable = (session: PanelSession | null): string => {
+    const copies = listDatabaseCopies(ctx);
+    if (!copies.length) return '<p class="muted">No copy yet. The first one is made a few minutes after Ordis starts.</p>';
+    const owner = isOwner(session);
+    const copyRows = copies
+      .map(
+        (c) =>
+          `<tr><td><code>${e(c.file)}</code></td><td>${utc(c.at)}</td><td>${badge(c.kind === 'auto' ? 'nightly' : 'manual', c.kind === 'auto' ? '' : 'info')}</td><td>${kb(c.bytes)}</td><td>${owner ? `<a href="/admin/database/${encodeURIComponent(c.file)}">Download</a>` : ''}</td></tr>`,
+      )
+      .join('');
+    return `<table><tr><th>File</th><th>Taken</th><th>Kind</th><th>Size</th><th></th></tr>${copyRows}</table>${owner ? '' : '<p class="muted">Only an owner (<code>PANEL_OWNER_IDS</code>) can download a copy: it holds everything Ordis knows about the members.</p>'}`;
+  };
+
+  router.post(
+    '/database',
+    action('backups', async (_req, session) => {
+      const copy = await copyDatabase(ctx, 'manual');
+      await audit(session, `Took a database copy (${copy.file})`);
+      return `Database copy saved (${kb(copy.bytes)}).`;
+    }),
+  );
+
+  router.get('/database/:file', async (req, res) => {
+    const session = res.locals.session as PanelSession;
+    if (!isOwner(session)) return back(res, 'backups', { err: 'Only an owner (PANEL_OWNER_IDS) can download a database copy.' });
+    // The name is only compared with what is in the folder, never made into a path.
+    const copy = listDatabaseCopies(ctx).find((c) => c.file === req.params.file);
+    if (!copy) return back(res, 'backups', { err: 'There is no such database copy.' });
+    await audit(session, `Downloaded the database copy ${copy.file}`);
+    res.setHeader('Content-Disposition', `attachment; filename="${copy.file}"`);
+    res.setHeader('Content-Length', String(copy.bytes));
+    res.type('application/gzip');
+    createReadStream(copy.path)
+      .on('error', (err) => {
+        console.error(`[admin] sending the database copy ${copy.file} failed:`, err);
+        res.destroy(err);
+      })
+      .pipe(res);
   });
 
   router.post(

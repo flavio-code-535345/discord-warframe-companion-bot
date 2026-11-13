@@ -23,7 +23,7 @@ from live data and his local copy of the wiki, so he never makes anything up.
 | "where does Neo N16 drop?", "what's in Axi A1?", "Kuva Bramma stats" | the drop tables, or the item or relic card (a relic with each reward's price and what a run is worth) |
 | "when is Baro coming?", "is it night on Cetus?", "today's sortie", "Entrati bounties", "steel path axi fissures" | the live world state |
 | "when is our next clan event?" | the clan's upcoming events |
-| "how many points for MR 25?", "how do I make Corrosive?", "what is 9 x 2" | the mastery thresholds, the element recipe, the sum |
+| "how many points for MR 25?", "how do I make Corrosive?", "what is 9 x 2", "the square root of 144", "15% of 240" | the mastery thresholds, the element recipe, the sum (also `sqrt()`, `pi`, "12 squared") |
 | anything else, like "how do archon shards work?" | the sentence of the wiki page the question names that fits it best, quoted word for word, and links to the 1–3 most relevant pages |
 
 In the chat channel Ordis answers anything written there without a mention, but stays out of replies between members and
@@ -176,6 +176,27 @@ when `ENABLE_MESSAGE_CONTENT=true`, with the last 50 messages per channel.
 - **If the whole server is deleted:** create a new server, invite Ordis, set `DISCORD_GUILD_ID` to the new server and redeploy. Then run `/backup import` with a downloaded file (or use a stored backup) and `/backup load`. Bot roles from other bots come back when you re-invite those bots.
 - **Where backups live:** in Ordis's database volume on your server. Download one now and then so a copy also survives your host going down.
 
+### Database copies
+
+The server backups above are stored inside Ordis's database, together with everything else he remembers (members,
+trackers, levels, settings, the riven and relic data). So the database itself is copied too: every night after 03:00 UTC
+Ordis writes a gzipped copy of `bot.db` into the `backups` folder of his data volume and keeps the newest 7. A copy leaves
+out the API cache (it fills up again on its own) and the panel logins. If a nightly copy fails, Ordis says so in the staff
+channel, once a night.
+
+The panel's **Backups** page lists the copies, makes one on request ("Copy now", the newest 3 of those are kept) and lets
+an owner (`PANEL_OWNER_IDS`) download one. Do that now and then: a copy on the same disk does not survive the disk.
+
+To put a copy back, stop the bot, replace the database and start the bot again (`docker volume ls` shows the volume's
+full name, `<file>` is a name from the Backups page):
+
+```bash
+docker run --rm -v <stack>_bot-data:/data alpine sh -c "gunzip -c /data/backups/<file> > /data/bot.db && rm -f /data/bot.db-wal /data/bot.db-shm && chown 1000:1000 /data/bot.db"
+```
+
+Everything that happened after the copy was taken is gone, and everyone has to log in to the panel again (the key that
+signs its cookies is not part of a copy).
+
 ### World State boards
 
 Each World State channel holds one live board that Ordis keeps up to date (`/setup feed`, or the admin panel's Settings
@@ -198,6 +219,11 @@ warframestat.us); Digital Extremes' servers are never called.
 A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it),
 game news from the in-game news panel and Warframe's Steam announcements (`/setup news`), the active promo codes from the
 wiki (`/setup promos`) and birthday wishes (`/setup birthdays`).
+
+**When a channel Ordis uses is deleted**, he says so in the staff channel (`/setup status`, else the mod log): which
+channel or category went, which features are off because of it and the `/setup` command that gives each a new home. The
+same goes for a role of the self-assign menu, of leveling or of the screenshot roles. What was deleted while Ordis was
+offline is found at his next start, and the panel's Overview keeps a warning until the feature has a channel again.
 
 Feature ideas borrowed from community tools: Genesis/WFCD (world-state commands, trackers), Warframe Hub (personal
 notifications), warframestat.us (item and drop data) and the wiki.
@@ -280,13 +306,13 @@ npm run dev
 
 | Page | What you can do |
 | --- | --- |
-| Overview | Health at a glance: the bot, every background job, the world state, each World State board, members, the next event, the latest backup, and where every feature posts |
+| Overview | Health at a glance: the bot, every background job, the world state, each World State board, members, the next event, the latest backup and database copy, where every feature posts, and a warning when a feature lost its channel |
 | Settings | Every channel (World State boards, chat, mod and audit logs, welcome, weekly, news, …) and the LFG activities |
 | Announce | Write and post an announcement, optionally pinging a role |
 | Messages | Edit the text of any message Ordis wrote |
 | Events | Create clan events (posted with RSVP buttons) and cancel them |
 | Members | Roster and warnings: remove members, clear warnings |
-| Backups | Take, download and delete server backups (restoring stays in Discord with `/backup load`) |
+| Backups | Take, download and delete server backups (restoring stays in Discord with `/backup load`); the nightly copies of Ordis's database, "Copy now", and a download for owners |
 | Screenshots | Try the screenshot-roles readers (OCR, the local model, the cloud model) on a picture, without giving any roles |
 | Rivens | The riven scan channel, the background market read, a screenshot test and the latest scans |
 | Config | Change settings (world state, models, queues, the riven reader, …) without a redeploy |
@@ -312,7 +338,7 @@ The bot's HTTP port (3000 in the container) serves:
 | Path | What |
 | --- | --- |
 | `/admin` | Admin panel (see above) |
-| `/` | The public status page: one line on the bot, a strip with the next cycle change, Baro, the Arbitration and the sortie, then four sections of tiles (open worlds; the Void, with every open fissure and filters; resets; events and trading) that open and close. Countdowns tick every second and the page updates itself every minute without reloading |
+| `/` | The public status page: one line on the bot, a strip with the next cycle change, Baro, the Arbitration and the sortie, then four sections of tiles (open worlds; the Void, with every open fissure and filters; resets; events and trading, where Baro's stock is listed with what each item sells for, best plat per ducat first) that open and close. Countdowns tick every second and the page updates itself every minute without reloading |
 | `/status.json` | The same data as JSON |
 | `/logo.png` | The clan logo |
 | `/health` | `{"status":"ok","discord":true}` once connected to Discord (used by the Docker health check) |

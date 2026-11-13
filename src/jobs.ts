@@ -1,4 +1,5 @@
 import type { AppContext } from './context.js';
+import { DB_COPY_CHECK_MS, databaseCopyIfDue } from './backup/database.js';
 import { BACKUP_CHECK_MS, backupIfDue } from './backup/service.js';
 import { postBirthdays } from './birthdays/service.js';
 import { refreshEmojis } from './discord/app-emojis.js';
@@ -40,6 +41,15 @@ export function registerJobs(ctx: AppContext, parts: { rivenCrawler: RivenCrawle
     .every('voice-xp', VOICE_XP_MS, () => awardVoiceXp(ctx), { firstMs: VOICE_XP_MS })
     // Give the gateway a minute to settle before the first backup check.
     .every('backups', BACKUP_CHECK_MS, () => backupIfDue(ctx), { firstMs: MIN })
+    // The night's copy of the database itself (after 03:00 UTC), or the first one a few minutes after an update brought this job.
+    .every(
+      'db-copy',
+      DB_COPY_CHECK_MS,
+      async () => {
+        await databaseCopyIfDue(ctx);
+      },
+      { firstMs: 3 * MIN },
+    )
     .every('emojis', 30 * MIN, () => refreshEmojis(ctx), { firstMs: 2_000 })
     // One weapon per interval; the setting can change at runtime, so the job says how long to wait after each read.
     .every(

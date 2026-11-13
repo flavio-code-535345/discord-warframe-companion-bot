@@ -17,8 +17,9 @@ export interface StaffNotice {
 
 export async function staffNotice(ctx: AppContext, notice: StaffNotice): Promise<boolean> {
   const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
-  const channelId = settings.statusChannelId ?? settings.modLogChannelId;
-  if (!channelId) {
+  // The status channel first; when that one can't be posted in (it may be the very channel that was just deleted), the moderation log.
+  const channelIds = [...new Set([settings.statusChannelId, settings.modLogChannelId].filter((id): id is string => Boolean(id)))];
+  if (!channelIds.length) {
     console.warn(`[staff] ${notice.title}: ${notice.text} (no status or moderation log channel to post it in)`);
     return false;
   }
@@ -28,12 +29,14 @@ export async function staffNotice(ctx: AppContext, notice: StaffNotice): Promise
     .setDescription(notice.text.slice(0, 4000))
     .setTimestamp();
   if (notice.fields?.length) embed.addFields(notice.fields.slice(0, 20).map((f) => ({ name: f.name.slice(0, 256), value: f.value.slice(0, 1024) || '—' })));
-  try {
-    const channel = await getSendableChannel(ctx, channelId);
-    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-    return true;
-  } catch (err) {
-    console.warn(`[staff] could not post "${notice.title}":`, (err as Error).message);
-    return false;
+  for (const channelId of channelIds) {
+    try {
+      const channel = await getSendableChannel(ctx, channelId);
+      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      return true;
+    } catch (err) {
+      console.warn(`[staff] could not post "${notice.title}" in ${channelId}:`, (err as Error).message);
+    }
   }
+  return false;
 }

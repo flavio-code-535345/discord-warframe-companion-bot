@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Store } from '../src/db.js';
@@ -19,7 +21,9 @@ function setup(store: Store, members: Record<string, { bot?: boolean; name: stri
     roles: { cache: new Map() },
   };
   const client = { isReady: () => true, ws: { ping: 42 }, guilds: { cache: new Map([['g', guild]]), fetch: async () => guild } };
-  const ctx = { store, client, config: { DISCORD_GUILD_ID: 'g', LOCAL_AI_URL: 'http://h/v1', LOCAL_AI_MODEL: 'gemma', FREE_AI_MODEL: 'gem', FREE_AI_DAILY_LIMIT: 150 }, ai: null };
+  // A data folder that does not exist: the health tool then reports no database copies.
+  const config = { DISCORD_GUILD_ID: 'g', DATA_DIR: join(tmpdir(), 'ordis-insights-no-such-folder'), LOCAL_AI_URL: 'http://h/v1', LOCAL_AI_MODEL: 'gemma', FREE_AI_MODEL: 'gem', FREE_AI_DAILY_LIMIT: 150 };
+  const ctx = { store, client, config, ai: null };
   const server = new McpServer({ name: 't', version: '1' });
   registerInsightTools(server, ctx as never);
   const tools = (server as unknown as { _registeredTools: Record<string, { handler: Handler }> })._registeredTools;
@@ -80,6 +84,15 @@ describe('bot health tool', () => {
     assert.equal(out.screenshotReaders.localModel, 'gemma');
     assert.deepEqual(out.answersLast24h, { excerpt: 1 });
     assert.equal(out.features.leveling, true);
+    assert.deepEqual(out.lostSettings, []);
+    assert.deepEqual(out.databaseCopies, { kept: 0, totalBytes: 0, newest: null });
+  });
+
+  it('lists the features that lost their channel', async () => {
+    const store = new Store(':memory:');
+    store.setMeta('settings_lost', JSON.stringify([{ key: 'newsChannelId', name: '#game-news', at: Date.UTC(2026, 10, 13, 9) }]));
+    const out = await setup(store).call('get_bot_health');
+    assert.deepEqual(out.lostSettings, [{ setting: 'newsChannelId', what: 'game news', was: '#game-news', at: '2026-11-13T09:00:00.000Z', setAgainWith: '/setup news' }]);
   });
 });
 

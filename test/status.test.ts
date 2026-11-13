@@ -134,6 +134,46 @@ test('tiles carry the Warframe icon of their kind when the clan has the emoji', 
   assert.equal(html.match(/<img class="ico" src="https:\/\/cdn\.discordapp\.com\/emojis\/222\.png\?size=48"/g)?.length, 2, 'the Arbitration tile and its headline');
 });
 
+test("Baro's stock shows what it sells for once it is priced, best plat per ducat first", async () => {
+  const c = ctx();
+  const landed = new Date(Date.now() - HOUR);
+  const ws = () =>
+    ({
+      ...fakeWorldState(),
+      voidTrader: {
+        activation: landed,
+        expiry: new Date(Date.now() + 40 * HOUR),
+        location: 'Kronia Relay',
+        inventory: [
+          { item: 'Prisma Skana', ducats: 510, credits: 175_000 },
+          { item: 'Primed Flow', ducats: 350, credits: 110_000 },
+          { item: 'Sands of Inaros', ducats: 100, credits: 25_000 },
+          { item: '<b>Odd</b>', ducats: '<i>9</i>', credits: 1 },
+        ],
+      },
+    }) as unknown as WorldState;
+  const names = async () => (await buildStatus(c, async () => ws(), noSchedule)).world?.baro?.items.map((i) => [i.name, i.ducats, i.plat]);
+
+  // Nothing priced yet: by price in ducats, as before.
+  assert.deepEqual(await names(), [['Prisma Skana', 510, null], ['Primed Flow', 350, null], ['Sands of Inaros', 100, null], ['<b>Odd</b>', 0, null]]);
+  assert.doesNotMatch(renderStatusPage(await buildStatus(c, async () => ws(), noSchedule), 'n'), /per ducat/);
+
+  // The baro-prices job has read the market for this visit.
+  const at = Date.now();
+  const prices = { visit: landed.getTime(), items: { 'prisma skana': { plat: 51, at }, 'primed flow': { plat: 70, at }, 'sands of inaros': { plat: null, at }, '<b>odd</b>': { plat: '<u>5</u>', at } } };
+  c.store.setMeta('baro_prices', JSON.stringify(prices));
+  assert.deepEqual(await names(), [['Primed Flow', 350, 70], ['Prisma Skana', 510, 51], ['Sands of Inaros', 100, null], ['<b>Odd</b>', 0, null]]);
+  const html = renderStatusPage(await buildStatus(c, async () => ws(), noSchedule), 'n');
+  assert.match(html, /Best plat per ducat first/);
+  assert.match(html, /Primed Flow<span class="n">0\.20 per ducat<\/span><\/span><span class="v">350 <span class="u">ducats<\/span> · 70p/);
+  assert.match(html, /Prisma Skana<span class="n">0\.10 per ducat<\/span>/);
+  assert.ok(!html.includes('<u>5</u>') && !html.includes('<i>9</i>') && !html.includes('<b>Odd</b>'), 'markup in the feed or the stored prices never reaches the page');
+
+  // Prices of another visit are not his prices.
+  c.store.setMeta('baro_prices', JSON.stringify({ ...prices, visit: 1 }));
+  assert.deepEqual((await names())?.map((i) => i[2]), [null, null, null, null]);
+});
+
 test('the Arbitration comes from the schedule, with its tier, the next hours and the best of the week, also without a world state', async () => {
   const s = await buildStatus(
     ctx(),

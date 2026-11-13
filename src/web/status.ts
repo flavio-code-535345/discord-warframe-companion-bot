@@ -2,6 +2,7 @@ import type { AppContext } from '../context.js';
 import { type EmojiName, cycleEmojiName, emojiUrl } from '../discord/emoji.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIER_HINT, arbitrationView, lastArbitrations } from '../warframe/arbitrations.js';
+import { baroPriceLookup } from '../warframe/baro.js';
 import { projectCycles } from '../warframe/cycles.js';
 import { own } from '../own.js';
 import { formatDuration, relative, toMs } from '../time.js';
@@ -34,7 +35,8 @@ export interface CycleStatus {
 export interface WorldTiles {
   sortie: { boss: string; faction: string; endsAt: string | null; missions: { type: string; node: string; modifier: string }[] } | null;
   archon: { boss: string; endsAt: string | null; missions: { type: string; node: string }[] } | null;
-  baro: { here: boolean; location: string; at: string | null; items: { name: string; ducats: number }[] } | null;
+  /** `plat`: what the item sells for on warframe.market, once the `baro-prices` job has read it; the priced ones come first, best plat per ducat on top. */
+  baro: { here: boolean; location: string; at: string | null; items: { name: string; ducats: number; plat: number | null }[] } | null;
   steelPath: { current: string; cost: number; next: string | null; endsAt: string | null } | null;
   darvo: { item: string; price: number; original: number; discount: number; left: number; total: number; endsAt: string | null } | null;
   fissures: { tier: string; normal: number; steelPath: number; storm: number }[];
@@ -147,7 +149,7 @@ function cyclesOf(ws: WorldState, now = Date.now()): CycleStatus[] {
 }
 
 /** Each part is read defensively: one malformed section must not blank the whole page. */
-function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
+function worldOf(ws: WorldState, now = Date.now(), baroPrices: ((item: string) => number | null) | null = null): WorldTiles {
   const live = (d: Date | string | undefined) => toMs(d) > now;
   // The feed is someone else's JSON: what the page writes as a number is made one here (anything else becomes 0).
   const num = (v: unknown): number => {
@@ -177,12 +179,16 @@ function worldOf(ws: WorldState, now = Date.now()): WorldTiles {
       const t = ws.voidTrader;
       if (!t) return null;
       const here = isBaroHere(ws, now);
-      return {
-        here,
-        location: t.location ?? '',
-        at: iso(here ? t.expiry : t.activation),
-        items: here ? [...(t.inventory ?? [])].sort((x, y) => num(y.ducats) - num(x.ducats)).map((i) => ({ name: i.item, ducats: num(i.ducats) })) : [],
-      };
+      const items = here
+        ? (t.inventory ?? []).map((i) => {
+            const plat = num(baroPrices?.(String(i.item)));
+            return { name: i.item, ducats: num(i.ducats), plat: plat > 0 ? plat : null };
+          })
+        : [];
+      // What is worth the ducats comes first (plat per ducat), then the rest by price in ducats.
+      const worth = (i: (typeof items)[number]) => (i.plat && i.ducats > 0 ? i.plat / i.ducats : 0);
+      items.sort((x, y) => worth(y) - worth(x) || y.ducats - x.ducats);
+      return { here, location: t.location ?? '', at: iso(here ? t.expiry : t.activation), items };
     }, null),
     steelPath: part(() => {
       const sp = ws.steelPath;
@@ -332,7 +338,7 @@ export async function buildStatus(
       // The cycles tile shows as unavailable.
     }
     try {
-      world = worldOf(ws);
+      world = worldOf(ws, Date.now(), baroPriceLookup(store, ws));
     } catch {
       // The other tiles show as unavailable.
     }
@@ -552,9 +558,11 @@ export function renderStatusPage(s: StatusData, nonce: string, iconOf: IconLooku
     ? tile(
         "Baro Ki'Teer",
         countdown(w.baro.at),
-        `<div class="lead">${w.baro.here ? `Here at ${e(w.baro.location)}` : `Arrives at ${e(w.baro.location)}`}</div>${w.baro.items
+        `<div class="lead">${w.baro.here ? `Here at ${e(w.baro.location)}` : `Arrives at ${e(w.baro.location)}`}</div>${
+          w.baro.items.some((i) => i.plat) ? heading('Best plat per ducat first · prices from warframe.market') : ''
+        }${w.baro.items
           .slice(0, 5)
-          .map((i) => row(e(i.name), `${i.ducats} ${ducats}`))
+          .map((i) => row(e(i.name), `${i.ducats} ${ducats}${i.plat ? ` · ${plat(i.plat)}` : ''}`, i.plat && i.ducats > 0 ? `${(i.plat / i.ducats).toFixed(2)} per ducat` : ''))
           .join('')}${more(w.baro.items.length - 5)}`,
         { icon: 'baro' },
       )

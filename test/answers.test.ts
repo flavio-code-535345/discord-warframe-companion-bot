@@ -51,6 +51,23 @@ describe('understanding a message', () => {
     assert.equal(mathAnswer('1 / 0'), null);
   });
 
+  it("finds a sum written with the calculator's functions and constants, and nothing that only looks like one", () => {
+    assert.equal(mathExpression('what is sqrt(16)'), 'sqrt(16)');
+    assert.equal(mathExpression('What is the square root of 16?'), 'sqrt(16)');
+    assert.equal(mathExpression('2 * pi'), '2 * pi');
+    assert.equal(mathExpression('calc √16 + 2'), '√16 + 2');
+    assert.equal(mathExpression('5 squared'), '5^2');
+    assert.equal(mathExpression('what is 15% of 200'), '15% * 200');
+    assert.equal(mathExpression('max(1,200, 3)'), 'max(1,200, 3)', 'a comma between arguments is not a thousands separator');
+    assert.equal(mathExpression('1,200 * 3'), '1200 * 3');
+    for (const q of ['what is e', 'pi', 'what is max', '100 (200)', 'log', 'sqrt', '50%', 'what is the max rank of serration', 'e']) assert.equal(mathExpression(q), null, q);
+    assert.equal(mathAnswer('sqrt(16)'), 'sqrt(16) = **4**');
+    assert.equal(mathAnswer('2 * pi'), '2 * pi = **6.283185**');
+    assert.equal(mathAnswer('15% * 200'), '15% * 200 = **30**');
+    assert.equal(mathAnswer('√16 + 2'), '√16 + 2 = **6**');
+    assert.equal(mathAnswer('e x e'), null, 'made of the right letters, but not a sum');
+  });
+
   it('knows chatter, links, reactions and thanks from questions and requests', () => {
     const sticker = '[Garfield Piss](https://media.discordapp.net/stickers/1280967546039963729.gif?size=160&name=Garfield+Piss&lossless=true)';
     for (const q of ['https://klipy.com/gifs/clanker-kylo-ren', '<@220147375786688512>', 'lol', '😂😂', '...', sticker]) assert.equal(noContent(q), true, q);

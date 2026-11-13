@@ -1,7 +1,9 @@
 import { ChannelType, type Guild } from 'discord.js';
 import type { Request, Response, Router } from 'express';
 import type { AppContext } from '../../context.js';
+import { listDatabaseCopies } from '../../backup/database.js';
 import type { GuildSettings } from '../../db.js';
+import { lostSettings } from '../../discord/broken-settings.js';
 import { FEEDS, feedHealth } from '../../discord/feeds/index.js';
 import { jobs } from '../../jobs.js';
 import { honeypotAction } from '../../moderation/honeypot.js';
@@ -95,6 +97,7 @@ export function registerOverviewRoutes({ router, ctx, pc, html, guild }: Deps): 
     const settings = store.getSettings(config.DISCORD_GUILD_ID);
     const g = await guild().catch(() => null);
     const latest = store.listBackups(config.DISCORD_GUILD_ID)[0];
+    const dbCopy = listDatabaseCopies(ctx)[0];
     const where = (id: string | null, kind: 'channel' | 'role' = 'channel', empty?: string): string => {
       if (!id) return empty ? `<span class="muted">${e(empty.replace(/^— | —$/g, ''))}</span>` : badge('off');
       if (kind === 'role') return `<code>@${e(g?.roles.cache.get(id)?.name ?? id)}</code>`;
@@ -120,7 +123,7 @@ export function registerOverviewRoutes({ router, ctx, pc, html, guild }: Deps): 
       }),
       statCard('Members', e(String(s.server?.memberCount ?? '—')), `${s.registeredMembers} registered in-game names`),
       statCard('Upcoming events', String(s.upcomingEvents.length), next ? `${e(next.title)}, ${nextLeft > 0 ? `in ${e(formatDuration(nextLeft))}` : 'happening now'}` : 'nothing planned'),
-      statCard('Latest backup', latest ? `#${latest.id}` : '—', latest ? ago(latest.createdAt, now) : 'none yet'),
+      statCard('Latest backup', latest ? `#${latest.id}` : '—', `${latest ? ago(latest.createdAt, now) : 'none yet'} · ${dbCopy ? `database copied ${ago(dbCopy.at, now)}` : 'no database copy yet'}`),
     ];
 
     const jobRows = jobList
@@ -186,8 +189,16 @@ export function registerOverviewRoutes({ router, ctx, pc, html, guild }: Deps): 
       },
     ];
 
+    // What was switched off because its channel was deleted, until it gets a new one (discord/broken-settings.ts).
+    const lost = lostSettings(ctx);
+    const lostBox = lost.length
+      ? `<div class="flash warn"><div><b>${lost.length === 1 ? 'A feature lost its channel' : `${lost.length} features lost their channel`}.</b> The channel was deleted in Discord, so ${lost.length === 1 ? 'it is' : 'they are'} off until ${lost.length === 1 ? 'it gets' : 'they get'} a new one:<ul>${lost
+          .map((l) => `<li>${e(l.what)} <span class="muted">(${e(l.name)} deleted ${e(ago(l.at, now))})</span>: <code>${e(l.setup)}</code></li>`)
+          .join('')}</ul></div></div>`
+      : '';
+
     const body = `${head('Overview', 'How Ordis and the clan server are doing right now.')}
-<div class="grid stats3">${cards.join('')}</div>
+${lostBox}<div class="grid stats3">${cards.join('')}</div>
 <h2>Background jobs</h2>
 <div class="card">${jobRows ? `<table class="compact ops jobs"><tr><th>Job</th><th>Every</th><th>Last run</th><th>Next</th><th>Runs</th><th>State</th></tr>${jobRows}</table>` : '<p class="muted">The jobs start once Ordis is connected to Discord.</p>'}</div>
 <h2>World State boards</h2>

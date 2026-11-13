@@ -22,6 +22,7 @@ import { handleLevelMessage } from '../leveling/service.js';
 import { handleRivenMessage } from '../rivens/channel.js';
 import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
+import { checkSettings, reportDeletedChannel, reportDeletedRole } from './broken-settings.js';
 import { handleChatMessage } from './chat.js';
 import { syncChatTopic } from './chat-topic.js';
 import { postWelcome } from './welcome.js';
@@ -100,6 +101,16 @@ export function attachHandlers(ctx: AppContext): void {
     console.log(`[discord] registered ${COMMANDS.length} slash commands in "${guild.name}"`);
     // Once, after the update that made every notification a DM: the members who held a ping role get the matching notification.
     await convertPingRoles(ctx).catch((err) => console.error('[ping-roles] the move to DM notifications failed:', err));
+    // What was deleted while Ordis was offline: the settings that pointed at it are cleared and the staff are told.
+    await checkSettings(ctx).catch((err) => console.error('[settings] the check for deleted channels failed:', err));
+  });
+
+  // A channel, category or role Ordis uses was deleted: say what is off because of it (discord/broken-settings.ts).
+  client.on(Events.ChannelDelete, (channel) => {
+    void reportDeletedChannel(ctx, channel).catch((err) => console.error('[settings] could not handle a deleted channel:', err));
+  });
+  client.on(Events.GuildRoleDelete, (role) => {
+    void reportDeletedRole(ctx, role).catch((err) => console.error('[settings] could not handle a deleted role:', err));
   });
 
   client.on(Events.VoiceStateUpdate, (before, after) => {

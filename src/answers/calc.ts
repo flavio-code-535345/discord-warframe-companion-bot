@@ -19,11 +19,29 @@ const FUNCTIONS: Record<string, (...n: number[]) => number> = {
 };
 const CONSTANTS: Record<string, number> = { pi: Math.PI, e: Math.E };
 
+/** The names the calculator knows, for whoever decides whether a message is a sum (answers/understand.ts). */
+export const CALC_FUNCTIONS = Object.keys(FUNCTIONS);
+export const CALC_CONSTANTS = Object.keys(CONSTANTS);
+
 const MAX_LENGTH = 200;
 const MAX_DEPTH = 40;
 
+const CALL = `(?:${CALC_FUNCTIONS.join('|')})\\(`;
+/** An x between two operands is a multiplication ("9 x 2", "2 x pi", "3 x (4+1)"); the x in "max(" is not. */
+const TIMES = new RegExp(`×|(?<=[\\d.)]|pi)x(?=[\\d.(]|pi(?![a-z])|${CALL})`, 'gi');
+/** An operand right before a bracket or a name multiplies: "2pi", "3(4+1)", "2sqrt(16)", "(1+2)(3+4)". Not before `e`: "2e3" is 2000. */
+const IMPLIED = new RegExp(`(?<=[\\d.)])(?=\\(|pi(?![a-z])|${CALL})`, 'gi');
+
 export function calculate(expression: string): number {
-  const src = expression.replace(/\s+/g, '').replace(/×|(?<=\d)x(?=\d)/g, '*').replace(/÷/g, '/');
+  const src = expression
+    .replace(/\s+/g, '')
+    .replace(/π/g, 'pi')
+    // "√16" takes the number after it; "√(9+16)" takes the bracket.
+    .replace(/√(\d+\.?\d*|\.\d+)/g, 'sqrt($1)')
+    .replace(/√/g, 'sqrt')
+    .replace(/÷/g, '/')
+    .replace(TIMES, '*')
+    .replace(IMPLIED, '*');
   if (!src || src.length > MAX_LENGTH) throw new Error(`the expression must be 1-${MAX_LENGTH} characters`);
   let pos = 0;
   let depth = 0;

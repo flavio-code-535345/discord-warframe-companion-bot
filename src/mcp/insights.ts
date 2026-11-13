@@ -14,6 +14,8 @@ import { worldStateInfo } from '../warframe/worldstate.js';
 import { settingStates } from '../runtime-config.js';
 import { jobs } from '../jobs.js';
 import { emojiStatus } from '../discord/app-emojis.js';
+import { listDatabaseCopies } from '../backup/database.js';
+import { lostSettings } from '../discord/broken-settings.js';
 import { emojiReport } from '../discord/emoji.js';
 import { feedHealth } from '../discord/feeds/index.js';
 import { baroPriceState } from '../warframe/baro.js';
@@ -195,6 +197,18 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           return prices && { ...prices, visit: iso(prices.visit) };
         })(),
         alecaframeLinks: store.countAlecaLinks(),
+        // Features switched off because their channel was deleted, until they get a new one (discord/broken-settings.ts).
+        lostSettings: lostSettings(ctx).map((l) => ({ setting: l.key, what: l.what, was: l.name, at: iso(l.at), setAgainWith: l.setup })),
+        // The nightly copies of the database itself (backup/database.ts); the `db-copy` job under `jobs` says whether the last try worked.
+        databaseCopies: (() => {
+          const copies = listDatabaseCopies(ctx);
+          const newest = copies[0];
+          return {
+            kept: copies.length,
+            totalBytes: copies.reduce((sum, c) => sum + c.bytes, 0),
+            newest: newest ? { file: newest.file, kind: newest.kind, takenAt: iso(newest.at), bytes: newest.bytes } : null,
+          };
+        })(),
         answersLast24h: store.aiLogStats(guildId, Date.now() - 86_400_000),
         features: {
           statusReports: Boolean(s.statusChannelId),

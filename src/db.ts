@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, backup } from 'node:sqlite';
 import type { RivenCrawlRow, RivenListing, RivenStat } from './rivens/types.js';
 
 export type RsvpStatus = 'going' | 'maybe' | 'declined';
@@ -904,6 +904,15 @@ export class Store {
 
   close(): void {
     this.db.close();
+  }
+
+  /**
+   * Copies the whole database into a new file while the bot keeps working: SQLite's online backup, a few pages at a time, and what is
+   * written here in the meantime lands in the copy too. Resolves with the number of pages. `src/backup/database.ts` makes the nightly
+   * copy with it.
+   */
+  copyTo(path: string): Promise<number> {
+    return backup(this.db, path);
   }
 
   // --- guild settings ---

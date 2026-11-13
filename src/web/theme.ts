@@ -69,6 +69,9 @@ hr{border:0;border-top:1px solid var(--line);margin:14px 0}
 .flash.ok::before{content:"✓"}
 .flash.err{border-color:rgba(248,113,113,.42);background:var(--bad-soft);color:#fed7d7}
 .flash.err::before{content:"!"}
+.flash.warn{border-color:rgba(246,189,75,.38);background:var(--warn-soft);color:#fde9b8}
+.flash.warn::before{content:"!"}
+.flash ul{margin:6px 0 0;padding-left:18px}
 
 label{display:grid;gap:6px;font-size:12.5px;font-weight:550;color:var(--muted)}
 input,select,textarea{width:100%;background:var(--input);color:var(--text);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:9px 11px;font:inherit;font-size:14px;transition:border-color .12s,box-shadow .12s}

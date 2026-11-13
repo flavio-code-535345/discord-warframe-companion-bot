@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { gunzipSync } from 'node:zlib';
 import { ChannelType, type Client } from 'discord.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
@@ -16,6 +20,8 @@ let close: () => void = () => {};
 let store: Store;
 const testChannels = new Map<string, unknown>();
 const testRoles = new Map<string, unknown>();
+/** The panel writes database copies into the data folder: a folder of this test's own, not the project's. */
+const dataDir = mkdtempSync(join(tmpdir(), 'ordis-admin-'));
 
 before(async () => {
   const config = loadConfig({
@@ -24,6 +30,7 @@ before(async () => {
     DISCORD_CLIENT_SECRET: 'secret',
     PUBLIC_URL: 'https://ratsden.example/',
     HTTP_HOST: '127.0.0.1',
+    DATA_DIR: dataDir,
   });
   store = new Store(':memory:');
   const client = {
@@ -40,7 +47,10 @@ before(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   close = () => server.close();
 });
-after(() => close());
+after(() => {
+  close();
+  rmSync(dataDir, { recursive: true, force: true });
+});
 
 const get = (path: string, cookie?: string) => fetch(`${baseUrl}${path}`, { redirect: 'manual', headers: cookie ? { cookie } : {} });
 const post = (path: string, form: Record<string, string>, cookie: string) =>
@@ -311,6 +321,82 @@ test('the Overview shows the jobs, the boards and where every feature posts', as
     testChannels.delete('700000000000000010');
     testChannels.delete('700000000000000011');
     store.updateSettings(GUILD, { birthdayChannelId: null, lfgVoiceCategoryId: null });
+  }
+});
+
+test('the Overview says which feature lost its channel, until it has one again', async () => {
+  configureWorldState({ enabled: false });
+  const { cookie } = sessionCookie(OWNER);
+  const box = /<div class="flash warn">.*?<\/ul>/s;
+  try {
+    store.updateSettings(GUILD, { newsChannelId: null, weeklyChannelId: null });
+    assert.doesNotMatch(await (await get('/admin/', cookie)).text(), box, 'nothing is lost');
+
+    store.setMeta('settings_lost', JSON.stringify([{ key: 'newsChannelId', name: '#game-<b>news</b>', at: Date.now() - 2 * 3_600_000 }]));
+    const one = box.exec(await (await get('/admin/', cookie)).text())?.[0] ?? '';
+    assert.match(one, /<b>A feature lost its channel\.<\/b>/);
+    assert.match(one, /<li>game news <span class="muted">\(#game-&lt;b&gt;news&lt;\/b&gt; deleted 2h ago\)<\/span>: <code>\/setup news<\/code><\/li>/, 'the name is someone else\'s text');
+
+    store.setMeta('settings_lost', JSON.stringify([{ key: 'newsChannelId', name: '#game-news', at: Date.now() }, { key: 'weeklyChannelId', name: '#game-news', at: Date.now() }]));
+    const two = box.exec(await (await get('/admin/', cookie)).text())?.[0] ?? '';
+    assert.match(two, /<b>2 features lost their channel\.<\/b>/);
+    assert.match(two, /the weekly reset post/);
+
+    store.updateSettings(GUILD, { newsChannelId: '700000000000000030', weeklyChannelId: '700000000000000030' });
+    assert.doesNotMatch(await (await get('/admin/', cookie)).text(), box, 'both have a channel again');
+  } finally {
+    store.setMeta('settings_lost', '[]');
+    store.updateSettings(GUILD, { newsChannelId: null, weeklyChannelId: null });
+  }
+});
+
+test('the Backups page keeps copies of the database, and only an owner can download one', async () => {
+  configureWorldState({ enabled: false });
+  const { cookie } = sessionCookie(OWNER);
+  const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
+
+  const empty = await (await get('/admin/backups', cookie)).text();
+  assert.match(empty, /<h2>Database copies<\/h2>/);
+  assert.match(empty, /No copy yet/);
+  assert.match(await (await get('/admin/', cookie)).text(), /no database copy yet/);
+
+  assert.equal((await post('/admin/database', {}, cookie)).status, 403, 'a copy needs the form token');
+  const made = await post('/admin/database', { _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(made), /\/admin\/backups\?ok=Database copy saved \(\d+ KB\)\./);
+
+  const page = await (await get('/admin/backups', cookie)).text();
+  const file = /ordis-db-\d{4}-\d\d-\d\d-\d{6}-manual\.db\.gz/.exec(page)?.[0] ?? '';
+  assert.ok(file, 'the copy is listed');
+  assert.ok(page.includes(`<a href="/admin/database/${file}">Download</a>`));
+  assert.match(await (await get('/admin/', cookie)).text(), /database copied (just now|\d+s ago)/);
+
+  const download = await get(`/admin/database/${file}`, cookie);
+  assert.equal(download.status, 200);
+  assert.equal(download.headers.get('content-type'), 'application/gzip');
+  assert.equal(download.headers.get('content-disposition'), `attachment; filename="${file}"`);
+  assert.equal(download.headers.get('cache-control'), 'no-store');
+  assert.equal(gunzipSync(Buffer.from(await download.arrayBuffer())).subarray(0, 15).toString(), 'SQLite format 3');
+
+  // A name is only ever compared with what is in the folder.
+  for (const name of ['..%2F..%2Fbot.db', '..%2Fbot.db', 'bot.db', `${file}.partial`, 'ordis-db-2026-11-13-030012-auto.db.gz', 'constructor']) {
+    const res = await get(`/admin/database/${name}`, cookie);
+    assert.equal(res.status, 302, name);
+    assert.match(flash(res), /err=There is no such database copy\./, name);
+  }
+
+  // A whitelisted admin who is no owner sees the list and cannot take a copy off the server.
+  store.addPanelAdmin('444444444444444444', OWNER, null);
+  try {
+    const admin = sessionCookie('444444444444444444');
+    const adminPage = await (await get('/admin/backups', admin.cookie)).text();
+    assert.ok(adminPage.includes(file));
+    assert.doesNotMatch(adminPage, /href="\/admin\/database\//);
+    assert.match(adminPage, /Only an owner/);
+    const refused = await get(`/admin/database/${file}`, admin.cookie);
+    assert.equal(refused.status, 302);
+    assert.match(flash(refused), /err=Only an owner \(PANEL_OWNER_IDS\) can download a database copy\./);
+  } finally {
+    store.removePanelAdmin('444444444444444444');
   }
 });
 
