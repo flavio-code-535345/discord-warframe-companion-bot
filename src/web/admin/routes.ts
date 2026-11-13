@@ -9,7 +9,7 @@ import type { GuildSettings, PanelSession } from '../../db.js';
 import { validImageUrl } from '../../lfg/lifecycle.js';
 import { HONEYPOT_ACTIONS, disableHoneypot, honeypotAction, setupHoneypot } from '../../moderation/honeypot.js';
 import { modLog } from '../../moderation/service.js';
-import { UserError, assertChannelFree, cancelClanEvent, createClanEvent, postAnnouncement } from '../../services/clan.js';
+import { REPEAT_DAYS, UserError, assertChannelFree, cancelClanEvent, createClanEvent, postAnnouncement, repeatText, setClanEventRepeat } from '../../services/clan.js';
 import { parseWhen } from '../../time.js';
 import { escapeHtml as e } from '../status.js';
 import {
@@ -418,20 +418,23 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
     const rows = events
       .map((ev) => {
         const r = store.getRsvps(ev.id);
-        return `<tr><td>#${ev.id}</td><td>${e(ev.title)}</td><td>${utc(ev.startsAt)}${ev.endsAt ? ` → ${utc(ev.endsAt)}` : ''}</td><td>${r.going.length} going · ${r.maybe.length} maybe</td><td>${actionButton(p.session, `/admin/events/${ev.id}/cancel`, 'Cancel', { danger: true, confirm: true })}</td></tr>`;
+        const repeats = ev.repeatDays ? `${badge(repeatText(ev.repeatDays), 'info')} ${actionButton(p.session, `/admin/events/${ev.id}/repeat`, 'Stop repeating')}` : '<span class="muted">once</span>';
+        return `<tr><td>#${ev.id}</td><td>${e(ev.title)}</td><td>${utc(ev.startsAt)}${ev.endsAt ? ` → ${utc(ev.endsAt)}` : ''}</td><td>${repeats}</td><td>${r.going.length} going · ${r.maybe.length} maybe</td><td>${actionButton(p.session, `/admin/events/${ev.id}/cancel`, 'Cancel', { danger: true, confirm: true })}</td></tr>`;
       })
       .join('');
+    const repeatOptions: Option[] = REPEAT_DAYS.map((days) => ({ value: String(days), label: repeatText(days).replace(/^e/, 'E') }));
     const body = `${head('Events', 'Clan events get RSVP buttons in the announcements channel and a reminder 15 minutes before they start.')}
 <div class="card"><form class="stack" method="post" action="/admin/events">${csrfField(p.session)}
 <div class="row">
 <label>Title<input name="title" maxlength="200" required></label>
 <label>Starts (UTC)<input type="datetime-local" name="when" required></label>
 <label>Ends (UTC, optional)<input type="datetime-local" name="ends"></label>
+<label>Repeats${select('repeat', repeatOptions, null, '— no, only once —')}</label>
 </div>
 <label>Description (optional)<textarea name="description" maxlength="2000"></textarea></label>
-<div class="actions"><button>Create event</button> <span class="muted">Posted with RSVP buttons in the announcements channel.</span></div></form></div>
+<div class="actions"><button>Create event</button> <span class="muted">Posted with RSVP buttons in the announcements channel. A repeating event is posted again once it is over, at the same time of day in ${e(config.CLAN_TIMEZONE)} (the clan time zone on the Config page).</span></div></form></div>
 <h2>Upcoming</h2>
-<div class="card">${events.length ? `<table><tr><th>#</th><th>Title</th><th>When</th><th>RSVPs</th><th></th></tr>${rows}</table>` : '<p class="muted">Nothing scheduled.</p>'}</div>`;
+<div class="card">${events.length ? `<table><tr><th>#</th><th>Title</th><th>When</th><th>Repeats</th><th>RSVPs</th><th></th></tr>${rows}</table><p class="muted">Cancel takes one round off: a repeating event is still posted again afterwards, until it is told to stop repeating.</p>` : '<p class="muted">Nothing scheduled.</p>'}</div>`;
     html(res, layout('Events', body, p));
   });
 
@@ -444,9 +447,20 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
       const endsText = text(req.body.ends, 40);
       const endsAt = endsText ? parseWhen(endsText) : null;
       if (endsText && endsAt === null) throw new UserError('Could not read the end time.');
-      const event = await createClanEvent(ctx, { title, description: text(req.body.description, 2000) || null, startsAt, endsAt, createdBy: session.userId });
-      await audit(session, `Created event #${event.id}: ${title}`);
-      return `Event #${event.id} posted.`;
+      const repeat = text(req.body.repeat, 4);
+      const repeatDays = repeat ? Number(repeat) : null;
+      const event = await createClanEvent(ctx, { title, description: text(req.body.description, 2000) || null, startsAt, endsAt, createdBy: session.userId, repeatDays });
+      await audit(session, `Created event #${event.id}: ${title}${event.repeatDays ? ` (repeats ${repeatText(event.repeatDays)})` : ''}`);
+      return `Event #${event.id} posted.${event.repeatDays ? ` It repeats ${repeatText(event.repeatDays)}.` : ''}`;
+    }),
+  );
+
+  router.post(
+    '/events/:id/repeat',
+    action('events', async (req, session) => {
+      const event = await setClanEventRepeat(ctx, Number(req.params.id), null);
+      await audit(session, `Event #${event.id} no longer repeats: ${event.title}`);
+      return `Event #${event.id} no longer repeats.`;
     }),
   );
 

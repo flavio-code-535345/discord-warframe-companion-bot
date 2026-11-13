@@ -5,6 +5,7 @@ import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../
 import { type ArbitrationSlot, arbitrationView, loadArbitrations } from '../warframe/arbitrations.js';
 import { type WorldState, getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
 import { type DmGroup, sendDm, trackerDm } from './dm.js';
+import { repeatEvents } from './event-repeat.js';
 import { feedInput, syncFeeds } from './feeds/index.js';
 import { brandIcon } from './identity.js';
 import { postNews } from './news.js';
@@ -81,10 +82,14 @@ async function notifyTrackers(ctx: AppContext, ws: WorldState | null, now: numbe
   for (const [userId, groups] of perUser) await sendDm(ctx, userId, trackerDm(groups, avatar), 'a tracker update');
 }
 
-/** The clan events job (every minute): reminders 15 minutes before the start, then ended events re-rendered without their buttons. */
+/**
+ * The clan events job (every minute): reminders 15 minutes before the start, ended events re-rendered without their buttons, then
+ * the next round of every repeating event that is over.
+ */
 export async function eventsJob(ctx: AppContext): Promise<void> {
   await sendEventReminders(ctx);
   await finishEvents(ctx);
+  await repeatEvents(ctx);
 }
 
 /** Events with an end time that has passed: mark them, and re-render their post as ended (the RSVP buttons go away). */

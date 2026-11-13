@@ -18,6 +18,7 @@ import { listDatabaseCopies } from '../backup/database.js';
 import { lostSettings } from '../discord/broken-settings.js';
 import { emojiReport } from '../discord/emoji.js';
 import { feedHealth } from '../discord/feeds/index.js';
+import { vaultWatchState } from '../discord/vault-watch.js';
 import { baroPriceState } from '../warframe/baro.js';
 import { relicBookState } from '../warframe/relics.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -195,6 +196,11 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
         baroPrices: (() => {
           const prices = baroPriceState(store);
           return prices && { ...prices, visit: iso(prices.visit) };
+        })(),
+        // What the vault watch last recorded (discord/vault-watch.ts); null before its first look at the relic table.
+        vaultWatch: (() => {
+          const v = vaultWatchState(store);
+          return v && { ...v, recordedAt: iso(v.recordedAt), lastChangeAt: v.lastChangeAt === null ? null : iso(v.lastChangeAt) };
         })(),
         alecaframeLinks: store.countAlecaLinks(),
         // Features switched off because their channel was deleted, until they get a new one (discord/broken-settings.ts).

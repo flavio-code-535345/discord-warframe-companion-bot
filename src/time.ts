@@ -45,6 +45,39 @@ export function parseEnd(input: string, startsAt: number, now = Date.now()): num
   return parseWhen(input, now);
 }
 
+/** True for a time zone name this runtime knows ("Europe/Berlin", "UTC"). */
+export function validTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** What the clocks in a time zone show at a moment, written as if it were UTC (whole seconds). */
+function wallClock(at: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(at);
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'));
+}
+
+/**
+ * The same time of day `days` later in a time zone: 20:00 in Europe/Berlin stays 20:00 when the clocks change, which is an hour
+ * earlier or later in UTC. An unknown zone counts as UTC. A time of day the clocks skip that night lands an hour beside it.
+ */
+export function addDaysInZone(at: number, days: number, timeZone: string): number {
+  const zone = validTimeZone(timeZone) ? timeZone : 'UTC';
+  const wanted = wallClock(at, zone) + days * 86_400_000;
+  let guess = at + days * 86_400_000;
+  for (let i = 0; i < 3; i++) {
+    const off = wanted - wallClock(guess, zone);
+    if (off === 0) break;
+    guess += off;
+  }
+  return guess;
+}
+
 /** "10m", "1h30m", "2d", "1w", "30s" → milliseconds; null when it isn't a duration. */
 export function parseDuration(input: string): number | null {
   const s = input.trim().toLowerCase();

@@ -6,6 +6,7 @@ import { refreshEmojis } from './discord/app-emojis.js';
 import { eventsJob, newsJob, worldStateJob } from './discord/notifier.js';
 import { PRICE_CHECK_MS, checkPriceTrackers } from './discord/price-alerts.js';
 import { updatePromoCodes } from './discord/promo-codes.js';
+import { VAULT_CHECK_MS, watchVault } from './discord/vault-watch.js';
 import { endDueGiveaways } from './giveaways/service.js';
 import { VOICE_XP_MS, awardVoiceXp } from './leveling/service.js';
 import { SWEEP_INTERVAL_MS, sweepVoice } from './lfg/voice.js';
@@ -49,6 +50,15 @@ export function registerJobs(ctx: AppContext, parts: { rivenCrawler: RivenCrawle
         await databaseCopyIfDue(ctx);
       },
       { firstMs: 3 * MIN },
+    )
+    // Prime sets and relics that were vaulted, came back or are new: read from the relic book, so no request of its own.
+    .every(
+      'vault-watch',
+      VAULT_CHECK_MS,
+      async () => {
+        await watchVault(ctx);
+      },
+      { firstMs: 4 * MIN },
     )
     .every('emojis', 30 * MIN, () => refreshEmojis(ctx), { firstMs: 2_000 })
     // One weapon per interval; the setting can change at runtime, so the job says how long to wait after each read.

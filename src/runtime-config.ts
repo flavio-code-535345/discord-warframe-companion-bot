@@ -44,6 +44,7 @@ export const SETTINGS: SettingDef[] = [
 
   { key: 'CLAN_NAME', group: 'Identity', kind: 'text', label: 'Clan name', help: 'Used in answers and as the name the screenshot roles check against.' },
   { key: 'BOT_NAME', group: 'Identity', kind: 'text', label: 'Bot name', help: "The bot's Discord username and the name it uses for itself." },
+  { key: 'CLAN_TIMEZONE', group: 'Identity', kind: 'text', label: 'Clan time zone', help: 'A repeating event keeps its time of day in this zone when the clocks change, e.g. Europe/Berlin. UTC has no clock changes.' },
 
   { key: 'LOCAL_AI_URL', group: 'Local AI (Ollama)', kind: 'text', label: 'Ollama URL', help: 'OpenAI-compatible endpoint, e.g. http://192.168.178.45:11434/v1. Empty = no local model.' },
   { key: 'LOCAL_AI_MODEL', group: 'Local AI (Ollama)', kind: 'text', label: 'Local model', help: "The Ollama model that reads the profile screenshots OCR can't (the exact name from ollama list, e.g. gemma4:e4b)." },

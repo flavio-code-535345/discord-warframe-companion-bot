@@ -61,9 +61,35 @@ export interface BookRelic {
   complete: boolean;
 }
 
+export interface BookPart {
+  /** "Saryn Prime Chassis"; for the paired weapons a whole other one ("Bronco Prime" for Akbronco Prime), which no relic holds. */
+  name: string;
+  /** How many of it the set needs. */
+  count: number;
+  ducats: number;
+  /** What it trades for, null when the list has no price. */
+  plat: number | null;
+  /** The relics that hold it, the ones that still drop first. */
+  relics: { relic: BookRelic; rarity: Rarity }[];
+}
+
+export interface BookSet {
+  /** "Saryn Prime". */
+  name: string;
+  /** WFInfo's kind: "Warframes", "Primary", "Melee", "Sentinels", … */
+  type: string;
+  /** True when none of its relics drops any more. */
+  vaulted: boolean;
+  /** What the whole set trades for, null when the list has no price. */
+  plat: number | null;
+  parts: BookPart[];
+}
+
 export interface RelicBook {
   /** By lower-case name ("axi a1"). */
   relics: Map<string, BookRelic>;
+  /** The prime sets by lower-case name ("saryn prime"), each with its parts and the relics that hold them. */
+  sets: Map<string, BookSet>;
   /** Plat and daily volume by lower-case item name: the parts and the sets. */
   prices: Map<string, { plat: number; volume: number }>;
   /** When the older of the two lists was read. */
@@ -81,7 +107,7 @@ export interface WfinfoPrice {
 
 export interface WfinfoTable {
   relics?: Record<string, Record<string, Record<string, unknown>>>;
-  eqmt?: Record<string, { parts?: Record<string, { ducats?: number }> }>;
+  eqmt?: Record<string, { type?: string; vaulted?: boolean; parts?: Record<string, { ducats?: number; count?: number; vaulted?: boolean }> }>;
   ignored_items?: Record<string, unknown>;
 }
 
@@ -115,12 +141,15 @@ export function buildRelicBook(table: WfinfoTable, list: WfinfoPrice[], fetchedA
   const untraded = new Set(Object.keys(table.ignored_items ?? {}).map(lower));
   const ducats = new Map<string, number>();
   for (const set of Object.values(table.eqmt ?? {})) {
-    for (const [part, info] of Object.entries(set.parts ?? {})) if (typeof info?.ducats === 'number') ducats.set(lower(part), info.ducats);
+    for (const [part, info] of Object.entries(set?.parts ?? {})) if (typeof info?.ducats === 'number') ducats.set(lower(part), info.ducats);
   }
 
   const relics = new Map<string, BookRelic>();
+  /** Which relics hold an item, by its lower-case name. */
+  const holders = new Map<string, BookPart['relics']>();
   for (const [tier, byCode] of Object.entries(table.relics ?? {})) {
     for (const [code, entry] of Object.entries(byCode ?? {})) {
+      if (!entry || typeof entry !== 'object') continue;
       const rewards: BookReward[] = [];
       for (const [slot, rarity] of SLOTS) {
         const item = entry[slot];
@@ -129,10 +158,50 @@ export function buildRelicBook(table: WfinfoTable, list: WfinfoPrice[], fetchedA
         rewards.push({ item, rarity, plat: price ? price.plat : null, ducats: ducats.get(lower(item)) ?? 0, volume: price?.volume ?? 0 });
       }
       const name = `${tier} ${code}`;
-      relics.set(lower(name), { tier, code, name, vaulted: entry.vaulted === true, rewards, complete: rewards.length === SLOTS.length });
+      const relic: BookRelic = { tier, code, name, vaulted: entry.vaulted === true, rewards, complete: rewards.length === SLOTS.length };
+      relics.set(lower(name), relic);
+      for (const reward of rewards) {
+        const held = holders.get(lower(reward.item)) ?? [];
+        held.push({ relic, rarity: reward.rarity });
+        holders.set(lower(reward.item), held);
+      }
     }
   }
-  return { relics, prices, fetchedAt, stale };
+
+  const tierOrder = (tier: string) => {
+    const at = (RELIC_TIERS as readonly string[]).indexOf(tier);
+    return at < 0 ? RELIC_TIERS.length : at;
+  };
+  const sets = new Map<string, BookSet>();
+  for (const [setName, set] of Object.entries(table.eqmt ?? {})) {
+    if (!set || typeof set !== 'object' || !setName.trim()) continue;
+    const parts: BookPart[] = [];
+    for (const [part, info] of Object.entries(set.parts ?? {})) {
+      const count = Number(info?.count);
+      const held = [...(holders.get(lower(part)) ?? [])].sort(
+        (a, b) => Number(a.relic.vaulted) - Number(b.relic.vaulted) || tierOrder(a.relic.tier) - tierOrder(b.relic.tier) || a.relic.name.localeCompare(b.relic.name, undefined, { numeric: true }),
+      );
+      parts.push({
+        name: part,
+        count: Number.isInteger(count) && count > 0 && count < 100 ? count : 1,
+        ducats: typeof info?.ducats === 'number' ? info.ducats : 0,
+        plat: untraded.has(lower(part)) ? null : (priceOf(prices, part)?.plat ?? null),
+        relics: held,
+      });
+    }
+    // The table's own flag; without one, a set is vaulted when it has relics and none of them drops.
+    const inRelics = parts.flatMap((p) => p.relics);
+    const vaulted = typeof set.vaulted === 'boolean' ? set.vaulted : inRelics.length > 0 && inRelics.every((h) => h.relic.vaulted);
+    sets.set(lower(setName), { name: setName, type: typeof set.type === 'string' ? set.type : '', vaulted, plat: priceOf(prices, `${setName} Set`)?.plat ?? null, parts });
+  }
+  return { relics, sets, prices, fetchedAt, stale };
+}
+
+/** A prime set by name: "Saryn Prime", "saryn prime set", or just "Saryn" when that names one set. */
+export function findSet(book: RelicBook, name: string): BookSet | null {
+  const base = lower(name).replace(/\s+/g, ' ').replace(/\s+set$/, '');
+  if (!base) return null;
+  return book.sets.get(base) ?? book.sets.get(`${base} prime`) ?? null;
 }
 
 export interface RelicValue {

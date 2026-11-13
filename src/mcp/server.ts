@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { PLATFORMS } from '../discord/commands/clan.js';
 import { FEEDS } from '../discord/feeds/index.js';
-import { UserError, cancelClanEvent, createClanEvent, postAnnouncement } from '../services/clan.js';
+import { UserError, cancelClanEvent, createClanEvent, postAnnouncement, repeatText, setClanEventRepeat } from '../services/clan.js';
 import { parseEnd, parseWhen } from '../time.js';
 import { searchDrops } from '../warframe/drops.js';
 import { lookupItem, summarizeLookup } from '../warframe/items.js';
@@ -20,6 +20,10 @@ import { registerRivenTools } from './rivens.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 import { DEFAULT_SECTIONS, SECTIONS, summarizeFissures, summarizeWorldState } from './worldstate-summary.js';
 
+
+/** How often a clan event may repeat, by the name the tools use and in days (REPEAT_DAYS in services/clan.ts). */
+const REPEAT_BY_NAME = { daily: 1, weekly: 7, every_2_weeks: 14, every_4_weeks: 28 } as const;
+const REPEAT_NAMES = ['daily', 'weekly', 'every_2_weeks', 'every_4_weeks'] as const satisfies readonly (keyof typeof REPEAT_BY_NAME)[];
 
 /**
  * Builds the MCP server exposing Warframe data and clan management. A new instance is created
@@ -291,6 +295,7 @@ export function createMcpServer(ctx: AppContext): McpServer {
           description: e.description,
           startsAt: new Date(e.startsAt).toISOString(),
           endsAt: e.endsAt ? new Date(e.endsAt).toISOString() : null,
+          repeats: repeatText(e.repeatDays) || null,
           rsvps: { going: r.going, maybe: r.maybe, declined: r.declined },
           link: e.channelId && e.messageId ? `https://discord.com/channels/${guildId}/${e.channelId}/${e.messageId}` : null,
         };
@@ -303,23 +308,31 @@ export function createMcpServer(ctx: AppContext): McpServer {
     {
       title: 'Create clan event',
       description:
-        'Schedules a clan event and posts it with RSVP buttons. Attendees get a reminder 15 minutes before it starts. Posts publicly in Discord.',
+        'Schedules a clan event and posts it with RSVP buttons. Attendees get a reminder 15 minutes before it starts. Posts publicly in Discord. With `repeat` it is posted again (fresh RSVP buttons, same time of day in the clan time zone) each time a round is over, until set_event_repeat or cancel_event stops it.',
       inputSchema: {
         title: z.string().min(1).max(200),
         starts_at: z.string().describe('ISO-8601 time with zone (e.g. "2026-11-02T20:00:00Z") or relative like "2h", "1d 4h"'),
         ends_at: z.string().optional().describe('Optional end: a length after the start ("2h", "90m") or a time like starts_at ("2026-11-02T22:00:00Z"). At most 30 days long.'),
         description: z.string().max(2000).optional(),
         channel_id: snowflake.optional().describe('Defaults to the configured announcements channel'),
+        repeat: z.enum(REPEAT_NAMES).optional().describe('Post it again once it is over. Leave out for an event that happens once.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    tool(async ({ title, starts_at, ends_at, description, channel_id }) => {
+    tool(async ({ title, starts_at, ends_at, description, channel_id, repeat }) => {
       const startsAt = parseWhen(starts_at);
       if (startsAt === null) throw new UserError(`Could not parse starts_at "${starts_at}".`);
       const endsAt = ends_at ? parseEnd(ends_at, startsAt) : null;
       if (ends_at && endsAt === null) throw new UserError(`Could not parse ends_at "${ends_at}".`);
-      const event = await createClanEvent(ctx, { title, description, startsAt, endsAt, createdBy: client.user!.id, channelId: channel_id });
-      return { id: event.id, title: event.title, startsAt: new Date(event.startsAt).toISOString(), endsAt: event.endsAt ? new Date(event.endsAt).toISOString() : null, link: `https://discord.com/channels/${guildId}/${event.channelId}/${event.messageId}` };
+      const event = await createClanEvent(ctx, { title, description, startsAt, endsAt, createdBy: client.user!.id, channelId: channel_id, repeatDays: repeat ? REPEAT_BY_NAME[repeat] : null });
+      return {
+        id: event.id,
+        title: event.title,
+        startsAt: new Date(event.startsAt).toISOString(),
+        endsAt: event.endsAt ? new Date(event.endsAt).toISOString() : null,
+        repeats: repeatText(event.repeatDays) || null,
+        link: `https://discord.com/channels/${guildId}/${event.channelId}/${event.messageId}`,
+      };
     }),
   );
 
@@ -327,13 +340,29 @@ export function createMcpServer(ctx: AppContext): McpServer {
     'cancel_event',
     {
       title: 'Cancel clan event',
-      description: 'Marks a clan event as cancelled and updates its Discord post.',
-      inputSchema: { event_id: z.number().int().positive() },
+      description:
+        'Marks a clan event as cancelled and updates its Discord post. For a repeating event this cancels one round only (the next one is still posted when its time has passed); stop_series also ends the repetition.',
+      inputSchema: { event_id: z.number().int().positive(), stop_series: z.boolean().optional().describe('Also stop a repeating event from being posted again') },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
-    tool(async ({ event_id }) => {
-      const e = await cancelClanEvent(ctx, event_id);
-      return { id: e.id, title: e.title, cancelled: e.cancelled };
+    tool(async ({ event_id, stop_series }) => {
+      const e = await cancelClanEvent(ctx, event_id, { stopSeries: stop_series ?? false });
+      return { id: e.id, title: e.title, cancelled: e.cancelled, repeats: repeatText(e.repeatDays) || null };
+    }),
+  );
+
+  server.registerTool(
+    'set_event_repeat',
+    {
+      title: 'Change how a clan event repeats',
+      description:
+        'Makes an existing clan event repeat, changes how often, or stops it ("never"). The change is made on the newest round of its series, which is the one returned; that post is redrawn. Nothing new is posted by this call: the next round follows once the current one is over.',
+      inputSchema: { event_id: z.number().int().positive(), repeat: z.enum(['never', ...REPEAT_NAMES]) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    tool(async ({ event_id, repeat }) => {
+      const e = await setClanEventRepeat(ctx, event_id, repeat === 'never' ? null : REPEAT_BY_NAME[repeat]);
+      return { id: e.id, title: e.title, startsAt: new Date(e.startsAt).toISOString(), repeats: repeatText(e.repeatDays) || null };
     }),
   );
 

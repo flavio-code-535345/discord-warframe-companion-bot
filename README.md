@@ -45,7 +45,7 @@ of chatter that names no wiki page. It needs the Message Content intent: enable 
 | `/alecaframe link · stats · relics · unlink` | Link your own AlecaFrame stats (opt-in, see below) |
 | `/track reward · notable · fissure · cycle · baro · arbitration · sortie · archon · weekly · events · squads · price · list · remove` | Personal DM notifications (Ordis pings no role): a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), any alert or invasion worth running, fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a new clan event, a new squad (all of them or one activity), a market price dropping. The same DMs can be set up from each World State board's menu and the roles panel |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
-| `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons, an optional end, a matching Discord scheduled event, a DM to the members who asked for new events and a reminder ping 15 min before start |
+| `/event create · list · cancel · repeat` | Clan events with ✅ / 🤔 / ❌ RSVP buttons, an optional end, a matching Discord scheduled event, a DM to the members who asked for new events and a reminder ping 15 min before start. `repeat:` makes it a clan night: every day, week, 2 weeks or 4 weeks it is posted again with fresh RSVP buttons once the last round is over, at the same time of day in the clan time zone. `/event cancel` takes one round off, `/event cancel series:True` or `/event repeat every:Never` ends the series |
 | `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; the members who asked for squads get a DM with a link, and the squad's own members are pinged when it is full. With squad voice on, it also gets its own voice channel |
 | `/activity set · clear · list` | (Manage Server) a picture and a fixed channel for each LFG activity |
 | `/giveaway start · end · reroll · list` | A giveaway with an Enter button and 1–10 winners, drawn when it ends |
@@ -217,7 +217,8 @@ typing a command. The Arbitration schedule and tiers come from [browse.wf](https
 warframestat.us); Digital Extremes' servers are never called.
 
 A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it),
-game news from the in-game news panel and Warframe's Steam announcements (`/setup news`), the active promo codes from the
+game news from the in-game news panel and Warframe's Steam announcements, plus a post whenever prime sets and their relics
+are vaulted, come back or are new (`/setup news`), the active promo codes from the
 wiki (`/setup promos`) and birthday wishes (`/setup birthdays`).
 
 **When a channel Ordis uses is deleted**, he says so in the staff channel (`/setup status`, else the mod log): which
@@ -245,6 +246,10 @@ Slash commands are registered to that server automatically on startup. Then run 
 `assets/clan-logo.png` as its avatar. It only sends a change when something differs, because Discord allows just
 a couple of changes per hour. To change the logo, replace that file and ship a new image. The application name in
 the Developer Portal (General Information → Name) is separate: set it to `Cephalon Ordis` there too.
+
+**Clan time zone:** `CLAN_TIMEZONE` (default `UTC`; also on the panel's Config page, under Identity) is a zone name such as
+`Europe/Berlin`. A repeating event keeps its time of day in that zone when the clocks change; with `UTC` it would move by
+an hour for everyone twice a year. Event times themselves are still typed in UTC.
 
 ## 2. Configure
 
@@ -310,7 +315,7 @@ npm run dev
 | Settings | Every channel (World State boards, chat, mod and audit logs, welcome, weekly, news, …) and the LFG activities |
 | Announce | Write and post an announcement, optionally pinging a role |
 | Messages | Edit the text of any message Ordis wrote |
-| Events | Create clan events (posted with RSVP buttons) and cancel them |
+| Events | Create clan events (posted with RSVP buttons), make them repeat, cancel a round or stop a series |
 | Members | Roster and warnings: remove members, clear warnings |
 | Backups | Take, download and delete server backups (restoring stays in Discord with `/backup load`); the nightly copies of Ordis's database, "Copy now", and a download for owners |
 | Screenshots | Try the screenshot-roles readers (OCR, the local model, the cloud model) on a picture, without giving any roles |
@@ -357,7 +362,7 @@ Cloudflare Access if your event titles are private.
 | `grade_riven`, `find_rivens`, `riven_top_rolls`, `riven_status`, `riven_table_check` | Rivens (read-only) |
 | `get_clan_overview`, `list_clan_members`, `list_channels_and_roles`, `get_server_structure`, `read_messages`, `list_events`, `list_self_roles`, `list_activities`, `list_inactive_members`, `list_member_levels`, `list_backups` | Clan & Discord info (read-only) |
 | `get_bot_health`, `get_ai_log`, `test_answer` | Ordis's health and answers (read-only) |
-| `create_event`, `cancel_event`, `send_announcement`, `post_message`, `edit_message`, `delete_message`, `clear_messages`, `post_roles_panel`, `send_weekly_now`, `test_welcome` | Post to Discord |
+| `create_event`, `cancel_event`, `set_event_repeat`, `send_announcement`, `post_message`, `edit_message`, `delete_message`, `clear_messages`, `post_roles_panel`, `send_weekly_now`, `test_welcome` | Post to Discord |
 | `register_member`, `remove_member`, `set_member_level`, `set_self_role`, `set_activity`, `remove_activity`, `update_bot_settings` | Clan roster and settings |
 | `create_category`, `create_channel`, `edit_channel`, `set_channel_permissions`, `archive_channel`, `create_role`, `edit_role`, `delete_role`, `edit_server`, `create_backup` | Server admin (channels are archived, never deleted) |
 | `update_bot`, `restart_bot` | Pull a new image now, or restart |

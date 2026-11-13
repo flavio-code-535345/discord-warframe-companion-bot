@@ -298,6 +298,31 @@ test('the Events page offers an optional end time and shows it for a timed event
   assert.match(decodeURIComponent((bad.headers.get('location') ?? '').replace(/[+]/g, ' ')), /Could not read the end time/);
 });
 
+test('the Events page sets how often an event repeats and stops a series', async () => {
+  const { cookie } = sessionCookie(OWNER);
+  const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
+  const start = Date.now() + 2 * 3_600_000;
+  const weekly = store.createEvent({ guildId: GUILD, title: 'Clan night', description: null, startsAt: start, createdBy: 'u1', repeatDays: 7 });
+  const page = await (await get('/admin/events', cookie)).text();
+  assert.match(page, /<select name="repeat"><option value="">— no, only once —<\/option><option value="1">Every day<\/option><option value="7">Every week<\/option><option value="14">Every 2 weeks<\/option><option value="28">Every 4 weeks<\/option><\/select>/);
+  assert.match(page, /at the same time of day in UTC/);
+  assert.ok(page.includes(`action="/admin/events/${weekly.id}/repeat"`), 'a repeating event can be told to stop');
+  assert.match(page, /<span class="badge info">every week<\/span>/);
+
+  // A rhythm that is not offered is refused before anything is posted.
+  const nextMonth = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 16);
+  const bad = await post('/admin/events', { title: 'x', when: nextMonth, repeat: '3', _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(bad), /every day, every week, every 2 weeks or every 4 weeks/);
+
+  const stopped = await post(`/admin/events/${weekly.id}/repeat`, { _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(stopped), new RegExp(`ok=Event #${weekly.id} no longer repeats\\.`));
+  assert.equal(store.getEvent(weekly.id)!.repeatDays, null);
+  const again = await post(`/admin/events/${weekly.id}/repeat`, { _csrf: 'csrf-token' }, cookie);
+  assert.match(flash(again), /does not repeat/);
+  assert.ok(!(await (await get('/admin/events', cookie)).text()).includes(`action="/admin/events/${weekly.id}/repeat"`));
+  store.cancelEvent(weekly.id);
+});
+
 test('the Overview shows the jobs, the boards and where every feature posts', async () => {
   // The overview reads the paced world state; keep this test off the network.
   configureWorldState({ enabled: false });

@@ -85,14 +85,22 @@ export function isOver(event: Pick<ClanEvent, 'startsAt' | 'endsAt'>, now = Date
   return event.endsAt !== null ? event.endsAt <= now : event.startsAt < now - 3_600_000;
 }
 
-/** The "When" line: the start, and the end when there is one ("Ends ..." while it runs, "Ended" afterwards). */
-export function whenText(event: Pick<ClanEvent, 'startsAt' | 'endsAt'>, now = Date.now()): string {
+/** How often an event may repeat, in days. A round is posted once the one before it is over (discord/event-repeat.ts). */
+export const REPEAT_DAYS = [1, 7, 14, 28] as const;
+const REPEAT_TEXT: Record<number, string> = { 1: 'every day', 7: 'every week', 14: 'every 2 weeks', 28: 'every 4 weeks' };
+export const isRepeatDays = (days: unknown): days is (typeof REPEAT_DAYS)[number] => (REPEAT_DAYS as readonly unknown[]).includes(days);
+/** "every week" for 7; an empty string for an event that happens once. */
+export const repeatText = (days: number | null | undefined): string => (isRepeatDays(days) ? REPEAT_TEXT[days]! : '');
+
+/** The "When" line: the start, the end when there is one ("Ends ..." while it runs, "Ended" afterwards) and how often it repeats. */
+export function whenText(event: Pick<ClanEvent, 'startsAt' | 'endsAt'> & { repeatDays?: number | null }, now = Date.now()): string {
   const start = `${discordTime(event.startsAt, 'F')} (${discordTime(event.startsAt)})`;
-  if (event.endsAt === null) return start;
+  const repeats = repeatText(event.repeatDays) ? `\n🔁 Repeats ${repeatText(event.repeatDays)}` : '';
+  if (event.endsAt === null) return `${start}${repeats}`;
   const end = `${discordTime(event.endsAt, 'F')}`;
-  if (event.endsAt <= now) return `${start}\nEnded ${end}`;
-  if (event.startsAt <= now) return `🟢 **Happening now**\n${start}\nEnds ${discordTime(event.endsAt)} (${end})`;
-  return `${start}\nEnds ${end} (${discordTime(event.endsAt)})`;
+  if (event.endsAt <= now) return `${start}\nEnded ${end}${repeats}`;
+  if (event.startsAt <= now) return `🟢 **Happening now**\n${start}\nEnds ${discordTime(event.endsAt)} (${end})${repeats}`;
+  return `${start}\nEnds ${end} (${discordTime(event.endsAt)})${repeats}`;
 }
 
 export function renderEvent(ctx: AppContext, event: ClanEvent): Pick<MessageCreateOptions, 'embeds' | 'components'> {
@@ -126,10 +134,21 @@ export interface CreateEventInput {
   endsAt?: number | null;
   createdBy: string;
   channelId?: string | null;
+  /** Post it again this many days later, once it is over: one of REPEAT_DAYS. */
+  repeatDays?: number | null;
+  /** The round of a repeating event that this one follows (set by discord/event-repeat.ts). */
+  after?: ClanEvent | null;
 }
 
 /** A clan event further away than this is a typo (an offset of 99999999 days would otherwise break every page that prints its date). */
 const MAX_EVENT_AHEAD_MS = 2 * 365 * 86_400_000;
+
+/** What `repeatDays` may be for an event of this length: one of REPEAT_DAYS, and the event is over before its next round starts. */
+function checkRepeat(days: number | null, startsAt: number, endsAt: number | null): void {
+  if (days === null) return;
+  if (!isRepeatDays(days)) throw new UserError('An event can repeat every day, every week, every 2 weeks or every 4 weeks.');
+  if (endsAt !== null && endsAt - startsAt >= days * 86_400_000) throw new UserError(`An event that repeats ${repeatText(days)} must be over before its next round starts. Shorten it or let it repeat less often.`);
+}
 
 export async function createClanEvent(ctx: AppContext, input: CreateEventInput): Promise<ClanEvent> {
   if (!Number.isFinite(input.startsAt) || input.startsAt <= Date.now()) throw new UserError('The event start time must be in the future.');
@@ -139,6 +158,8 @@ export async function createClanEvent(ctx: AppContext, input: CreateEventInput):
     if (!Number.isFinite(endsAt) || endsAt <= input.startsAt) throw new UserError('The event must end after it starts.');
     if (endsAt - input.startsAt > MAX_EVENT_LENGTH_MS) throw new UserError('An event can last at most 30 days. Check the end time.');
   }
+  const repeatDays = input.repeatDays ?? null;
+  checkRepeat(repeatDays, input.startsAt, endsAt);
   const channel = await resolveAnnouncementChannel(ctx, input.channelId);
   const event = ctx.store.createEvent({
     guildId: ctx.config.DISCORD_GUILD_ID,
@@ -147,8 +168,17 @@ export async function createClanEvent(ctx: AppContext, input: CreateEventInput):
     startsAt: input.startsAt,
     endsAt,
     createdBy: input.createdBy,
+    repeatDays,
+    after: input.after ?? null,
   });
-  const message = await channel.send({ ...renderEvent(ctx, event), allowedMentions: { parse: [] } });
+  let message;
+  try {
+    message = await channel.send({ ...renderEvent(ctx, event), allowedMentions: { parse: [] } });
+  } catch (err) {
+    // An event nobody can see is no event: without this it would sit in the list, and a repeating one would count as posted.
+    ctx.store.deleteEvent(event.id);
+    throw err;
+  }
   ctx.store.setEventMessage(event.id, channel.id, message.id);
   const link = `https://discord.com/channels/${ctx.config.DISCORD_GUILD_ID}/${channel.id}/${message.id}`;
   ctx.store.setDiscordEventId(event.id, await createDiscordEvent(ctx, event, link));
@@ -199,14 +229,50 @@ export async function refreshEventMessage(ctx: AppContext, eventId: number): Pro
   await message?.edit(renderEvent(ctx, event));
 }
 
-export async function cancelClanEvent(ctx: AppContext, eventId: number): Promise<ClanEvent> {
+/** The newest round of the series an event belongs to (the event itself when nothing was posted after it). */
+export function newestRound(ctx: Pick<AppContext, 'store'>, event: ClanEvent): ClanEvent {
+  let newest = event;
+  // A chain is as long as the series has run; the bound only guards against a loop in the data.
+  for (let i = 0; i < 10_000 && newest.nextId !== null; i++) {
+    const next = ctx.store.getEvent(newest.nextId);
+    if (!next) break;
+    newest = next;
+  }
+  return newest;
+}
+
+/**
+ * Cancels one event. For a repeating event that is this round only: the next one is still posted when this one's time has passed.
+ * `stopSeries` also ends the repetition, so nothing follows.
+ */
+export async function cancelClanEvent(ctx: AppContext, eventId: number, opts: { stopSeries?: boolean } = {}): Promise<ClanEvent> {
   const event = ctx.store.getEvent(eventId);
   if (!event || event.guildId !== ctx.config.DISCORD_GUILD_ID) throw new UserError(`Event #${eventId} does not exist.`);
   if (event.cancelled) throw new UserError(`Event #${eventId} is already cancelled.`);
   ctx.store.cancelEvent(eventId);
+  if (opts.stopSeries) {
+    const newest = newestRound(ctx, event);
+    ctx.store.setEventRepeat(newest.id, null);
+    if (newest.id !== eventId) await refreshEventMessage(ctx, newest.id).catch(() => {});
+  }
   await refreshEventMessage(ctx, eventId);
   await deleteDiscordEvent(ctx, event);
   return ctx.store.getEvent(eventId)!;
+}
+
+/**
+ * Changes how often an event repeats, or stops it (null). It is the newest round of a series that carries the repetition on, so the
+ * change is made there: the returned event is that round, which may be a later one than the event asked for.
+ */
+export async function setClanEventRepeat(ctx: AppContext, eventId: number, days: number | null): Promise<ClanEvent> {
+  const asked = ctx.store.getEvent(eventId);
+  if (!asked || asked.guildId !== ctx.config.DISCORD_GUILD_ID) throw new UserError(`Event #${eventId} does not exist.`);
+  const event = newestRound(ctx, asked);
+  checkRepeat(days, event.startsAt, event.endsAt);
+  if (event.repeatDays === days) throw new UserError(days === null ? `Event #${event.id} does not repeat.` : `Event #${event.id} already repeats ${repeatText(days)}.`);
+  ctx.store.setEventRepeat(event.id, days);
+  await refreshEventMessage(ctx, event.id).catch((err) => console.warn(`[events] could not redraw event #${event.id}:`, (err as Error).message));
+  return ctx.store.getEvent(event.id)!;
 }
 
 // --- announcements ---

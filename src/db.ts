@@ -260,6 +260,12 @@ export interface ClanEvent {
   ended: boolean;
   /** The matching native Discord scheduled event, if one could be created. */
   discordEventId: string | null;
+  /** Posted again this many days later once it is over (1, 7, 14 or 28); null for an event that happens once. */
+  repeatDays: number | null;
+  /** The first event of the series this one belongs to (itself for the first); null for an event that never repeated. */
+  seriesId: number | null;
+  /** The round that was posted after this one. */
+  nextId: number | null;
 }
 
 export interface LfgPost {
@@ -772,6 +778,14 @@ const MIGRATIONS: string[] = [
   ALTER TABLE activities DROP COLUMN role_id;
   ALTER TABLE guild_settings ADD COLUMN lfg_channel_id TEXT;
   `,
+  // Repeating events: `repeat_days` (1, 7, 14 or 28; NULL = once) is carried from one round to the next, `series_id` is the first
+  // event of the series (its start is what every later round is counted from) and `next_id` the round posted after this one, so a
+  // round is never posted twice.
+  `
+  ALTER TABLE events ADD COLUMN repeat_days INTEGER;
+  ALTER TABLE events ADD COLUMN series_id INTEGER;
+  ALTER TABLE events ADD COLUMN next_id INTEGER;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -809,6 +823,9 @@ function toEvent(r: Row): ClanEvent {
     cancelled: Boolean(r.cancelled),
     ended: Boolean(r.ended),
     discordEventId: str(r.discord_event_id),
+    repeatDays: num(r.repeat_days),
+    seriesId: num(r.series_id),
+    nextId: num(r.next_id),
   };
 }
 
@@ -986,11 +1003,52 @@ export class Store {
 
   // --- events ---
 
-  createEvent(e: Pick<ClanEvent, 'guildId' | 'title' | 'description' | 'startsAt' | 'createdBy'> & { endsAt?: number | null }): ClanEvent {
-    const res = this.db
-      .prepare('INSERT INTO events (guild_id, title, description, starts_at, ends_at, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(e.guildId, e.title, e.description, e.startsAt, e.endsAt ?? null, e.createdBy);
-    return this.getEvent(Number(res.lastInsertRowid))!;
+  /**
+   * `repeatDays` makes it a repeating event. `after` is the round it follows: that one then points at it (`nextId`) and it joins the
+   * same series; without `after` a repeating event starts a series of its own. One transaction, so a round is linked or not there.
+   */
+  createEvent(
+    e: Pick<ClanEvent, 'guildId' | 'title' | 'description' | 'startsAt' | 'createdBy'> & { endsAt?: number | null; repeatDays?: number | null; after?: Pick<ClanEvent, 'id' | 'seriesId'> | null },
+  ): ClanEvent {
+    this.db.exec('BEGIN');
+    try {
+      const res = this.db
+        .prepare('INSERT INTO events (guild_id, title, description, starts_at, ends_at, created_by, repeat_days, series_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(e.guildId, e.title, e.description, e.startsAt, e.endsAt ?? null, e.createdBy, e.repeatDays ?? null, e.after ? (e.after.seriesId ?? e.after.id) : null);
+      const id = Number(res.lastInsertRowid);
+      if (e.after) this.db.prepare('UPDATE events SET next_id = ? WHERE id = ?').run(id, e.after.id);
+      else if (e.repeatDays) this.db.prepare('UPDATE events SET series_id = id WHERE id = ?').run(id);
+      this.db.exec('COMMIT');
+      return this.getEvent(id)!;
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
+  /** Removes an event that could not be posted, with its RSVPs; the round before it is free to be followed again. */
+  deleteEvent(id: number): void {
+    this.db.prepare('UPDATE events SET next_id = NULL WHERE next_id = ?').run(id);
+    this.db.prepare('DELETE FROM events WHERE id = ?').run(id);
+  }
+
+  /** Sets or clears (null) how often an event repeats. An event that starts repeating becomes the first of its own series. */
+  setEventRepeat(id: number, days: number | null): void {
+    this.db.prepare('UPDATE events SET repeat_days = ?, series_id = CASE WHEN ? IS NOT NULL THEN COALESCE(series_id, id) ELSE series_id END WHERE id = ?').run(days, days, id);
+  }
+
+  /**
+   * Repeating events that are over (past their end, or an hour past their start without one) and have no next round yet. A cancelled
+   * round counts too: cancelling one evening does not end the series.
+   */
+  eventsDueToRepeat(guildId: string, now: number): ClanEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM events WHERE guild_id = ? AND repeat_days IS NOT NULL AND next_id IS NULL
+         AND ((ends_at IS NOT NULL AND ends_at <= ?) OR (ends_at IS NULL AND starts_at < ?)) ORDER BY starts_at`,
+      )
+      .all(guildId, now, now - 3_600_000) as Row[];
+    return rows.map(toEvent);
   }
 
   getEvent(id: number): ClanEvent | null {
