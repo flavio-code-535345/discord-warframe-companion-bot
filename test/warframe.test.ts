@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { groupDrops } from '../src/warframe/drops.js';
 import { searchItems } from '../src/warframe/market.js';
-import { type Fissure, type WorldState, filterFissures, isNotableReward, rewardText } from '../src/warframe/worldstate.js';
+import { type Fissure, filterFissures, isNotableReward, rewardText } from '../src/warframe/worldstate.js';
 
 test('searchItems ranks exact, prefix, word-prefix, then substring matches', () => {
   const items = [

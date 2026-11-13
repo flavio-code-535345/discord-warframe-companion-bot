@@ -6,9 +6,9 @@ import type { FeedId } from './types.js';
 
 /**
  * The controls under the boards: each board has a "DM me when…" menu with the notifications that fit it (custom ID
- * `feeds:track:<feed>`), a "My notifications" button (`feeds:mine`, an ephemeral list with a menu to remove them) and, where the
- * feed pings a role that is in the self-assign menu, that role's toggle (`roles:<roleId>`, the same handler as the roles panel).
- * Every answer is ephemeral. The IDs carry no state, so they keep working after a restart.
+ * `feeds:track:<feed>`) and a "My notifications" button (`feeds:mine`, an ephemeral list with a menu to remove them). The notifications
+ * that are a plain on/off have a toggle button (`notify:<key>`, `TOGGLES`). Ordis pings no role: every notification is a DM a member
+ * asked for. Every answer is ephemeral. The IDs carry no state, so they keep working after a restart.
  */
 
 export interface TrackOption {
@@ -95,6 +95,14 @@ export const TRACK_OPTIONS: TrackOption[] = [
   { value: 'baro', feeds: ['traders'], label: "Baro Ki'Teer", description: 'A DM when Baro arrives at a relay', emoji: 'baro', spec: { kind: 'baro' } },
   { value: 'umbra-forma', feeds: ['traders', 'alerts'], label: 'Umbra Forma', description: "In Teshin's honors, alerts, invasions and events", emoji: 'forma', spec: { kind: 'reward', keyword: 'Umbra Forma' } },
 
+  {
+    value: 'notable',
+    feeds: REWARD_FEEDS,
+    label: 'Anything worth running',
+    description: 'Alerts and invasions that pay Forma, Catalysts, Nitain, rare parts…',
+    emoji: 'star',
+    spec: { kind: 'notable' },
+  },
   reward('forma', 'Forma', 'Forma', 'forma'),
   reward('catalyst', 'Orokin Catalyst / Reactor', 'Orokin', 'catalyst'),
   reward('exilus', 'Exilus Adapter', 'Exilus', 'exilus'),
@@ -124,15 +132,47 @@ export function notifyRow(feed: FeedId, placeholder = '🔔 DM me when…'): Row
 
 export const mineButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('feeds:mine').setLabel('My notifications').setEmoji('📋').setStyle(ButtonStyle.Secondary);
 
-/** `weekly:toggle` (handled in weekly.ts): turns the member's weekly DM on or off; under the weekly post and on the sortie board. */
-export const weeklyButton = (): ButtonBuilder =>
-  new ButtonBuilder().setCustomId('weekly:toggle').setLabel('Weeklies by DM').setEmoji(emojiFor('weekly')).setStyle(ButtonStyle.Secondary);
+/**
+ * The notifications that are a plain on/off, with nothing to choose: one tap on `notify:<key>` switches the member's DM on or off
+ * (discord/subscriptions.ts). The weekly one sits under the weekly post and on the sortie board; all three are on the roles panel.
+ */
+export const TOGGLES = {
+  weekly: {
+    spec: { kind: 'weekly' },
+    label: 'Weeklies by DM',
+    emoji: 'weekly',
+    on: 'Done: every Monday Ordis DMs you what the reset brought. Tap the button again to stop.',
+    off: 'No more weekly DMs.',
+  },
+  clanEvent: {
+    spec: { kind: 'clanEvent' },
+    label: 'Clan events by DM',
+    emoji: '📅',
+    on: 'Done: Ordis DMs you when a clan event is posted. Tap the button again to stop.',
+    off: 'No more DMs about new clan events.',
+  },
+  squad: {
+    spec: { kind: 'squad' },
+    label: 'Squads by DM',
+    emoji: '🔍',
+    on: 'Done: Ordis DMs you when someone looks for a squad with /lfg. Tap the button again to stop.',
+    off: 'No more DMs about squads.',
+  },
+} as const satisfies Record<string, { spec: TrackerSpec; label: string; emoji: string; on: string; off: string }>;
 
-/** The toggle of a self-assign role (the roles panel's handler). */
-export const roleButton = (roleId: string, label: string, emoji: EmojiName): ButtonBuilder =>
-  new ButtonBuilder().setCustomId(`roles:${roleId}`).setLabel(label).setEmoji(emojiFor(emoji)).setStyle(ButtonStyle.Secondary);
+export type ToggleKey = keyof typeof TOGGLES;
+export const isToggle = (key: string): key is ToggleKey => Object.hasOwn(TOGGLES, key);
 
-/** A row of buttons, or null when none is left (a role that is not in the menu). */
+export function notifyButton(key: ToggleKey): ButtonBuilder {
+  const t = TOGGLES[key];
+  return new ButtonBuilder()
+    .setCustomId(`notify:${key}`)
+    .setLabel(t.label)
+    .setEmoji(key === 'weekly' ? emojiFor('weekly') : { name: t.emoji })
+    .setStyle(ButtonStyle.Secondary);
+}
+
+/** A row of buttons, or null when none is given. */
 export function buttonRow(...buttons: (ButtonBuilder | null | undefined | false)[]): Row | null {
   const list = buttons.filter((b): b is ButtonBuilder => Boolean(b));
   return list.length ? row(...list.slice(0, 5)) : null;

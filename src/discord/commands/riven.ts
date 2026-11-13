@@ -18,7 +18,7 @@ import { rivenReplies } from '../../rivens/reply.js';
 import { type ScanResult, scanCard } from '../../rivens/scan.js';
 import { gradeFor, rivenStatus, topFor } from '../../rivens/service.js';
 import { MAX_RIVEN_WATCHES, RIVEN_WATCH_MS, noteMatches } from '../../rivens/watch.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { withTimeout } from '../../timeout.js';
 import { MAX_TRACKERS_PER_USER, type TrackerSpec, parseSpec } from '../../trackers.js';
 import { searchItems } from '../../warframe/market.js';

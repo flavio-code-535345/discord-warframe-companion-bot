@@ -3,7 +3,7 @@ import { inactivityReport } from '../../activity/service.js';
 import { assertValidBirthday, daysUntil, formatBirthday, MONTHS } from '../../birthdays/service.js';
 import { endGiveaway, rerollGiveaway, startGiveaway } from '../../giveaways/service.js';
 import { addSelfRole, postRolesPanel, removeSelfRole } from '../../selfroles/service.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { discordTime, parseWhen } from '../../time.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';

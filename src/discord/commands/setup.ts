@@ -26,7 +26,7 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
     .addFields(
       {
         name: 'World State boards',
-        value: FEEDS.map((f) => `${f.label}: ${ch(s[f.channel])}${f.role && s[f.role] ? ` · pings <@&${s[f.role]}>` : ''}`).join('\n'),
+        value: FEEDS.map((f) => `${f.label}: ${ch(s[f.channel])}`).join('\n'),
       },
       { name: 'Announcements & events', value: ch(s.announcementsChannelId) },
       {
@@ -44,11 +44,12 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Screenshot roles', value: s.ssRolesChannelId ? `${ch(s.ssRolesChannelId)}` : '*off*' },
       { name: 'Riven scanning', value: s.rivenChannelId ? `${ch(s.rivenChannelId)}` : '*off*' },
       { name: 'Leveling', value: s.levelingOff === 1 ? '*off*' : `on · level-ups ${s.levelChannelId ? `in <#${s.levelChannelId}>` : 'where the member is talking'} · roles "Level N+"` },
-      { name: 'Pings', value: [s.eventsRoleId ? `events <@&${s.eventsRoleId}>` : null, s.lfgRoleId ? `squads <@&${s.lfgRoleId}>` : null].filter(Boolean).join(' · ') || '*none*' },
+      { name: 'Notifications', value: 'DMs only: members pick what they want under the boards, on the roles panel or with `/track`. Ordis pings no role.' },
+      { name: 'Squads channel', value: s.lfgChannelId ? `${ch(s.lfgChannelId)} (for squads started from a board)` : '*not set* (a squad is posted where `/lfg` is used)', inline: true },
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
       { name: 'Promo codes', value: ch(s.promoChannelId), inline: true },
       { name: 'Game news', value: ch(s.newsChannelId), inline: true },
-      { name: 'Weekly reset post', value: `${ch(s.weeklyChannelId)}${s.weeklyRoleId ? ` · DMs <@&${s.weeklyRoleId}>` : ''}`, inline: true },
+      { name: 'Weekly reset post', value: ch(s.weeklyChannelId), inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Ordis chat channel',
@@ -74,9 +75,7 @@ export const setup: Command = {
             .setRequired(true)
             .addChoices(...FEEDS.map((f) => ({ name: f.label, value: f.id }))),
         )
-        .addChannelOption((o) => o.setName('channel').setDescription('A channel only Ordis writes in').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addRoleOption((o) => o.setName('ping_role').setDescription('Pinged for what is new: alerts/invasions (shared), S/A Arbitrations, Baro'))
-        .addBooleanOption((o) => o.setName('no_ping').setDescription("Stop pinging this board's role")),
+        .addChannelOption((o) => o.setName('channel').setDescription('A channel only Ordis writes in').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
     )
     .addSubcommand((s) =>
       s
@@ -170,10 +169,9 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
-        .setName('pings')
-        .setDescription('Roles pinged for new clan events and for /lfg squads (an activity role wins)')
-        .addRoleOption((o) => o.setName('events_role').setDescription('Pinged when a clan event is posted'))
-        .addRoleOption((o) => o.setName('lfg_role').setDescription('Pinged by /lfg when the activity has no role of its own')),
+        .setName('lfg')
+        .setDescription('Channel where squads started from a board (the "Squad up" button) are posted')
+        .addChannelOption((o) => o.setName('channel').setDescription('The squads channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
     )
     .addSubcommand((s) =>
       s
@@ -185,8 +183,7 @@ export const setup: Command = {
       s
         .setName('weekly')
         .setDescription('Where Ordis posts what the Monday reset brought (Archon Hunt, Circuit, Nightwave, Steel Path)')
-        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS))
-        .addRoleOption((o) => o.setName('dm_role').setDescription('Members with this role also get it as a DM')),
+        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
     )
     .addSubcommand((s) =>
       s
@@ -223,7 +220,7 @@ export const setup: Command = {
               { name: 'Leveling', value: 'levels' },
               { name: 'Squad voice channels', value: 'lfgvoice' },
               { name: 'Join-to-create voice', value: 'autovc' },
-              { name: 'Event and LFG pings', value: 'pings' },
+              { name: 'Squads channel', value: 'lfg' },
               { name: 'Birthdays', value: 'birthdays' },
               { name: 'Weekly reset post', value: 'weekly' },
               { name: 'Promo codes', value: 'promos' },
@@ -246,12 +243,7 @@ export const setup: Command = {
         if (!def) throw new UserError('Unknown board.');
         const chan = channelId();
         assertChannelFree(ctx, { [def.channel]: chan });
-        const role = interaction.options.getRole('ping_role')?.id ?? null;
-        const noPing = interaction.options.getBoolean('no_ping') ?? false;
-        if ((role || noPing) && !def.role) throw new UserError(`The ${def.label} board pings nobody, so it takes no role.`);
-        const patch: Partial<GuildSettings> = { [def.channel]: chan };
-        if (def.role && (role || noPing)) patch[def.role] = noPing ? null : role;
-        settings = ctx.store.updateSettings(guildId, patch);
+        settings = ctx.store.updateSettings(guildId, { [def.channel]: chan });
         break;
       }
       case 'announcements':
@@ -270,11 +262,8 @@ export const setup: Command = {
       case 'modlog':
         settings = ctx.store.updateSettings(guildId, { modLogChannelId: channelId() });
         break;
-      case 'pings':
-        settings = ctx.store.updateSettings(guildId, {
-          eventsRoleId: interaction.options.getRole('events_role')?.id ?? null,
-          lfgRoleId: interaction.options.getRole('lfg_role')?.id ?? null,
-        });
+      case 'lfg':
+        settings = ctx.store.updateSettings(guildId, { lfgChannelId: channelId() });
         break;
       case 'birthdays':
         settings = ctx.store.updateSettings(guildId, { birthdayChannelId: channelId() });
@@ -287,7 +276,7 @@ export const setup: Command = {
         break;
       case 'weekly':
         skipCurrentWeek(ctx);
-        settings = ctx.store.updateSettings(guildId, { weeklyChannelId: channelId(), weeklyRoleId: interaction.options.getRole('dm_role')?.id ?? null });
+        settings = ctx.store.updateSettings(guildId, { weeklyChannelId: channelId() });
         break;
       case 'auditlog':
         settings = ctx.store.updateSettings(guildId, { auditLogChannelId: channelId() });
@@ -364,8 +353,8 @@ export const setup: Command = {
           settings = ctx.store.updateSettings(guildId, { lfgVoiceCategoryId: null, lfgVoiceGraceMinutes: null });
           break;
         }
-        if (feature === 'pings') {
-          settings = ctx.store.updateSettings(guildId, { eventsRoleId: null, lfgRoleId: null });
+        if (feature === 'lfg') {
+          settings = ctx.store.updateSettings(guildId, { lfgChannelId: null });
           break;
         }
         if (feature === 'birthdays') {
@@ -381,7 +370,7 @@ export const setup: Command = {
           break;
         }
         if (feature === 'weekly') {
-          settings = ctx.store.updateSettings(guildId, { weeklyChannelId: null, weeklyRoleId: null });
+          settings = ctx.store.updateSettings(guildId, { weeklyChannelId: null });
           break;
         }
         if (feature === 'levels') {

@@ -217,7 +217,7 @@ export function createMcpServer(ctx: AppContext): McpServer {
           announcements: settings.announcementsChannelId,
           welcome: settings.welcomeChannelId,
         },
-        worldStateBoards: Object.fromEntries(FEEDS.map((f) => [f.id, { channel: settings[f.channel], pingRole: f.role ? settings[f.role] : null }])),
+        worldStateBoards: Object.fromEntries(FEEDS.map((f) => [f.id, { channel: settings[f.channel] }])),
         upcomingEvents: store.upcomingEvents(guildId).slice(0, 5).map((e) => ({ id: e.id, title: e.title, startsAt: new Date(e.startsAt).toISOString() })),
       };
     }),

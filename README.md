@@ -43,20 +43,20 @@ of chatter that names no wiki page. It needs the Message Content intent: enable 
 | `/wf cycles · fissures · sortie · archon · baro · steelpath · invasions · nightwave · deals · events · archimedea · bounties · resurgence` | Live world state, including Darvo's deal, events, Deep/Temporal Archimedea, syndicate bounties and Varzia's Prime Resurgence |
 | `/riven grade · scan · find · watch · top · status` | Grade a riven from its stats or a screenshot, list the cheapest matching rivens for sale, get a DM when one is listed below your price |
 | `/alecaframe link · stats · relics · unlink` | Link your own AlecaFrame stats (opt-in, see below) |
-| `/track reward · fissure · cycle · baro · arbitration · sortie · archon · weekly · price · list · remove` | Personal DM alerts: a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a market price dropping. The same DMs can be set up from each World State board's menu |
+| `/track reward · notable · fissure · cycle · baro · arbitration · sortie · archon · weekly · events · squads · price · list · remove` | Personal DM notifications (Ordis pings no role): a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), any alert or invasion worth running, fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a new clan event, a new squad (all of them or one activity), a market price dropping. The same DMs can be set up from each World State board's menu and the roles panel |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
-| `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons, an optional end, a matching Discord scheduled event and a reminder ping 15 min before start |
-| `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; pings everyone when full. With squad voice on, it also gets its own voice channel |
-| `/activity set · clear · list` | (Manage Server) a picture, ping role and fixed channel for each LFG activity |
+| `/event create · list · cancel` | Clan events with ✅ / 🤔 / ❌ RSVP buttons, an optional end, a matching Discord scheduled event, a DM to the members who asked for new events and a reminder ping 15 min before start |
+| `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; the members who asked for squads get a DM with a link, and the squad's own members are pinged when it is full. With squad voice on, it also gets its own voice channel |
+| `/activity set · clear · list` | (Manage Server) a picture and a fixed channel for each LFG activity |
 | `/giveaway start · end · reroll · list` | A giveaway with an Enter button and 1–10 winners, drawn when it ends |
 | `/birthday set · remove · list` | Ordis wishes you a happy birthday on the day (only day and month are stored) |
 | `/rank` · `/leaderboard` · `/xp` | Levels from chat and voice, with Level roles; staff can give XP, set levels and ignore channels |
-| `/roles add · remove · post · list` | (Manage Roles) a self-assign panel with one button per role |
+| `/roles add · remove · post · list` | (Manage Roles) a self-assign panel with one button per role (platform, region, …); its last row switches the clan event, squad and weekly DMs on and off |
 | `/sticky set · edit · remove · list` | (Manage Messages) a message Ordis keeps at the bottom of a channel |
 | `/vc rename · limit · lock · unlock` | Change your own join-to-create voice room |
 | `/inactive [days]` | (Kick Members) members who haven't written or talked in a while |
 | `/ailog [count] [member]` | (Manage Messages) the latest questions Ordis answered |
-| `/setup …` | (Manage Server) choose channels: `feed board: channel: [ping_role]` puts one World State board in a channel; also chat, announcements, welcome, modlog, auditlog, status, honeypot, ssroles, rivens, levels, weekly, news, promos, birthdays, pings, autovc and lfgvoice, plus `off` and `show` |
+| `/setup …` | (Manage Server) choose channels: `feed board: channel:` puts one World State board in a channel; also chat, announcements, welcome, modlog, auditlog, status, honeypot, ssroles, rivens, levels, weekly, news, promos, birthdays, lfg, autovc and lfgvoice, plus `off` and `show` |
 
 ### Moderation
 
@@ -85,8 +85,8 @@ squad's voice channel is deleted as soon as it is empty, so nobody is kicked mid
 squad with voice at a time. The upkeep runs once a minute and survives restarts. `/setup off feature:Squad voice channels`
 turns it off.
 
-`/activity set name [image] [role] [channel]` gives an activity (any name, the suggestions in `/lfg` are only hints) a
-**picture** shown on its squad posts, a **role** pinged when the squad is posted, and a **fixed channel** to post in. Use a
+`/activity set name [image] [channel]` gives an activity (any name, the suggestions in `/lfg` are only hints) a
+**picture** shown on its squad posts and a **fixed channel** to post in. Nobody is pinged: the members who asked for squads (`/track squads`, or the button on the roles panel) get a DM with a link to the post. Use a
 direct `https` link to an image. `/activity clear` removes a setting, and `/activity list` shows everything. The same
 settings are in the admin panel (Settings page) and the `set_activity`, `list_activities` and `remove_activity` MCP tools.
 
@@ -181,21 +181,21 @@ when `ENABLE_MESSAGE_CONTENT=true`, with the last 50 messages per channel.
 Each World State channel holds one live board that Ordis keeps up to date (`/setup feed`, or the admin panel's Settings
 page). Only the messages that changed are edited, so the channels stay quiet:
 
-| Board | What it shows | Pings |
+| Board | What it shows | DMs its menu offers |
 | --- | --- | --- |
-| Alerts | Alerts with reward, node and levels; events with progress and interim rewards; Nightwave | The alerts role, for a reward worth a detour (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …) |
-| Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead | The Arbitrations role, 10 minutes before an S or A tier hour |
-| Fissures | Normal, Steel Path and Void Storms, by relic tier | — |
-| Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | — |
-| Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | — |
-| Traders | Baro Ki'Teer's whole inventory with ducats and credits and, within minutes of his arrival, what each item sells for on warframe.market (plat per ducat, the best resale); Darvo's deal, Varzia's Prime Resurgence, Teshin | The Baro role, when he arrives |
-| Invasions | Every invasion with both rewards and its progress | The alerts role, for a notable reward |
+| Alerts | Alerts with reward, node and levels; events with progress and interim rewards; Nightwave | Anything worth running (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …), or one reward by name |
+| Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead | A tier or better (S, A, B) or a mission type, 10 minutes before the hour starts |
+| Fissures | Normal, Steel Path and Void Storms, by relic tier | Steel Path by tier, Void Storms, Omnia and Requiem, quick missions (Capture, Extermination, …) |
+| Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | The daily sortie (or only one with a mission type), the Archon Hunt, the weekly reset summary |
+| Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | A state starting: Cetus night, a warm Orb Vallis, Fass or Vome, … |
+| Traders | Baro Ki'Teer's whole inventory with ducats and credits and, within minutes of his arrival, what each item sells for on warframe.market (plat per ducat, the best resale); Darvo's deal, Varzia's Prime Resurgence, Teshin | Baro's arrival, Umbra Forma |
+| Invasions | Every invasion with both rewards and its progress | Anything worth running, or one reward by name |
 
-Every board has a **🔔 DM me when…** menu and a **My notifications** button, so members can set up their own DMs without
+**Ordis pings no role.** Every notification is a DM a member asked for: from a board's **🔔 DM me when…** menu, with `/track`, or with the three buttons on the roles panel (clan events, squads, the weekly reset). **My notifications** lists and removes them, so members can set up their own DMs without
 typing a command. The Arbitration schedule and tiers come from [browse.wf](https://browse.wf) (the world state itself from
 warframestat.us); Digital Extremes' servers are never called.
 
-A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to the Weeklies role),
+A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it),
 game news from the in-game news panel and Warframe's Steam announcements (`/setup news`), the active promo codes from the
 wiki (`/setup promos`) and birthday wishes (`/setup birthdays`).
 
@@ -209,7 +209,7 @@ notifications), warframestat.us (item and drop data) and the wiki.
    Only if you want welcome messages: enable **Server Members Intent** there and set `ENABLE_WELCOME=true`.
 3. Invite it to the clan server (replace `APP_ID` with the Application ID from **General Information**):
    `https://discord.com/oauth2/authorize?client_id=APP_ID&scope=bot+applications.commands&permissions=84992`
-   (View Channels, Send Messages, Embed Links, Read Message History). To ping a role that isn't
+   (View Channels, Send Messages, Embed Links, Read Message History). To let an announcement ping a role that isn't
    "mentionable", also give the bot **Mention @everyone, @here, and All Roles**.
 4. Copy the server ID (Discord settings → Advanced → Developer Mode, then right-click the server) into `DISCORD_GUILD_ID`.
 
@@ -281,7 +281,7 @@ npm run dev
 | Page | What you can do |
 | --- | --- |
 | Overview | Health at a glance: the bot, every background job, the world state, each World State board, members, the next event, the latest backup, and where every feature posts |
-| Settings | Every channel and ping role (World State boards, chat, mod and audit logs, welcome, weekly, news, …) and the LFG activities |
+| Settings | Every channel (World State boards, chat, mod and audit logs, welcome, weekly, news, …) and the LFG activities |
 | Announce | Write and post an announcement, optionally pinging a role |
 | Messages | Edit the text of any message Ordis wrote |
 | Events | Create clan events (posted with RSVP buttons) and cancel them |

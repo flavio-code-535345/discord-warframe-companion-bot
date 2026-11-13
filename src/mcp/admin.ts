@@ -464,7 +464,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Delete role',
       description:
-        'PERMANENTLY deletes a role (members lose it; a server backup still has it). Refuses @everyone, roles managed by an integration, roles at or above the bot, and roles one of Ordis\'s settings uses (the ping roles, the Weeklies role). Get the user to confirm first. Requires confirm: true.',
+        'PERMANENTLY deletes a role (members lose it; a server backup still has it). Refuses @everyone, roles managed by an integration, roles at or above the bot, and roles in the self-assign menu (remove it from the menu first). Get the user to confirm first. Requires confirm: true.',
       inputSchema: { role_id: snowflake, confirm: z.literal(true), reason: z.string().max(200).optional() },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
@@ -476,8 +476,8 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       if (role.id === guild.id) throw new UserError("@everyone can't be deleted.");
       if (role.managed) throw new UserError(`${role.name} is managed by an integration and can't be deleted.`);
       if (role.position >= me.roles.highest.position) throw new UserError(`${role.name} is at or above the bot's highest role.`);
-      const usedBy = Object.entries(ctx.store.getSettings(guild.id)).find(([key, value]) => key.endsWith('RoleId') && value === role.id)?.[0];
-      if (usedBy) throw new UserError(`Ordis uses ${role.name} (setting ${usedBy}): change that setting first.`);
+      // A role members can still pick must leave the menu first, or its button would point at nothing.
+      if (ctx.store.listSelfRoles(guild.id).some((r) => r.roleId === role.id)) throw new UserError(`${role.name} is in the self-assign menu: remove it there first (set_self_role with remove: true).`);
       const gone = { id: role.id, name: role.name, members: role.members.size };
       await role.delete(reasonFor(reason));
       log(`deleted role ${gone.name}`);
@@ -700,7 +700,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'list_activities',
     {
       title: 'List LFG activities',
-      description: 'Lists the /lfg activities that have settings: their picture URL, ping role and fixed channel.',
+      description: 'Lists the /lfg activities that have settings: their picture URL and fixed channel.',
       inputSchema: {},
       annotations: READ_ONLY,
     },
@@ -712,11 +712,10 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     {
       title: 'Set an LFG activity',
       description:
-        'Adds or updates an /lfg activity: its picture (https image URL shown on the squad post), an optional role to ping and an optional fixed channel. Only the fields you pass change; null clears one.',
+        'Adds or updates an /lfg activity: its picture (https image URL shown on the squad post) and an optional fixed channel its squads are posted in. Only the fields you pass change; null clears one.',
       inputSchema: {
         name: z.string().min(1).max(100),
         image_url: z.string().max(1000).nullable().optional(),
-        role_id: snowflake.nullable().optional(),
         channel_id: snowflake.nullable().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -729,12 +728,10 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         imageUrl = args.image_url === null ? null : validImageUrl(args.image_url);
         if (args.image_url !== null && !imageUrl) throw new UserError('image_url must be a direct https link to an image, without spaces.');
       }
-      if (args.role_id && !guild.roles.cache.has(args.role_id)) throw new UserError(`role_id ${args.role_id} not found in the server.`);
       if (args.channel_id && !guild.channels.cache.has(args.channel_id)) throw new UserError(`channel_id ${args.channel_id} not found in the server.`);
       const saved = {
         name: existing?.name ?? args.name,
         imageUrl,
-        roleId: args.role_id !== undefined ? args.role_id : (existing?.roleId ?? null),
         channelId: args.channel_id !== undefined ? args.channel_id : (existing?.channelId ?? null),
       };
       ctx.store.saveActivity(saved);
@@ -747,7 +744,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     'remove_activity',
     {
       title: 'Remove an LFG activity setting',
-      description: "Removes an activity's picture, role and channel settings. The activity still works in /lfg, just plain.",
+      description: "Removes an activity's picture and channel settings. The activity still works in /lfg, just plain.",
       inputSchema: { name: z.string().min(1).max(100) },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -782,17 +779,14 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     {
       title: "Set the bot's channels",
       description:
-        'Points the bot at channels: the seven World State boards (alerts, arbitrations, fissures, sortie, cycles, traders, invasions; one live board per channel, a channel holds one) and their ping roles, announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the event and squad ping roles, the birthday channel, the weekly reset post channel, the promo codes channel and the game news channel. null turns one off.',
+        'Points the bot at channels: the seven World State boards (alerts, arbitrations, fissures, sortie, cycles, traders, invasions; one live board per channel, a channel holds one), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the squads channel, the birthday channel, the weekly reset post channel, the promo codes channel and the game news channel. null turns one off. There are no ping roles: every notification is a DM a member asked for.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional().describe('World State board: alerts, Gifts of the Lotus, events and Nightwave'),
-        alerts_role_id: snowflake.nullable().optional().describe('Pinged for a notable alert or invasion (the alerts and invasions boards share it)'),
         arbitrations_channel_id: snowflake.nullable().optional().describe('World State board: the Arbitration now, the next 48 hours with tiers and the best of the week'),
-        arbitrations_role_id: snowflake.nullable().optional().describe('Pinged 10 minutes before an S or A tier Arbitration'),
         fissures_channel_id: snowflake.nullable().optional().describe('World State board: normal, Steel Path and Void Storm fissures by relic tier'),
         sortie_channel_id: snowflake.nullable().optional().describe('World State board: sortie, Archon Hunt, Archimedeas and Steel Path honors'),
         cycles_channel_id: snowflake.nullable().optional().describe('World State board: open world cycles with their next changes, the Duviri Circuit and bounties'),
         traders_channel_id: snowflake.nullable().optional().describe("World State board: Baro Ki'Teer, Darvo, Varzia's Prime Resurgence and Teshin"),
-        baro_role_id: snowflake.nullable().optional().describe("Pinged when Baro Ki'Teer arrives"),
         invasions_channel_id: snowflake.nullable().optional().describe('World State board: every invasion with both rewards and its progress'),
         announcements_channel_id: snowflake.nullable().optional(),
         welcome_channel_id: snowflake.nullable().optional(),
@@ -807,11 +801,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
         auto_vc_hub_channel_id: snowflake.nullable().optional().describe('Join-to-create lobby: a voice channel that gives whoever joins it their own temporary room next to it; null turns it off'),
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
-        events_role_id: snowflake.nullable().optional().describe('Role pinged when a clan event is posted'),
-        lfg_role_id: snowflake.nullable().optional().describe('Role pinged by /lfg when the activity has no role of its own'),
+        lfg_channel_id: snowflake.nullable().optional().describe('Where a squad started from a board (the "Squad up" button) is posted; /lfg itself posts where it is used'),
         birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
         weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
-        weekly_role_id: snowflake.nullable().optional().describe('Members with this role get the Monday reset post as a DM (as do /track weekly subscribers)'),
         promo_channel_id: snowflake.nullable().optional().describe('Channel with the active promo codes from the wiki, updated once a day; the list appears within a minute'),
         news_channel_id: snowflake.nullable().optional().describe('Channel for new game news: in-game news (updates, Prime Access, Devstreams) and Warframe Steam announcements. The first read only records what exists; new posts follow'),
       },
@@ -821,10 +813,6 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       const { guild } = await guildFor(ctx);
       for (const [key, id] of Object.entries(args)) {
         if (typeof id !== 'string' || !id || key === 'honeypot_action') continue;
-        if (key.endsWith('_role_id')) {
-          if (!guild.roles.cache.has(id)) throw new UserError(`${key}: ${id} not found in the server.`);
-          continue;
-        }
         const channel = guild.channels.cache.get(id);
         if (!channel) throw new UserError(`${key}: ${id} not found in the server.`);
         const kind = own(SETTING_CHANNEL_KINDS, key);
@@ -845,14 +833,11 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       });
       const patch = {
         ...(args.alerts_channel_id !== undefined ? { alertsChannelId: args.alerts_channel_id } : {}),
-        ...(args.alerts_role_id !== undefined ? { alertsRoleId: args.alerts_role_id } : {}),
         ...(args.arbitrations_channel_id !== undefined ? { arbitrationsChannelId: args.arbitrations_channel_id } : {}),
-        ...(args.arbitrations_role_id !== undefined ? { arbitrationsRoleId: args.arbitrations_role_id } : {}),
         ...(args.fissures_channel_id !== undefined ? { fissuresChannelId: args.fissures_channel_id } : {}),
         ...(args.sortie_channel_id !== undefined ? { sortieChannelId: args.sortie_channel_id } : {}),
         ...(args.cycles_channel_id !== undefined ? { cyclesChannelId: args.cycles_channel_id } : {}),
         ...(args.traders_channel_id !== undefined ? { tradersChannelId: args.traders_channel_id } : {}),
-        ...(args.baro_role_id !== undefined ? { baroRoleId: args.baro_role_id } : {}),
         ...(args.invasions_channel_id !== undefined ? { invasionsChannelId: args.invasions_channel_id } : {}),
         ...(args.announcements_channel_id !== undefined ? { announcementsChannelId: args.announcements_channel_id } : {}),
         ...(args.welcome_channel_id !== undefined ? { welcomeChannelId: args.welcome_channel_id } : {}),
@@ -864,11 +849,9 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.lfg_voice_category_id !== undefined ? { lfgVoiceCategoryId: args.lfg_voice_category_id } : {}),
         ...(args.auto_vc_hub_channel_id !== undefined ? { autoVcHubChannelId: args.auto_vc_hub_channel_id } : {}),
         ...(args.lfg_voice_grace_minutes !== undefined ? { lfgVoiceGraceMinutes: args.lfg_voice_grace_minutes } : {}),
-        ...(args.events_role_id !== undefined ? { eventsRoleId: args.events_role_id } : {}),
-        ...(args.lfg_role_id !== undefined ? { lfgRoleId: args.lfg_role_id } : {}),
+        ...(args.lfg_channel_id !== undefined ? { lfgChannelId: args.lfg_channel_id } : {}),
         ...(args.birthday_channel_id !== undefined ? { birthdayChannelId: args.birthday_channel_id } : {}),
         ...(args.weekly_channel_id !== undefined ? { weeklyChannelId: args.weekly_channel_id } : {}),
-        ...(args.weekly_role_id !== undefined ? { weeklyRoleId: args.weekly_role_id } : {}),
         ...(args.promo_channel_id !== undefined ? { promoChannelId: args.promo_channel_id } : {}),
         ...(args.news_channel_id !== undefined ? { newsChannelId: args.news_channel_id } : {}),
       };

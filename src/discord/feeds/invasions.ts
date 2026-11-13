@@ -3,7 +3,7 @@ import { type WorldState, isNotableReward, rewardText } from '../../warframe/wor
 import { e, emojiUrl, factionTag, rewardEmoji } from '../emoji.js';
 import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, bar, card, nodeName, planetOf, section } from './parts.js';
-import { type FeedInput, type FeedPing, STALE_NOTE } from './types.js';
+import { type FeedInput, STALE_NOTE } from './types.js';
 
 /**
  * ⚔️┃invasions: every running invasion, the ones with a reward worth running (Forma, Catalysts, Wraith and Vandal parts…) first. A
@@ -55,15 +55,4 @@ export function invasionBoard(input: FeedInput): ContainerBuilder[][] {
       ]),
     ],
   ];
-}
-
-/** A new invasion with a notable reward: the alerts role's note, for three hours (invasions have no end time). */
-export function invasionPings(input: FeedInput): FeedPing[] {
-  const { ws, now } = input;
-  return (ws?.invasions ?? [])
-    .filter((i) => !i.completed && notable(i))
-    .map((i) => {
-      const rewards = [rewardText(i.attacker.reward), rewardText(i.defender.reward)].filter((r) => r !== '—' && isNotableReward(r));
-      return { key: `invasion:${i.id}`, until: now + 3 * 3_600_000, text: `${e('invasion')} **Invasion** on ${i.node}: **${rewards.join(' / ')}**` };
-    });
 }

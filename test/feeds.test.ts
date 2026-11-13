@@ -12,16 +12,15 @@ import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
 import { BOUNTY_SYNDICATES } from '../src/discord/embeds.js';
 import { EMOJI, loadEmojis } from '../src/discord/emoji.js';
-import { alertPings } from '../src/discord/feeds/alerts.js';
-import { arbitrationPings, planMessage } from '../src/discord/feeds/arbitrations.js';
+import { noteKey } from '../src/discord/board.js';
+import { planMessage } from '../src/discord/feeds/arbitrations.js';
 import { TRACK_OPTIONS, notifyRow, sameSpec } from '../src/discord/feeds/controls.js';
 import { handleFeedSelect } from '../src/discord/feeds/handlers.js';
 import { FEEDS, feedHealth, feedOfChannel, syncFeeds } from '../src/discord/feeds/index.js';
-import { invasionPings } from '../src/discord/feeds/invasions.js';
 import { card, compact, componentText, fit, messageStats } from '../src/discord/feeds/parts.js';
-import { traderPings } from '../src/discord/feeds/traders.js';
 import { FEED_IDS, type FeedInput } from '../src/discord/feeds/types.js';
-import { MAX_TRACKERS_PER_USER, parseSpec } from '../src/trackers.js';
+import { ROLE_SUBSCRIPTIONS } from '../src/discord/ping-roles.js';
+import { MAX_TRACKERS_PER_USER, type TrackerSpec, collectTrackables, describeTracker, matchTracker, parseSpec } from '../src/trackers.js';
 import { type ArbitrationData, ArbitrationSchedule, arbitrationView, parseTiers } from '../src/warframe/arbitrations.js';
 import { type WorldState, groupAlerts, resurgenceItemName } from '../src/warframe/worldstate.js';
 
@@ -209,7 +208,6 @@ function inputFor(store: Store, over: Partial<FeedInput> = {}): FeedInput {
     arbyData,
     stale: false,
     settings: store.getSettings(G),
-    selfRoles: new Set(['r-arby', 'r-baro']),
     ...over,
   };
 }
@@ -283,7 +281,6 @@ describe('World State boards', () => {
 
   it('fit inside Discord limits on a busy day, with every custom emoji in use', () => {
     const store = new Store(':memory:');
-    store.updateSettings(G, { arbitrationsRoleId: 'r-arby', baroRoleId: 'r-baro' });
     for (const def of FEEDS) {
       const priced = inputFor(store, { prices: (item: string) => 1000 + item.length });
       for (const input of [inputFor(store), inputFor(store, { stale: true }), inputFor(store, { ws: busyWorld(NOW, { baroHere: false }) }), priced]) {
@@ -383,97 +380,92 @@ describe('World State boards', () => {
   });
 });
 
-describe('what the boards ping for', () => {
-  const store = new Store(':memory:');
+describe('the notifications that took the place of the role pings', () => {
+  const hits = (spec: TrackerSpec, ws: WorldState | null, now = NOW, arbitrations?: ReturnType<typeof view>) =>
+    collectTrackables(ws, now, arbitrations ? { arbitrations: [arbitrations.current, ...arbitrations.upcoming].filter((s) => s !== null) } : {})
+      .filter((t) => matchTracker(spec, t) !== null)
+      .map((t) => t.key);
 
-  it('alerts and invasions with a reward worth a detour, each with a stable key', () => {
-    const input = inputFor(store);
-    const alerts = alertPings(input);
+  it('"anything worth running": alerts and invasions with a reward worth a detour, and nothing else', () => {
+    const notable = ROLE_SUBSCRIPTIONS.alerts!;
+    assert.deepEqual(notable, { kind: 'notable' });
+    const keys = hits(notable, busyWorld());
     assert.deepEqual(
-      alerts.map((p) => p.key),
+      keys.filter((k) => k.startsWith('alert:')),
       Array.from({ length: 10 }, (_, i) => `alert:gift${i}`),
       'every Gift of the Lotus (Forma, a Catalyst, 200,000 Kuva), none of the Rotting Tumor missions',
     );
-    assert.ok(alerts.every((p) => p.until <= NOW + 3 * HOUR));
-    assert.match(alerts[0]!.text, /200,000 Kuva/);
-    const invasions = invasionPings(input).map((p) => p.key);
-    assert.ok(invasions.includes('invasion:inv1'), 'a Wraith barrel');
-    assert.ok(invasions.includes('invasion:inv3'), 'and a Catalyst');
-    assert.ok(!invasions.includes('invasion:inv2'), 'not Fieldron against Detonite');
+    assert.ok(keys.includes('invasion:inv1'), 'a Wraith barrel');
+    assert.ok(keys.includes('invasion:inv3'), 'and a Catalyst');
+    assert.ok(!keys.includes('invasion:inv2'), 'not Fieldron against Detonite');
+    assert.ok(keys.every((k) => /^(alert|invasion):/.test(k)), 'not the Steel Path honors, Baro or an event, whatever they pay');
+    // The DM names what made it worth it.
+    const gift = collectTrackables(busyWorld(), NOW).find((t) => t.key === 'alert:gift0')!;
+    assert.deepEqual(matchTracker(notable, gift), ['200,000 Kuva']);
+    assert.equal(describeTracker(notable), 'Any alert or invasion with a reward worth running');
   });
 
   it("Baro's arrival, once per visit", () => {
-    const here = traderPings(inputFor(store));
-    assert.equal(here.length, 1);
-    assert.equal(here[0]!.key, `baro:${NOW - HOUR}`);
-    assert.equal(here[0]!.until, NOW + 47 * HOUR);
-    assert.deepEqual(traderPings(inputFor(store, { ws: busyWorld(NOW, { baroHere: false }) })), []);
+    assert.deepEqual(hits(ROLE_SUBSCRIPTIONS.baro!, busyWorld()), [`baro:baro1:${NOW - HOUR}`]);
+    assert.deepEqual(hits(ROLE_SUBSCRIPTIONS.baro!, busyWorld(NOW, { baroHere: false })), []);
   });
 
-  it('S and A tier Arbitrations from ten minutes before they start, only while the schedule is trusted', () => {
-    assert.deepEqual(arbitrationPings(inputFor(store)).map((p) => p.key), [`arbitration:${T0}`], 'the S tier hour running now');
+  it('S and A tier Arbitrations from ten minutes before they start', () => {
+    const arby = ROLE_SUBSCRIPTIONS.arbitrations!;
+    assert.deepEqual(hits(arby, null, NOW, view(NOW)), [`arbitration:${T0}`], 'the S tier hour running now');
     const at = T0 + 52 * MIN;
-    assert.deepEqual(
-      arbitrationPings(inputFor(store, { now: at, arby: view(at) })).map((p) => p.key),
-      [`arbitration:${T0}`, `arbitration:${T0 + HOUR}`],
-      'and the A tier hour that starts in 8 minutes',
-    );
+    assert.deepEqual(hits(arby, null, at, view(at)), [`arbitration:${T0}`, `arbitration:${T0 + HOUR}`], 'and the A tier hour that starts in 8 minutes');
     const later = T0 + 2 * HOUR + 55 * MIN;
-    assert.deepEqual(arbitrationPings(inputFor(store, { now: later, arby: view(later) })), [], 'B and C hours are never pinged');
-    const untrusted = { ...view(NOW), scheduleTrusted: false };
-    assert.deepEqual(arbitrationPings(inputFor(store, { arby: untrusted })), []);
+    assert.deepEqual(hits(arby, null, later, view(later)), [], 'B and C hours are for whoever asks for them');
+  });
+
+  it('every former ping role has a notification that describes itself', () => {
+    assert.deepEqual(Object.keys(ROLE_SUBSCRIPTIONS), ['alerts', 'arbitrations', 'baro', 'weekly', 'events', 'squads']);
+    for (const spec of Object.values(ROLE_SUBSCRIPTIONS)) {
+      assert.deepEqual(parseSpec(JSON.stringify(spec)), spec);
+      assert.ok(describeTracker(spec).length > 5);
+    }
+    // The ones that are sent when something is posted never match the world state.
+    for (const key of ['weekly', 'events', 'squads']) assert.deepEqual(hits(ROLE_SUBSCRIPTIONS[key]!, busyWorld()), [], key);
   });
 });
 
 describe('keeping the boards in their channels', () => {
-  it('posts a board, pings the role only for what is new after the first round, and removes the note when it is over', async () => {
+  it('posts a board, pings nobody, and removes the note an older version left under it', async () => {
     const { ctx, store, add } = fakeServer();
     const arby = add('c-arby');
-    store.updateSettings(G, { arbitrationsChannelId: 'c-arby', arbitrationsRoleId: 'r-arby' });
+    store.updateSettings(G, { arbitrationsChannelId: 'c-arby' });
+    store.setMeta(noteKey('c-arby'), JSON.stringify({ messageId: 'old-note', until: NOW + 24 * HOUR }));
 
-    // First round: the board is posted and the S tier hour running now is only recorded.
     await syncFeeds(ctx, inputFor(store));
-    assert.deepEqual(arby.log, ['send c-arby-m1', 'send c-arby-m2', 'send c-arby-m3', 'send c-arby-m4']);
+    assert.deepEqual(arby.log, ['delete old-note', 'send c-arby-m1', 'send c-arby-m2', 'send c-arby-m3', 'send c-arby-m4']);
+    assert.equal(store.getMeta(noteKey('c-arby')), '');
     assert.equal(feedHealth().arbitrations!.action, 'posted');
 
     // Nothing new: nothing happens.
     await syncFeeds(ctx, inputFor(store, { now: NOW + MIN, arby: view(NOW + MIN) }));
-    assert.equal(arby.log.length, 4);
+    assert.equal(arby.log.length, 5);
 
-    // The A tier hour is 8 minutes away: one note pings the role.
+    // An A tier hour is 8 minutes away: that is a DM for whoever asked (the notifier), the channel gets no message for it.
     const soon = T0 + 52 * MIN;
     await syncFeeds(ctx, inputFor(store, { now: soon, arby: view(soon) }));
-    assert.equal(arby.notes.length, 1);
-    assert.deepEqual(arby.notes[0]!.roles, ['r-arby']);
-    assert.match(arby.notes[0]!.content, /^<@&r-arby> .*A tier Arbitration.* starts/);
-    assert.doesNotMatch(arby.notes[0]!.content, /S tier/, 'the hour that was recorded in the first round is not news');
-    assert.equal(feedHealth().arbitrations!.pinged, 1);
-
-    // While that hour runs the note stays; once it is over the note goes.
-    const during = T0 + HOUR + 5 * MIN;
-    await syncFeeds(ctx, inputFor(store, { now: during, arby: view(during) }));
-    assert.ok(!arby.log.includes(`delete ${arby.notes[0]!.id}`));
-    const over = T0 + 2 * HOUR + MIN;
-    await syncFeeds(ctx, inputFor(store, { now: over, arby: view(over) }));
-    assert.ok(arby.log.includes(`delete ${arby.notes[0]!.id}`));
-    assert.equal(arby.notes.length, 1, 'a B tier hour pings nobody');
+    assert.equal(arby.notes.length, 0);
+    assert.ok(arby.log.slice(5).every((l) => l.startsWith('edit ')), 'the board is only edited in place');
   });
 
-  it('moves a board with its channel, starts over without pings there, and removes it when switched off', async () => {
+  it('moves a board with its channel and removes it when switched off', async () => {
     const { ctx, store, add } = fakeServer();
     const first = add('c-one');
     const second = add('c-two');
-    store.updateSettings(G, { arbitrationsChannelId: 'c-one', arbitrationsRoleId: 'r-arby' });
+    store.updateSettings(G, { arbitrationsChannelId: 'c-one' });
     await syncFeeds(ctx, inputFor(store));
     const soon = T0 + 52 * MIN;
-    await syncFeeds(ctx, inputFor(store, { now: soon, arby: view(soon) }));
-    assert.equal(first.notes.length, 1);
 
     store.updateSettings(G, { arbitrationsChannelId: 'c-two' });
     await syncFeeds(ctx, inputFor(store, { now: soon + MIN, arby: view(soon + MIN) }));
-    for (const id of ['c-one-m1', 'c-one-m2', 'c-one-m3', 'c-one-m4', first.notes[0]!.id]) assert.ok(first.log.includes(`delete ${id}`), `${id} removed`);
+    for (const id of ['c-one-m1', 'c-one-m2', 'c-one-m3', 'c-one-m4']) assert.ok(first.log.includes(`delete ${id}`), `${id} removed`);
     assert.equal(second.log.filter((l) => l.startsWith('send')).length, 4);
-    assert.equal(second.notes.length, 0, 'a new channel is not pinged for what is already running');
+    assert.equal(first.notes.length + second.notes.length, 0, 'no plain message anywhere');
 
     store.updateSettings(G, { arbitrationsChannelId: null });
     await syncFeeds(ctx, inputFor(store, { now: soon + 2 * MIN, arby: view(soon + 2 * MIN) }));

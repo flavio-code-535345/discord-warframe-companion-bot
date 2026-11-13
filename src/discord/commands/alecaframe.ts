@@ -4,7 +4,7 @@ import { drawStatsChart } from '../../alecaframe/chart.js';
 import { planRelics } from '../../alecaframe/planner.js';
 import type { AppContext } from '../../context.js';
 import type { AlecaLink } from '../../db.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { loadRelicBook } from '../../warframe/relics.js';
 import { alecaStatsEmbed, relicPlanEmbed, sharedText } from '../alecaframe-embeds.js';
 import type { Command } from '../command.js';

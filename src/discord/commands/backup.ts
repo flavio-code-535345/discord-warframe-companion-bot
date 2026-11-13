@@ -17,7 +17,7 @@ import { type ServerBackup, parseBackup, summarize } from '../../backup/snapshot
 import type { AppContext } from '../../context.js';
 import type { StoredBackup } from '../../db.js';
 import { modLog } from '../../moderation/service.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { discordTime } from '../../time.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';

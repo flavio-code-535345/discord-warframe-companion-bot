@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder, type VoiceBasedChannel } from 'discord.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import type { Command } from '../command.js';
 
 export const vc: Command = {

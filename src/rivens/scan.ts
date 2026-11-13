@@ -2,7 +2,7 @@ import type { AppContext } from '../context.js';
 import { sniffMime } from '../imaging/sniff.js';
 import { assertPictureSize } from '../imaging/size.js';
 import { webpToPng } from '../imaging/webp.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import type { OcrLine } from '../ssroles/parse.js';
 import { ocr } from '../ssroles/ocr.js';
 import { type CardReading, interpretUnknown, parseRivenCard } from './card.js';

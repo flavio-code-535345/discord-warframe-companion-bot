@@ -119,7 +119,7 @@ test('LFG activities: a picture is saved, bad pictures are refused, and removal 
   assert.equal(store.getActivity('Eidolon hunt'), null);
 
   const empty = await post('/admin/settings/activity', { name: 'Eidolon hunt', _csrf: 'csrf-token' }, cookie);
-  assert.match(errOf(empty), /picture, a role or a channel/);
+  assert.match(errOf(empty), /Set a picture or a channel/);
 
   const saved = await post('/admin/settings/activity', { name: 'Eidolon hunt', image: 'https://example.com/e.png', _csrf: 'csrf-token' }, cookie);
   assert.match(saved.headers.get('location') ?? '', /ok=/);
@@ -300,9 +300,10 @@ test('the Overview shows the jobs, the boards and where every feature posts', as
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.match(html, /<a class="navlink on" href="\/admin\/">Overview<\/a>/);
-    for (const text of ['Background jobs', 'World State boards', 'Arbitrations', 'Start and stop reports', 'Weekly reset by DM to', 'Join-to-create voice', 'same as the moderation log', 'Off']) {
+    for (const text of ['Background jobs', 'World State boards', 'Arbitrations', 'Start and stop reports', 'Weekly reset post', 'Squads started from a board', 'Join-to-create voice', 'same as the moderation log', 'Off']) {
       assert.ok(html.includes(text), text);
     }
+    assert.ok(!/ping role|by DM to/i.test(html), 'no setting is a role any more: notifications are DMs members ask for');
     assert.ok(html.includes('<code>#birthdays</code>'), 'a text channel by name');
     assert.ok(html.includes('<code>Squads</code>'), 'a category without the #');
     assert.ok(html.includes('The jobs start once Ordis is connected'), 'no job has been registered in this test');
@@ -313,28 +314,27 @@ test('the Overview shows the jobs, the boards and where every feature posts', as
   }
 });
 
-test('the Settings form sets every channel and ping role, keeps what it did not send and starts the weekly post next Monday', async () => {
+test('the Settings form sets every channel (no role: nothing pings one), keeps what it did not send and starts the weekly post next Monday', async () => {
   const { cookie } = sessionCookie(OWNER);
   const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
   testChannels.set('700000000000000020', { id: '700000000000000020', name: 'weekly', type: ChannelType.GuildText, rawPosition: 5, parent: null });
-  testRoles.set('800000000000000001', { id: '800000000000000001', name: 'Weeklies', position: 2, managed: false });
   try {
     store.updateSettings(GUILD, { newsChannelId: '700000000000000020', weeklyChannelId: null });
     const page = await (await get('/admin/settings', cookie)).text();
-    for (const name of ['announcementsChannelId', 'auditLogChannelId', 'statusChannelId', 'birthdayChannelId', 'weeklyChannelId', 'weeklyRoleId', 'promoChannelId', 'newsChannelId', 'levelChannelId', 'eventsRoleId', 'lfgRoleId']) {
+    for (const name of ['announcementsChannelId', 'auditLogChannelId', 'statusChannelId', 'birthdayChannelId', 'weeklyChannelId', 'promoChannelId', 'newsChannelId', 'levelChannelId', 'lfgChannelId']) {
       assert.ok(page.includes(`name="${name}"`), name);
     }
     assert.match(page, /<option value="">— where the member is talking —<\/option>/);
+    assert.doesNotMatch(page, /name="\w+RoleId"/, 'no setting holds a role');
 
     const gone = await post('/admin/settings', { birthdayChannelId: '799999999999999999', _csrf: 'csrf-token' }, cookie);
     assert.match(flash(gone), /Birthdays: that channel no longer exists/);
 
     store.setMeta('weekly_posted', '');
-    const saved = await post('/admin/settings', { weeklyChannelId: '700000000000000020', weeklyRoleId: '800000000000000001', _csrf: 'csrf-token' }, cookie);
+    const saved = await post('/admin/settings', { weeklyChannelId: '700000000000000020', _csrf: 'csrf-token' }, cookie);
     assert.match(flash(saved), /Settings saved/);
     const s = store.getSettings(GUILD);
     assert.equal(s.weeklyChannelId, '700000000000000020');
-    assert.equal(s.weeklyRoleId, '800000000000000001');
     assert.equal(s.newsChannelId, '700000000000000020', 'a field the form did not send is kept');
     assert.ok(store.getMeta('weekly_posted'), 'this week counts as posted, so the first post is next Monday');
 
@@ -345,8 +345,7 @@ test('the Settings form sets every channel and ping role, keeps what it did not 
     assert.equal(store.getSettings(GUILD).newsChannelId, null);
   } finally {
     testChannels.delete('700000000000000020');
-    testRoles.delete('800000000000000001');
-    store.updateSettings(GUILD, { weeklyChannelId: null, weeklyRoleId: null, newsChannelId: null });
+    store.updateSettings(GUILD, { weeklyChannelId: null, newsChannelId: null });
   }
 });
 

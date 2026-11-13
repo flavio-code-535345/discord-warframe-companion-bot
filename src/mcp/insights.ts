@@ -6,7 +6,7 @@ import type { AppContext } from '../context.js';
 import type { AiLogEntry, AiSource } from '../db.js';
 import { levelOf, xpForLevel } from '../leveling/xp.js';
 import { syncLevelRoles } from '../leveling/service.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { getWikiIndex } from '../wiki/index.js';
 import { api } from '../warframe/fetch.js';
 import { screenshotQueue } from '../queue.js';

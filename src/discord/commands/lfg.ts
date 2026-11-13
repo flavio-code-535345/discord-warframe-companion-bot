@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { UserError, getSendableChannel, renderLfg } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { DEFAULT_GRACE_MINUTES, parseDuration } from '../../lfg/lifecycle.js';
-import { createSquadVoice, deleteSquadVoice, squadVoiceCategory } from '../../lfg/voice.js';
+import { createSquad } from '../../lfg/squads.js';
 import type { Command } from '../command.js';
 
 export const ACTIVITIES = [
@@ -54,58 +54,19 @@ export const lfg: Command = {
       expiresAt = Date.now() + ms;
     }
 
-    const activity = ctx.store.getActivity(activityName);
-    // An activity can have its own channel; otherwise the squad is posted where the command ran.
-    const channel = activity?.channelId ? await getSendableChannel(ctx, activity.channelId) : interaction.channel;
-    if (!channel?.isSendable()) throw new UserError("I can't post in this channel.");
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-    const categoryId = await squadVoiceCategory(ctx);
-    let voiceId: string | null = null;
-    if (categoryId) {
-      const existing = ctx.store.openVoiceLfgByHost(guildId, interaction.user.id);
-      if (existing) throw new UserError(`You already have an open squad (#${existing.id}). Close it before starting another.`);
-      const hostName = interaction.inCachedGuild() ? interaction.member.displayName : interaction.user.username;
-      try {
-        voiceId = (await createSquadVoice(ctx, { categoryId, hostId: interaction.user.id, hostName, activity: activityName, size })).id;
-      } catch (err) {
-        console.error('[lfg] could not create the squad voice channel:', err);
-        throw new UserError("I couldn't create the voice channel. Check that Ordis can manage channels in that category.");
-      }
-    }
-
-    const post = ctx.store.createLfg({
-      guildId,
-      channelId: channel.id,
+    const squad = await createSquad(ctx, {
       hostId: interaction.user.id,
+      hostName: interaction.inCachedGuild() ? interaction.member.displayName : interaction.user.username,
       activity: activityName,
       details: interaction.options.getString('details'),
       size,
+      expiresAt,
+      channel: interaction.channel?.isSendable() ? interaction.channel : null,
     });
-    // The host counts as absent from creation, so a squad whose host never joins voice still ends.
-    if (voiceId) ctx.store.setLfgVoice(post.id, voiceId, Date.now());
-    if (expiresAt) ctx.store.setLfgExpiry(post.id, expiresAt);
-    const stored = ctx.store.getLfg(post.id)!;
-
-    // An activity's own role wins; otherwise the general squad-finder role from /setup pings, if there is one.
-    const pingRole = activity?.roleId ?? ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).lfgRoleId;
-    try {
-      const message = await channel.send({
-        ...renderLfg(ctx, stored),
-        content: pingRole ? `<@&${pingRole}>` : undefined,
-        allowedMentions: { parse: [], roles: pingRole ? [pingRole] : [] },
-      });
-      ctx.store.setLfgMessage(post.id, message.id);
-    } catch (err) {
-      ctx.store.closeLfg(post.id);
-      if (voiceId) await deleteSquadVoice(ctx, stored);
-      throw err;
-    }
-
     const grace = ctx.store.getSettings(guildId).lfgVoiceGraceMinutes ?? DEFAULT_GRACE_MINUTES;
     await interaction.editReply({
-      content: `LFG #${post.id} posted in ${channel}.${voiceId ? ` Join <#${voiceId}> within ${grace} minutes or the squad ends.` : ''}`,
+      content: `LFG #${squad.post.id} posted in <#${squad.channelId}>.${squad.voiceChannelId ? ` Join <#${squad.voiceChannelId}> within ${grace} minutes or the squad ends.` : ''}`,
     });
   },
 

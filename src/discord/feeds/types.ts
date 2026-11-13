@@ -20,17 +20,8 @@ export interface FeedInput {
   /** True when the world state source is lagging or not answering: the boards say so, without minutes, so the text stays the same. */
   stale: boolean;
   settings: GuildSettings;
-  /** The roles of the self-assign menu: a board offers a role button only for one of these (the button runs the same toggle). */
-  selfRoles: ReadonlySet<string>;
   /** What Baro's stock trades for (warframe/baro.ts), once the background read has priced some of it. */
   prices?: PriceLookup | null;
-}
-
-/** Something new that the feed's role is pinged for: `key` is remembered (once ever), the note stays until `until`. */
-export interface FeedPing {
-  key: string;
-  text: string;
-  until: number;
 }
 
 /** The line every board ends with when its data may be old. */

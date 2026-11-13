@@ -2,7 +2,7 @@ import type { Request, RequestHandler, Response, Router } from 'express';
 import type { AppContext } from '../../context.js';
 import type { PanelSession } from '../../db.js';
 import { ENV_ONLY, SETTINGS, type SettingDef, type SettingState, adoptEnvironment, parseSetting, resetSetting, setSetting, settingStates, show } from '../../runtime-config.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { scheduleRestart } from '../../selfupdate.js';
 import { api } from '../../warframe/fetch.js';
 import { screenshotQueue } from '../../queue.js';

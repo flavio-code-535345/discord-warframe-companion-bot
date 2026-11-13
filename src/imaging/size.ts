@@ -1,4 +1,4 @@
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 
 /**
  * How big a member's picture claims to be, read from its header before anything is decoded. A PNG or WebP of a few kilobytes can declare

@@ -1,10 +1,10 @@
 import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
-import { type AlertGroup, type WorldState, alertName, groupAlerts, isNotableReward, rewardText } from '../../warframe/worldstate.js';
+import { type AlertGroup, type WorldState, groupAlerts, rewardText } from '../../warframe/worldstate.js';
 import { e, emojiUrl, factionTag, rewardEmoji } from '../emoji.js';
 import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, bar, card, fit, nodeName, num, planetOf, section } from './parts.js';
-import { type FeedInput, type FeedPing, STALE_NOTE } from './types.js';
+import { type FeedInput, STALE_NOTE } from './types.js';
 
 /**
  * 🚨┃alerts: alerts and Gifts of the Lotus, then the running events with their goals, in the first message; Nightwave's daily and
@@ -92,16 +92,4 @@ export function alertBoard(input: FeedInput): ContainerBuilder[][] {
     ],
     [card(COLOR.nightwave, [...nightwavePart(ws, now), input.stale ? `-# ${STALE_NOTE}` : null, DIVIDER, notifyRow('alerts', '🔔 DM me when a reward shows up…'), buttonRow(mineButton())])],
   ];
-}
-
-/** An alert with a notable reward: the alerts role's note, until the alert ends (at most three hours). */
-export function alertPings(input: FeedInput): FeedPing[] {
-  const { ws, now } = input;
-  return (ws?.alerts ?? [])
-    .filter((a) => toMs(a.expiry) > now && isNotableReward(rewardText(a.mission.reward)))
-    .map((a) => ({
-      key: `alert:${a.id}`,
-      until: Math.min(toMs(a.expiry), now + 3 * 3_600_000),
-      text: `${e('alert')} **${alertName(a)}**: **${rewardText(a.mission.reward)}** · ${a.mission.type} on ${a.mission.node} · ends ${discordTime(a.expiry, 'R')}`,
-    }));
 }

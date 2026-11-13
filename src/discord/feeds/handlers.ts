@@ -8,7 +8,7 @@ import {
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import type { AppContext } from '../../context.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { MAX_TRACKERS_PER_USER, describeTracker, parseSpec } from '../../trackers.js';
 import { lastArbitrations } from '../../warframe/arbitrations.js';
 import { getWorldState } from '../../warframe/worldstate.js';

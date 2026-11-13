@@ -9,12 +9,8 @@ export interface GuildSettings {
   guildId: string;
   /** The World State channels (src/discord/feeds): one live board each. Alerts, Gifts of the Lotus, events and Nightwave. */
   alertsChannelId: string | null;
-  /** Pinged for an alert or invasion with a notable reward. */
-  alertsRoleId: string | null;
   /** Now, the next 48 hours with tiers, and the week's best. */
   arbitrationsChannelId: string | null;
-  /** Pinged 10 minutes before an S or A tier Arbitration. */
-  arbitrationsRoleId: string | null;
   fissuresChannelId: string | null;
   /** Sortie, Archon Hunt, Archimedea and the Steel Path honors. */
   sortieChannelId: string | null;
@@ -22,8 +18,6 @@ export interface GuildSettings {
   cyclesChannelId: string | null;
   /** Baro, Darvo, Varzia and Teshin. */
   tradersChannelId: string | null;
-  /** Pinged when Baro Ki'Teer arrives. */
-  baroRoleId: string | null;
   invasionsChannelId: string | null;
   announcementsChannelId: string | null;
   welcomeChannelId: string | null;
@@ -52,16 +46,12 @@ export interface GuildSettings {
   statusChannelId: string | null;
   /** Riven scanning: members post riven screenshots here and Ordis grades them. */
   rivenChannelId: string | null;
-  /** Role pinged when a clan event is posted. */
-  eventsRoleId: string | null;
-  /** Role pinged by /lfg when the activity has no role of its own. */
-  lfgRoleId: string | null;
+  /** Where a squad is posted when it isn't started with /lfg in a channel: the "Squad up" button on a board. */
+  lfgChannelId: string | null;
   /** Where birthdays are announced. */
   birthdayChannelId: string | null;
   /** Where the Monday reset post goes. */
   weeklyChannelId: string | null;
-  /** Members with this role get the Monday reset post as a DM. */
-  weeklyRoleId: string | null;
   /** Where the list of active promo codes is kept. */
   promoChannelId: string | null;
   /** Where new game news (in-game news and Steam announcements) is posted. */
@@ -123,14 +113,11 @@ export interface TempVoice {
 /** GuildSettings field → guild_settings column. Adding a setting means a migration plus one line here. */
 const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['alertsChannelId', 'alerts_channel_id'],
-  ['alertsRoleId', 'alerts_role_id'],
   ['arbitrationsChannelId', 'arbitrations_channel_id'],
-  ['arbitrationsRoleId', 'arbitrations_role_id'],
   ['fissuresChannelId', 'fissures_channel_id'],
   ['sortieChannelId', 'sortie_channel_id'],
   ['cyclesChannelId', 'cycles_channel_id'],
   ['tradersChannelId', 'traders_channel_id'],
-  ['baroRoleId', 'baro_role_id'],
   ['invasionsChannelId', 'invasions_channel_id'],
   ['announcementsChannelId', 'announcements_channel_id'],
   ['welcomeChannelId', 'welcome_channel_id'],
@@ -147,11 +134,9 @@ const SETTINGS_COLUMNS: [Exclude<keyof GuildSettings, 'guildId'>, string][] = [
   ['auditLogChannelId', 'audit_log_channel_id'],
   ['statusChannelId', 'status_channel_id'],
   ['rivenChannelId', 'riven_channel_id'],
-  ['eventsRoleId', 'events_role_id'],
-  ['lfgRoleId', 'lfg_role_id'],
+  ['lfgChannelId', 'lfg_channel_id'],
   ['birthdayChannelId', 'birthday_channel_id'],
   ['weeklyChannelId', 'weekly_channel_id'],
-  ['weeklyRoleId', 'weekly_role_id'],
   ['promoChannelId', 'promo_channel_id'],
   ['newsChannelId', 'news_channel_id'],
 ];
@@ -296,11 +281,10 @@ export interface LfgPost {
   hostAbsentSince: number | null;
 }
 
-/** An activity people can run; carries the picture on its LFG posts and optional pings/channel. */
+/** An activity people can run; carries the picture on its LFG posts and, optionally, the channel its squads are posted in. */
 export interface Activity {
   name: string;
   imageUrl: string | null;
-  roleId: string | null;
   channelId: string | null;
 }
 
@@ -769,6 +753,25 @@ const MIGRATIONS: string[] = [
     linked_at INTEGER NOT NULL
   );
   `,
+  // Ordis pings no role any more: every notification is a DM a member asked for. The roles that were pinged are kept in bot_meta
+  // (`legacy_ping_roles:<guild>`) for the one-time move of their holders to DM subscriptions (discord/ping-roles.ts), then the six
+  // settings and the activities' ping role go. `lfg_channel_id`: where a squad started from a board's button is posted.
+  `
+  INSERT INTO bot_meta (key, value)
+    SELECT 'legacy_ping_roles:' || guild_id,
+           json_object('alerts', alerts_role_id, 'arbitrations', arbitrations_role_id, 'baro', baro_role_id, 'weekly', weekly_role_id, 'events', events_role_id, 'squads', lfg_role_id)
+    FROM guild_settings
+    WHERE COALESCE(alerts_role_id, arbitrations_role_id, baro_role_id, weekly_role_id, events_role_id, lfg_role_id) IS NOT NULL
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value;
+  ALTER TABLE guild_settings DROP COLUMN alerts_role_id;
+  ALTER TABLE guild_settings DROP COLUMN arbitrations_role_id;
+  ALTER TABLE guild_settings DROP COLUMN baro_role_id;
+  ALTER TABLE guild_settings DROP COLUMN weekly_role_id;
+  ALTER TABLE guild_settings DROP COLUMN events_role_id;
+  ALTER TABLE guild_settings DROP COLUMN lfg_role_id;
+  ALTER TABLE activities DROP COLUMN role_id;
+  ALTER TABLE guild_settings ADD COLUMN lfg_channel_id TEXT;
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -867,23 +870,26 @@ function toTempVoice(r: Row): TempVoice {
 }
 
 function toActivity(r: Row): Activity {
-  return { name: String(r.name), imageUrl: str(r.image_url), roleId: str(r.role_id), channelId: str(r.channel_id) };
+  return { name: String(r.name), imageUrl: str(r.image_url), channelId: str(r.channel_id) };
 }
 
 export class Store {
   readonly db: DatabaseSync;
 
-  /** Pass ':memory:' for an ephemeral database (used by tests). */
-  constructor(path: string) {
+  /**
+   * Pass ':memory:' for an ephemeral database (used by tests). `migrateTo` stops the schema at an earlier version: only for tests, which
+   * build a database as it was back then, put old data in it and open it again to see what the later migrations make of it.
+   */
+  constructor(path: string, opts: { migrateTo?: number } = {}) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-    this.migrate();
+    this.migrate(opts.migrateTo ?? MIGRATIONS.length);
   }
 
-  private migrate(): void {
+  private migrate(upTo: number): void {
     const { user_version: current } = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
-    for (let v = current; v < MIGRATIONS.length; v++) {
+    for (let v = current; v < Math.min(upTo, MIGRATIONS.length); v++) {
       this.db.exec('BEGIN');
       try {
         this.db.exec(MIGRATIONS[v]!);
@@ -1426,9 +1432,9 @@ export class Store {
     if (replacesName && replacesName.toLowerCase() !== a.name.toLowerCase()) this.removeActivity(replacesName);
     this.db
       .prepare(
-        'INSERT INTO activities (name, image_url, role_id, channel_id) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, role_id = excluded.role_id, channel_id = excluded.channel_id',
+        'INSERT INTO activities (name, image_url, channel_id) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, channel_id = excluded.channel_id',
       )
-      .run(a.name, a.imageUrl, a.roleId, a.channelId);
+      .run(a.name, a.imageUrl, a.channelId);
   }
 
   removeActivity(name: string): boolean {

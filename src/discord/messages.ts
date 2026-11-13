@@ -1,5 +1,5 @@
 import { EmbedBuilder, type GuildTextBasedChannel, type Message } from 'discord.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 
 /**
  * Editing Ordis's own messages (a rules post, a role guide, a channel description he wrote). Used by the `edit_message` MCP tool

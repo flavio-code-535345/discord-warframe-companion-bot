@@ -12,7 +12,7 @@ import {
 } from 'discord.js';
 import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { handleButton } from './buttons.js';
 import { handleFeedSelect } from './feeds/handlers.js';
 import { trackMessageActivity, trackVoiceActivity } from '../activity/service.js';
@@ -26,6 +26,7 @@ import { handleChatMessage } from './chat.js';
 import { syncChatTopic } from './chat-topic.js';
 import { postWelcome } from './welcome.js';
 import { syncIdentity } from './identity.js';
+import { convertPingRoles } from './ping-roles.js';
 import type { Command } from './command.js';
 import { ask } from './commands/ask.js';
 import { birthday, giveaway, inactive, roles } from './commands/community.js';
@@ -97,6 +98,8 @@ export function attachHandlers(ctx: AppContext): void {
     // Guild-scoped commands update instantly, unlike global ones.
     await guild.commands.set(COMMANDS.map((c) => c.data));
     console.log(`[discord] registered ${COMMANDS.length} slash commands in "${guild.name}"`);
+    // Once, after the update that made every notification a DM: the members who held a ping role get the matching notification.
+    await convertPingRoles(ctx).catch((err) => console.error('[ping-roles] the move to DM notifications failed:', err));
   });
 
   client.on(Events.VoiceStateUpdate, (before, after) => {

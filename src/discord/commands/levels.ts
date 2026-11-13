@@ -2,7 +2,7 @@ import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } 
 import type { AppContext } from '../../context.js';
 import { levelingOn, syncLevelRoles } from '../../leveling/service.js';
 import { levelOf, progressBar, progressOf, xpForLevel } from '../../leveling/xp.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 

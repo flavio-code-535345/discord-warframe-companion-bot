@@ -48,18 +48,14 @@ export const CHANNEL_SETTINGS: { title: string; fields: ChannelSetting[] }[] = [
     fields: [
       { key: 'birthdayChannelId', label: 'Birthdays', kind: 'channel' },
       { key: 'weeklyChannelId', label: 'Weekly reset post', kind: 'channel' },
-      { key: 'weeklyRoleId', label: 'Weekly reset by DM to', kind: 'role', empty: '— nobody —' },
       { key: 'promoChannelId', label: 'Promo codes', kind: 'channel' },
       { key: 'newsChannelId', label: 'Game news', kind: 'channel' },
       { key: 'levelChannelId', label: 'Level-ups', kind: 'channel', empty: '— where the member is talking —' },
     ],
   },
   {
-    title: 'Pings',
-    fields: [
-      { key: 'eventsRoleId', label: 'New clan events', kind: 'role', empty: '— no ping —' },
-      { key: 'lfgRoleId', label: 'Squads (/lfg)', kind: 'role', empty: '— no ping —' },
-    ],
+    title: 'Squads',
+    fields: [{ key: 'lfgChannelId', label: 'Squads started from a board', kind: 'channel', empty: '— not set —' }],
   },
 ];
 
@@ -164,12 +160,11 @@ export function registerOverviewRoutes({ router, ctx, pc, html, guild }: Deps): 
             : near
               ? [badge('near the limit', 'warn'), `Its fullest message has ${h.maxText} of ${TEXT_LIMIT} characters and ${h.maxComponents} of ${COMPONENT_LIMIT} components.`]
               : [h.at ? badge('ok', 'ok') : badge('waiting')];
-      const role = f.role ? settings[f.role] : null;
       return row(
         [
-          `<b>${e(f.label)}</b>${role ? `<div class="muted">pings ${where(role, 'role')}</div>` : ''}`,
+          `<b>${e(f.label)}</b>`,
           where(channel),
-          h.at && channel ? `${ago(h.at, now)}${h.action ? ` · ${e(h.action)}` : ''}${h.pinged ? ` · ${h.pinged} pinged` : ''}` : '—',
+          h.at && channel ? `${ago(h.at, now)}${h.action ? ` · ${e(h.action)}` : ''}` : '—',
           state,
         ],
         detail,

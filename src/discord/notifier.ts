@@ -52,14 +52,22 @@ async function notifyTrackers(ctx: AppContext, ws: WorldState | null, now: numbe
   if (!trackers.length) return;
   const items = collectTrackables(ws, now, arbitrations ? { arbitrations } : {});
   const perUser = new Map<string, DmGroup[]>();
+  // What each member is already told about this round: an alert that matches two of their notifications ("anything worth running"
+  // and "Forma") is listed once, under the first.
+  const told = new Map<string, Set<string>>();
 
   for (const tracker of trackers) {
     const spec = parseSpec(tracker.spec);
     if (!spec) continue;
+    const mine = told.get(tracker.userId) ?? new Set<string>();
+    told.set(tracker.userId, mine);
     const matched: DmGroup['items'] = [];
     for (const item of items) {
       const hits = matchTracker(spec, item);
+      // Marked as seen for this notification either way, so it is not sent on its own in a later round.
       if (hits === null || !store.markSeen(`track:${tracker.id}:${item.key}`)) continue;
+      if (mine.has(item.key)) continue;
+      mine.add(item.key);
       matched.push({ item, hits });
     }
     if (matched.length) {

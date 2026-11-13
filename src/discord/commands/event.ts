@@ -1,5 +1,5 @@
 import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { UserError, cancelClanEvent, createClanEvent, whenText } from '../../services/clan.js';
+import { UserError, cancelClanEvent, createClanEvent } from '../../services/clan.js';
 import { discordTime, parseEnd, parseWhen } from '../../time.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';

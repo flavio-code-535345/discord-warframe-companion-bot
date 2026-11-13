@@ -102,6 +102,35 @@ export function rivenDm(
   ]);
 }
 
+const linkRow = (label: string, url: string) =>
+  new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setLabel(label));
+
+/** The DM when a clan event is posted, for members who asked for new events. The button opens the post with its RSVP buttons. */
+export function clanEventDm(ev: { title: string; description: string | null; startsAt: number; endsAt: number | null }, url: string, avatar: string | null): ContainerBuilder {
+  const when = `${discordTime(ev.startsAt, 'F')} (${discordTime(ev.startsAt)})${ev.endsAt ? ` · until ${discordTime(ev.endsAt, 't')}` : ''}`;
+  return card(COLORS.brand, [
+    section(`### 📅 New clan event: ${ev.title}\n${when}`, avatar),
+    ev.description ? ev.description.slice(0, 600) : null,
+    linkRow('Open the event to RSVP', url),
+    '-# You asked Ordis for new clan events. Stop with "My notifications" on a World State board, or /track remove.',
+  ]);
+}
+
+/** The DM when someone posts an /lfg squad, for members who asked for squads. The button opens the post with its Join button. */
+export function squadDm(post: { activity: string; details: string | null; size: number; hostName: string; voice: boolean }, url: string, avatar: string | null): ContainerBuilder {
+  return card(COLORS.brand, [
+    section(`### 🔍 ${post.hostName} is looking for a squad\n**${post.activity}** · ${post.size} players${post.voice ? ' · with a voice channel' : ''}`, avatar),
+    post.details ? post.details.slice(0, 600) : null,
+    linkRow('Open the squad to join', url),
+    '-# You asked Ordis for squads. Stop with "My notifications" on a World State board, or /track remove.',
+  ]);
+}
+
+/** A plain note from Ordis as a DM: a heading and a few lines. */
+export function noticeDm(title: string, lines: string[], avatar: string | null): ContainerBuilder {
+  return card(COLORS.brand, [section(`### ${title}`, avatar), DIVIDER, lines.join('\n')]);
+}
+
 /** Sends a card as a DM. False when the member can't be reached (DMs closed, left the server); that is logged, not thrown. */
 export async function sendDm(ctx: Pick<AppContext, 'client'>, userId: string, container: ContainerBuilder, what: string): Promise<boolean> {
   try {

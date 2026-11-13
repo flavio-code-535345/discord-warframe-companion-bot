@@ -1,5 +1,5 @@
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import {
   CYCLE_CHOICES,
   MAX_TRACKERS_PER_USER,
@@ -13,6 +13,8 @@ import { getItemIndex, resolveItem, searchItems } from '../../warframe/market.js
 import { FISSURE_TIERS } from '../../warframe/worldstate.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
+import { sameSpec } from '../feeds/controls.js';
+import { ACTIVITIES } from './lfg.js';
 
 export const track: Command = {
   data: new SlashCommandBuilder()
@@ -71,6 +73,14 @@ export const track: Command = {
     )
     .addSubcommand((s) => s.setName('archon').setDescription('The weekly Archon Hunt resetting'))
     .addSubcommand((s) => s.setName('weekly').setDescription('A DM every Monday with what the reset brought (Circuit, Nightwave, Archon Hunt, Steel Path)'))
+    .addSubcommand((s) => s.setName('notable').setDescription('Any alert or invasion with a reward worth running (Forma, Catalysts, Nitain, rare parts…)'))
+    .addSubcommand((s) => s.setName('events').setDescription('A DM when a new clan event is posted'))
+    .addSubcommand((s) =>
+      s
+        .setName('squads')
+        .setDescription('A DM when someone looks for a squad with /lfg')
+        .addStringOption((o) => o.setName('activity').setDescription('Only this activity, e.g. Eidolon hunt (empty = every squad)').setMaxLength(100).setAutocomplete(true)),
+    )
     .addSubcommand((s) =>
       s
         .setName('price')
@@ -138,8 +148,14 @@ export const track: Command = {
     } else if (sub === 'archon') {
       spec = { kind: 'archon' };
     } else if (sub === 'weekly') {
-      if (ctx.store.listTrackers(guildId, userId).some((t) => parseSpec(t.spec)?.kind === 'weekly')) throw new UserError('You already get the weekly summary.');
       spec = { kind: 'weekly' };
+    } else if (sub === 'notable') {
+      spec = { kind: 'notable' };
+    } else if (sub === 'events') {
+      spec = { kind: 'clanEvent' };
+    } else if (sub === 'squads') {
+      const activity = interaction.options.getString('activity')?.trim();
+      spec = { kind: 'squad', ...(activity ? { activity } : {}) };
     } else if (sub === 'price') {
       const query = interaction.options.getString('item', true);
       const item = await resolveItem(query).catch(() => null);
@@ -149,21 +165,32 @@ export const track: Command = {
       spec = { kind: 'baro' };
     }
 
-    if (ctx.store.listTrackers(guildId, userId).length >= MAX_TRACKERS_PER_USER) {
+    const mine = ctx.store.listTrackers(guildId, userId);
+    // The same notification twice would only send everything twice.
+    if (mine.some((t) => sameSpec(t.spec, spec))) throw new UserError(`You already have that one: ${describeTracker(spec)}.`);
+    if (mine.length >= MAX_TRACKERS_PER_USER) {
       throw new UserError(`You already have ${MAX_TRACKERS_PER_USER} trackers. Remove one with \`/track remove\`.`);
     }
     const created = ctx.store.createTracker(guildId, userId, JSON.stringify(spec));
+    // These are sent when something happens or on a day, not matched against what is running now.
+    const later = spec.kind === 'price' || spec.kind === 'weekly' || spec.kind === 'clanEvent' || spec.kind === 'squad';
     await reply(
-      `Tracker **#${created.id}** set: ${describeTracker(spec)}. Ordis will DM you when it appears${spec.kind === 'price' || spec.kind === 'weekly' ? '' : ', including anything matching right now'}. ` +
+      `Tracker **#${created.id}** set: ${describeTracker(spec)}. Ordis will DM you when it ${later ? 'happens' : 'appears, including anything matching right now'}. ` +
         'Make sure Privacy Settings → Direct Messages from server members is on for this server.',
     );
   },
 
-  async autocomplete(interaction) {
+  async autocomplete(interaction, ctx) {
     const focused = interaction.options.getFocused(true);
     if (focused.name === 'item') {
       const matches = searchItems(await getItemIndex(), focused.value);
       await interaction.respond(matches.map((m) => ({ name: m.name.slice(0, 100), value: m.slug })));
+      return;
+    }
+    if (focused.name === 'activity') {
+      const typed = focused.value.toLowerCase();
+      const known = [...new Set([...ctx.store.listActivities().map((a) => a.name), ...ACTIVITIES])];
+      await interaction.respond(known.filter((a) => a.toLowerCase().includes(typed)).slice(0, 25).map((a) => ({ name: a.slice(0, 100), value: a.slice(0, 100) })));
       return;
     }
     const q = focused.value.toLowerCase();

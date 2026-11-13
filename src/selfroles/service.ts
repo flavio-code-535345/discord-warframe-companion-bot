@@ -13,20 +13,25 @@ import type { AppContext } from '../context.js';
 import type { SelfRole } from '../db.js';
 import { DANGEROUS } from '../discord/permissions.js';
 import { COLORS } from '../discord/embeds.js';
+import { mineButton, notifyButton } from '../discord/feeds/controls.js';
+import { FEEDS } from '../discord/feeds/index.js';
 import { brandIcon } from '../discord/identity.js';
 import { levelTier } from '../leveling/xp.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { editLive, postLive } from '../discord/live-message.js';
 import { isStaffRoleName, masteryOfRoleName } from '../ssroles/roles.js';
 
 /**
- * The self-assign role menu: one message with a button per role (platform, region, pings...), grouped in the embed. A tap gives the
- * role, a second tap takes it away; the answer is ephemeral. Custom IDs are `roles:<roleId>`, so old panels keep working after a
- * restart. Where the panel is lives in bot_meta, and every change to the list edits it in place.
+ * The self-assign role menu: one message with a button per role (platform, region...), grouped in the embed. A tap gives the role, a
+ * second tap takes it away; the answer is ephemeral. Custom IDs are `roles:<roleId>`, so old panels keep working after a restart. Where
+ * the panel is lives in bot_meta, and every change to the list edits it in place.
+ *
+ * Roles say who someone is; they are not how Ordis notifies anyone (he pings no role). The panel's last row is where the DM
+ * notifications are switched on instead: clan events, squads and the weekly summary with one tap, the rest under the boards.
  */
 
-/** Discord allows 5 rows of 5 buttons under one message. */
-export const MAX_SELF_ROLES = 25;
+/** Discord allows 5 rows of 5 buttons under one message; the last row is the notifications. */
+export const MAX_SELF_ROLES = 20;
 const PANEL_META = 'roles_panel';
 
 /** Roles Ordis must never hand out on request: staff, earned ones (mastery, level, clan rank) and anything with real powers. */
@@ -39,13 +44,14 @@ export function assertSelfAssignable(role: Role, me: GuildMember): void {
   if (masteryOfRoleName(role.name) !== null || levelTier(role.name) !== null) throw new UserError(`${role.name} is earned (mastery or level), so it can't be picked.`);
 }
 
-/** Discord allows this many rows of buttons under one message. */
-const MAX_ROWS = 5;
+/** Discord allows five rows of buttons under one message; one of them is the notifications row. */
+const MAX_ROLE_ROWS = 4;
 
 /**
- * The panel, pure apart from the brand icon. Groups keep the order they were added in; a group whose roles have no descriptions is a
- * compact inline field (so Platform and Region sit side by side), one with descriptions gets the full width. Each group's buttons start
- * a row of their own, so the buttons line up with the headings; only when that would need more than five rows are they packed together.
+ * The panel, pure apart from the brand icon and the settings. Groups keep the order they were added in; a group whose roles have no
+ * descriptions is a compact inline field (so Platform and Region sit side by side), one with descriptions gets the full width. Each
+ * group's buttons start a row of their own, so the buttons line up with the headings; only when that would need more than four rows
+ * are they packed together. The last field and row are the notifications: DMs, switched on here or under the boards.
  */
 export function rolesPanel(ctx: AppContext, roles: SelfRole[]): Pick<MessageCreateOptions, 'embeds' | 'components'> {
   const groups = new Map<string, SelfRole[]>();
@@ -53,10 +59,10 @@ export function rolesPanel(ctx: AppContext, roles: SelfRole[]): Pick<MessageCrea
   const icon = brandIcon(ctx);
   const embed = new EmbedBuilder()
     .setColor(COLORS.brand)
-    .setTitle('🎭 Pick your roles')
+    .setTitle('🎭 Roles and notifications')
     .setDescription(
       roles.length
-        ? 'Tell the den what you play on, where you are and what Ordis should ping you for.\n-# Tap a button to get a role, tap it again to drop it. Only you see the answer.'
+        ? 'Tell the den what you play on and where you are.\n-# Tap a button to get a role, tap it again to drop it. Only you see the answer.'
         : 'No roles to pick yet.',
     )
     .setFooter({ text: ctx.config.CLAN_NAME, ...(icon ? { iconURL: icon } : {}) });
@@ -66,6 +72,17 @@ export function rolesPanel(ctx: AppContext, roles: SelfRole[]): Pick<MessageCrea
     const line = (r: SelfRole) => `${r.emoji ? `${r.emoji} ` : ''}${described ? `**${r.label}**${r.description ? `\n-# ${r.description}` : ''}` : r.label}`;
     embed.addFields({ name: group, value: list.map(line).join('\n').slice(0, 1024), inline: !described });
   }
+  const settings = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID);
+  const boards = FEEDS.map((f) => settings[f.channel]).filter((id): id is string => Boolean(id)).map((id) => `<#${id}>`);
+  embed.addFields({
+    name: '🔔 Notifications',
+    value: [
+      'Ordis pings no role: what you want to hear about comes as a DM.',
+      boards.length ? `Pick it in the **🔔 DM me when…** menu under a board: ${boards.join(' ')}` : 'Pick it with `/track`.',
+      'Clan events, squads and the weekly summary are one tap below. **My notifications** lists and removes them.',
+    ].join('\n'),
+    inline: false,
+  });
   const button = (r: SelfRole) => {
     const b = new ButtonBuilder().setCustomId(`roles:${r.roleId}`).setLabel(r.label.slice(0, 80)).setStyle(ButtonStyle.Secondary);
     if (r.emoji) b.setEmoji(r.emoji);
@@ -73,8 +90,9 @@ export function rolesPanel(ctx: AppContext, roles: SelfRole[]): Pick<MessageCrea
   };
   const chunk = (list: SelfRole[]) => Array.from({ length: Math.ceil(list.length / 5) }, (_, i) => list.slice(i * 5, i * 5 + 5));
   let rows = [...groups.values()].flatMap(chunk);
-  if (rows.length > MAX_ROWS) rows = chunk([...groups.values()].flat());
-  return { embeds: [embed], components: rows.map((row) => new ActionRowBuilder<ButtonBuilder>().addComponents(row.map(button))) };
+  if (rows.length > MAX_ROLE_ROWS) rows = chunk([...groups.values()].flat());
+  const notifications = new ActionRowBuilder<ButtonBuilder>().addComponents(notifyButton('clanEvent'), notifyButton('squad'), notifyButton('weekly'), mineButton());
+  return { embeds: [embed], components: [...rows.map((row) => new ActionRowBuilder<ButtonBuilder>().addComponents(row.map(button))), notifications] };
 }
 
 /** Posts the panel in a channel (the previous one is removed) and remembers it. Returns its link. */

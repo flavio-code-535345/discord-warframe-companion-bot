@@ -1,4 +1,4 @@
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { fetchComparable } from './market.js';
 import { NUMBER_TAIL, attributeNames, describeFailure, loadAttributes, resolveWeapon } from './service.js';
 import { parseStatList, resolveStat } from './stats.js';

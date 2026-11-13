@@ -1,7 +1,7 @@
 import { own } from './own.js';
 import { type TimeInput, discordTime, toMs } from './time.js';
 import { type ArbitrationSlot, type ArbyTier, atLeast } from './warframe/arbitrations.js';
-import { type WorldState, activeArbitration, isBaroHere, resurgenceItemName, rewardText } from './warframe/worldstate.js';
+import { type WorldState, activeArbitration, isBaroHere, isNotableReward, resurgenceItemName, rewardText } from './warframe/worldstate.js';
 import { projectCycles } from './warframe/cycles.js';
 
 /**
@@ -19,6 +19,12 @@ export type TrackerSpec =
   | { kind: 'archon' }
   | { kind: 'price'; slug: string; name: string; below: number }
   | { kind: 'weekly' }
+  /** Any alert or invasion with a reward worth running (`isNotableReward`): Forma, Catalysts, Nitain, rare parts, a big Kuva payout. */
+  | { kind: 'notable' }
+  /** A new clan event is posted. Sent when the event is created (services/clan.ts), never matched against the world state. */
+  | { kind: 'clanEvent' }
+  /** Someone posts an /lfg squad, optionally only for one activity. Sent when the squad is posted (lfg/squads.ts). */
+  | { kind: 'squad'; activity?: string }
   /**
    * A riven for sale on warframe.market (rivens/watch.ts): this weapon, these bonuses (more are fine), the curse rule, at most `maxPrice`.
    * `label` is the filter in words, kept so the tracker list needs no stat names.
@@ -74,7 +80,7 @@ export type TrackableSource =
 export interface Trackable {
   /** Stable identity: the same item keeps its key across polls, a new rotation gets a new one. */
   key: string;
-  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly' | 'riven'>;
+  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly' | 'riven' | 'notable' | 'clanEvent' | 'squad'>;
   source: TrackableSource;
   title: string;
   /** Searchable reward text for reward trackers. */
@@ -229,11 +235,19 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
 }
 
 /**
- * Price, riven and weekly trackers never match here: prices are checked against warframe.market (discord/price-alerts.ts), so are rivens
- * (rivens/watch.ts), the weekly post is sent by discord/weekly.ts, and no trackable has any of these kinds.
+ * null when `t` doesn't match; otherwise the matching reward rows (empty for non-reward trackers).
+ *
+ * Price, riven, weekly, clan event and squad trackers never match here: prices are checked against warframe.market
+ * (discord/price-alerts.ts), so are rivens (rivens/watch.ts), the weekly post is sent by discord/weekly.ts, clan events and squads are
+ * sent when they are posted (discord/subscriptions.ts), and no trackable has any of these kinds.
  */
-/** null when `t` doesn't match; otherwise the matching reward rows (empty for non-reward trackers). */
 export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
+  // "Anything worth running" is not one kind of trackable: it looks at what alerts and invasions pay.
+  if (spec.kind === 'notable') {
+    if (t.source !== 'alert' && t.source !== 'invasion') return null;
+    const hits = (t.rewards ?? []).filter(isNotableReward);
+    return hits.length ? hits : null;
+  }
   if (spec.kind !== t.kind) return null;
   switch (spec.kind) {
     case 'reward': {
@@ -303,6 +317,12 @@ export function describeTracker(spec: TrackerSpec): string {
       return `${spec.name} at ${spec.below}p or less on warframe.market`;
     case 'weekly':
       return 'The weekly reset summary (Mondays)';
+    case 'notable':
+      return 'Any alert or invasion with a reward worth running';
+    case 'clanEvent':
+      return 'New clan events';
+    case 'squad':
+      return spec.activity ? `Squads for ${spec.activity} (/lfg)` : 'Every squad someone posts with /lfg';
     case 'riven':
       return `${spec.weaponName} riven with ${spec.label} at ${spec.maxPrice.toLocaleString('en-US')}p or less`;
   }

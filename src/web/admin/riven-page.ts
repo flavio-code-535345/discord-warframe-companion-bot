@@ -7,7 +7,7 @@ import { QueueFullError, screenshotQueue } from '../../queue.js';
 import { disableRivenChannel, recordResult, scanLog, scanTotals, setupRivenChannel } from '../../rivens/channel.js';
 import { scanCard } from '../../rivens/scan.js';
 import { rivenStatus } from '../../rivens/service.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { withTimeout } from '../../timeout.js';
 import { escapeHtml as e } from '../status.js';
 import { type Option, type PageContext, actionButton, csrfField, head, layout, select, statCard } from './pages.js';

@@ -1,7 +1,7 @@
 import { ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { Activity } from '../../db.js';
 import { validImageUrl } from '../../lfg/lifecycle.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 import { ACTIVITIES } from './lfg.js';
@@ -9,12 +9,12 @@ import { ACTIVITIES } from './lfg.js';
 const IMAGE_HELP = 'a direct https link to an image (right-click the image, copy image address)';
 
 const describeActivity = (a: Activity) =>
-  `**${a.name}** · ${a.imageUrl ? '🖼️ picture' : 'no picture'}${a.roleId ? ` · pings <@&${a.roleId}>` : ''}${a.channelId ? ` · posts in <#${a.channelId}>` : ''}`;
+  `**${a.name}** · ${a.imageUrl ? '🖼️ picture' : 'no picture'}${a.channelId ? ` · posts in <#${a.channelId}>` : ''}`;
 
 export const activity: Command = {
   data: new SlashCommandBuilder()
     .setName('activity')
-    .setDescription('Set the picture, ping role and channel for each /lfg activity')
+    .setDescription('Set the picture and channel for each /lfg activity')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
       s
@@ -22,7 +22,6 @@ export const activity: Command = {
         .setDescription('Add an activity, or change an existing one (only the options you give are changed)')
         .addStringOption((o) => o.setName('name').setDescription('Activity name, as people pick it in /lfg').setRequired(true).setMaxLength(100).setAutocomplete(true))
         .addStringOption((o) => o.setName('image').setDescription('Picture for its LFG posts: a direct https link to an image').setMaxLength(1000))
-        .addRoleOption((o) => o.setName('role').setDescription('Role pinged when someone posts this activity'))
         .addChannelOption((o) =>
           o.setName('channel').setDescription('Post this activity in a fixed channel instead of where /lfg ran').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
         ),
@@ -30,16 +29,16 @@ export const activity: Command = {
     .addSubcommand((s) =>
       s
         .setName('clear')
-        .setDescription("Remove an activity's picture, role or channel (or all of its settings)")
+        .setDescription("Remove an activity's picture or channel (or all of its settings)")
         .addStringOption((o) => o.setName('name').setDescription('Activity').setRequired(true).setMaxLength(100).setAutocomplete(true))
         .addStringOption((o) =>
           o
             .setName('what')
             .setDescription('What to clear (default: everything)')
-            .addChoices({ name: 'Picture', value: 'image' }, { name: 'Ping role', value: 'role' }, { name: 'Channel', value: 'channel' }, { name: 'Everything (remove the activity)', value: 'all' }),
+            .addChoices({ name: 'Picture', value: 'image' }, { name: 'Channel', value: 'channel' }, { name: 'Everything (remove the activity)', value: 'all' }),
         ),
     )
-    .addSubcommand((s) => s.setName('list').setDescription('Show every activity with its picture, role and channel'))
+    .addSubcommand((s) => s.setName('list').setDescription('Show every activity with its picture and channel'))
     .toJSON(),
 
   async execute(interaction, ctx) {
@@ -52,7 +51,7 @@ export const activity: Command = {
       const embed = new EmbedBuilder()
         .setColor(COLORS.brand)
         .setTitle('LFG activities')
-        .setDescription(lines.join('\n').slice(0, 3000) || '*No activity has a picture, role or channel yet. Use `/activity set`.*')
+        .setDescription(lines.join('\n').slice(0, 3000) || '*No activity has a picture or channel yet. Use `/activity set`.*')
         .addFields({ name: 'Suggestions without settings', value: plain.join(' · ').slice(0, 1024) || '—' });
       await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return;
@@ -63,15 +62,13 @@ export const activity: Command = {
 
     if (sub === 'set') {
       const image = interaction.options.getString('image');
-      const role = interaction.options.getRole('role');
       const channel = interaction.options.getChannel('channel');
-      if (!image && !role && !channel) throw new UserError('Give at least one thing to change: image, role or channel.');
+      if (!image && !channel) throw new UserError('Give at least one thing to change: image or channel.');
       const imageUrl = image ? validImageUrl(image) : (existing?.imageUrl ?? null);
       if (image && !imageUrl) throw new UserError(`The image must be ${IMAGE_HELP}.`);
       const saved: Activity = {
         name: existing?.name ?? name,
         imageUrl,
-        roleId: role?.id ?? existing?.roleId ?? null,
         channelId: channel?.id ?? existing?.channelId ?? null,
       };
       ctx.store.saveActivity(saved);
@@ -90,7 +87,6 @@ export const activity: Command = {
     const cleared: Activity = {
       ...existing,
       imageUrl: what === 'image' ? null : existing.imageUrl,
-      roleId: what === 'role' ? null : existing.roleId,
       channelId: what === 'channel' ? null : existing.channelId,
     };
     ctx.store.saveActivity(cleared);

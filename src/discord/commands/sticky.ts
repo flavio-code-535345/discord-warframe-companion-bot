@@ -12,7 +12,7 @@ import {
 } from 'discord.js';
 import type { AppContext } from '../../context.js';
 import type { Sticky } from '../../db.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { MAX_STICKY_LENGTH, MAX_STICKY_TITLE, checkStickyChannel, removeSticky, saveSticky } from '../../sticky/service.js';
 import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';

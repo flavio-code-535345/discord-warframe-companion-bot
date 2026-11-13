@@ -8,7 +8,7 @@ import { drawWinners, renderGiveaway } from '../src/giveaways/service.js';
 import { rolesPanel } from '../src/selfroles/service.js';
 import { describeTracker, priceDecision } from '../src/trackers.js';
 import { componentText } from '../src/discord/feeds/parts.js';
-import { handleWeeklyButton, postWeeklyReset, weeklyCard, weeklyDue } from '../src/discord/weekly.js';
+import { postWeeklyReset, weeklyCard, weeklyDue } from '../src/discord/weekly.js';
 import { weekStart } from '../src/time.js';
 import type { WorldState } from '../src/warframe/worldstate.js';
 
@@ -16,37 +16,57 @@ const G = '111111111111111111';
 const DAY = 86_400_000;
 /** The JSON of a discord.js builder (embeds and rows come back typed as builders or plain data). */
 const json = <T = Record<string, unknown>>(x: unknown): T => (x as { toJSON(): T }).toJSON();
-const ctx = { config: { CLAN_NAME: 'The Rats Den 69', BOT_NAME: 'Cephalon Ordis', DISCORD_GUILD_ID: G }, client: { user: null } } as unknown as AppContext;
+const ctx = { config: { CLAN_NAME: 'The Rats Den 69', BOT_NAME: 'Cephalon Ordis', DISCORD_GUILD_ID: G }, client: { user: null }, store: new Store(':memory:') } as unknown as AppContext;
+/** The custom IDs of a panel's buttons, row by row. */
+const buttonRows = (panel: { components?: unknown }) => (panel.components as unknown[]).map((r) => json<{ components: { custom_id: string }[] }>(r).components.map((c) => c.custom_id));
+const NOTIFY_ROW = ['notify:clanEvent', 'notify:squad', 'notify:weekly', 'feeds:mine'];
 
 describe('self-assign roles', () => {
-  it('keeps the groups in the order they were added, each with its own row of buttons', () => {
+  it('keeps the groups in the order they were added, each with its own row of buttons, and ends with the notifications', () => {
     const store = new Store(':memory:');
     store.upsertSelfRole(G, { roleId: '1', group: 'Platform', label: 'PC', emoji: '🖥️', description: null, position: 0 });
-    store.upsertSelfRole(G, { roleId: '2', group: 'Pings', label: 'Alerts', emoji: null, description: 'Baro, sortie, notable alerts', position: 1 });
+    store.upsertSelfRole(G, { roleId: '2', group: 'Region', label: 'Europe', emoji: null, description: 'Evenings in CET', position: 1 });
     store.upsertSelfRole(G, { roleId: '3', group: 'Platform', label: 'PlayStation', emoji: null, description: null, position: 2 });
     const panel = rolesPanel(ctx, store.listSelfRoles(G));
     const embed = json(panel.embeds![0]) as { fields: { name: string; value: string; inline: boolean }[] };
-    assert.deepEqual(embed.fields.map((f) => [f.name, f.inline]), [['Platform', true], ['Pings', false]], 'a group without descriptions is compact');
-    assert.match(embed.fields[1]!.value, /\*\*Alerts\*\*\n-# Baro/);
-    const rows = (panel.components as unknown[]).map((r) => json<{ components: { custom_id: string }[] }>(r).components.map((c) => c.custom_id));
-    assert.deepEqual(rows, [['roles:1', 'roles:3'], ['roles:2']]);
+    assert.deepEqual(
+      embed.fields.map((f) => [f.name, f.inline]),
+      [['Platform', true], ['Region', false], ['🔔 Notifications', false]],
+      'a group without descriptions is compact',
+    );
+    assert.match(embed.fields[1]!.value, /\*\*Europe\*\*\n-# Evenings/);
+    assert.deepEqual(buttonRows(panel), [['roles:1', 'roles:3'], ['roles:2'], NOTIFY_ROW]);
+  });
+
+  it('says where notifications are picked: under the boards that are set up, else with /track', () => {
+    const store = new Store(':memory:');
+    const c = { ...ctx, store } as unknown as AppContext;
+    const notifications = () => (json(rolesPanel(c, []).embeds![0]) as { fields: { name: string; value: string }[] }).fields.at(-1)!.value;
+    assert.match(notifications(), /Ordis pings no role/);
+    assert.match(notifications(), /Pick it with `\/track`/);
+    store.updateSettings(G, { fissuresChannelId: '222', tradersChannelId: '333' });
+    assert.match(notifications(), /under a board: <#222> <#333>/);
+    assert.deepEqual(buttonRows(rolesPanel(c, [])), [NOTIFY_ROW], 'the notifications row is there even with no role to pick');
   });
 
   it('puts at most five buttons in a row', () => {
     const roles = Array.from({ length: 12 }, (_, i) => ({ roleId: String(i), group: 'G', label: `R${i}`, emoji: null, description: null, position: i }));
-    const rows = rolesPanel(ctx, roles).components as unknown[];
-    assert.equal(rows.length, 3);
+    const rows = buttonRows(rolesPanel(ctx, roles));
+    assert.deepEqual(rows.map((r) => r.length), [5, 5, 2, 4]);
   });
 
-  it('packs the buttons together when a row per group would need more than five rows', () => {
+  it('packs the buttons together when a row per group would need more than four rows, so the notifications always fit', () => {
     const roles = Array.from({ length: 6 }, (_, i) => ({ roleId: String(i), group: `G${i}`, label: `R${i}`, emoji: null, description: null, position: i }));
-    assert.equal((rolesPanel(ctx, roles).components as unknown[]).length, 2);
+    assert.deepEqual(buttonRows(rolesPanel(ctx, roles)).map((r) => r.length), [5, 1, 4]);
+    // The most the menu holds (20 roles) still leaves the fifth row for the notifications.
+    const full = Array.from({ length: 25 }, (_, i) => ({ roleId: String(i), group: `G${i % 7}`, label: `R${i}`, emoji: null, description: null, position: i }));
+    assert.deepEqual(buttonRows(rolesPanel(ctx, full)).map((r) => r.length), [5, 5, 5, 5, 4]);
   });
 
   it('a changed entry keeps its place, a removed one is gone', () => {
     const store = new Store(':memory:');
-    store.upsertSelfRole(G, { roleId: '1', group: 'Pings', label: 'Alerts', emoji: null, description: null, position: 0 });
-    store.upsertSelfRole(G, { roleId: '1', group: 'Pings', label: 'World alerts', emoji: '🚨', description: null, position: 0 });
+    store.upsertSelfRole(G, { roleId: '1', group: 'Platform', label: 'Alerts', emoji: null, description: null, position: 0 });
+    store.upsertSelfRole(G, { roleId: '1', group: 'Platform', label: 'World alerts', emoji: '🚨', description: null, position: 0 });
     assert.deepEqual(store.listSelfRoles(G).map((r) => r.label), ['World alerts']);
     assert.equal(store.deleteSelfRole(G, '1'), true);
     assert.equal(store.listSelfRoles(G).length, 0);
@@ -193,16 +213,15 @@ describe('weekly reset DMs', () => {
     steelPath: { currentReward: { name: 'Umbra Forma Blueprint', cost: 150 }, rotation: [], expiry: new Date(monday + 7 * DAY).toISOString() },
   } as unknown as WorldState;
 
-  /** A guild with members by role, a weekly channel and DMs that are recorded. */
-  function setup(roleMembers: { id: string; roles: string[]; bot?: boolean }[]) {
+  /** A weekly channel and DMs that are recorded. Nothing here reads the member list: the weekly post goes to whoever asked for it. */
+  function setup() {
     const store = new Store(':memory:');
     const posted: unknown[] = [];
     const dms: string[] = [];
-    const members = new Map(roleMembers.map((m) => [m.id, { id: m.id, user: { bot: m.bot ?? false }, roles: { cache: new Set(m.roles) } }]));
     const channel = { isSendable: () => true, guildId: G, id: 'weekly', send: async (p: unknown) => posted.push(p) };
     const client = {
       user: null,
-      guilds: { fetch: async () => ({ members: { fetch: async () => members, cache: members } }) },
+      guilds: { fetch: async () => assert.fail('the member list is not needed') },
       channels: { fetch: async () => channel },
       users: { fetch: async (id: string) => ({ send: async () => dms.push(id) }) },
     };
@@ -210,25 +229,22 @@ describe('weekly reset DMs', () => {
     return { c, store, posted, dms };
   }
 
-  it('DMs everyone with the role or a subscription once, besides the channel post', async () => {
-    const { c, store, posted, dms } = setup([
-      { id: 'roled', roles: ['weeklies'] },
-      { id: 'both', roles: ['weeklies'] },
-      { id: 'other', roles: ['pc'] },
-      { id: 'bot', roles: ['weeklies'], bot: true },
-    ]);
-    store.updateSettings(G, { weeklyChannelId: 'weekly', weeklyRoleId: 'weeklies' });
-    store.createTracker(G, 'both', JSON.stringify({ kind: 'weekly' }));
-    store.createTracker(G, 'subscriber', JSON.stringify({ kind: 'weekly' }));
+  it('DMs everyone who asked for it once, besides the channel post', async () => {
+    const { c, store, posted, dms } = setup();
+    store.updateSettings(G, { weeklyChannelId: 'weekly' });
+    store.createTracker(G, 'one', JSON.stringify({ kind: 'weekly' }));
+    store.createTracker(G, 'two', JSON.stringify({ kind: 'weekly' }));
+    store.createTracker(G, 'two', JSON.stringify({ kind: 'baro' }));
+    store.createTracker(G, 'other', JSON.stringify({ kind: 'sortie' }));
     await postWeeklyReset(c, ws, monday + 600_000);
     assert.equal(posted.length, 1);
-    assert.deepEqual(dms.sort(), ['both', 'roled', 'subscriber']);
+    assert.deepEqual(dms.sort(), ['one', 'two']);
     await postWeeklyReset(c, ws, monday + 3_600_000);
-    assert.equal(dms.length, 3, 'once per week');
+    assert.equal(dms.length, 2, 'once per week');
   });
 
   it('sends the DMs even without a channel', async () => {
-    const { c, store, posted, dms } = setup([]);
+    const { c, store, posted, dms } = setup();
     store.createTracker(G, 'subscriber', JSON.stringify({ kind: 'weekly' }));
     await postWeeklyReset(c, ws, monday + 600_000);
     assert.equal(posted.length, 0);
@@ -237,39 +253,5 @@ describe('weekly reset DMs', () => {
 
   it('describes the subscription', () => {
     assert.equal(describeTracker({ kind: 'weekly' }), 'The weekly reset summary (Mondays)');
-  });
-});
-
-describe('the Weeklies by DM button', () => {
-  function tap(store: Store, opts: { roleId?: string; hasRole?: boolean } = {}) {
-    const replies: string[] = [];
-    if (opts.roleId) store.updateSettings(G, { weeklyRoleId: opts.roleId });
-    const interaction = {
-      user: { id: 'u1' },
-      inCachedGuild: () => true,
-      member: { roles: { cache: new Set(opts.hasRole && opts.roleId ? [opts.roleId] : []) } },
-      reply: async (p: { content: string }) => replies.push(p.content),
-    };
-    const c = { config: { DISCORD_GUILD_ID: G }, store } as unknown as AppContext;
-    return { run: () => handleWeeklyButton(interaction as never, c), replies };
-  }
-
-  it('subscribes on the first tap and unsubscribes on the second', async () => {
-    const store = new Store(':memory:');
-    const { run, replies } = tap(store);
-    await run();
-    assert.deepEqual(store.listTrackers(G, 'u1').map((t) => JSON.parse(t.spec).kind), ['weekly']);
-    await run();
-    assert.equal(store.listTrackers(G, 'u1').length, 0);
-    assert.match(replies[0]!, /every Monday/);
-    assert.match(replies[1]!, /No more weekly DMs\.$/);
-  });
-
-  it('tells a member with the role that the role keeps the DMs coming', async () => {
-    const store = new Store(':memory:');
-    store.createTracker(G, 'u1', JSON.stringify({ kind: 'weekly' }));
-    const { run, replies } = tap(store, { roleId: 'weeklies', hasRole: true });
-    await run();
-    assert.match(replies[0]!, /role menu/);
   });
 });

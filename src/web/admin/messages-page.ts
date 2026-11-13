@@ -3,7 +3,7 @@ import type { Request, Response, Router } from 'express';
 import type { AppContext } from '../../context.js';
 import type { PanelSession } from '../../db.js';
 import { MAX_MESSAGE_CHARS, editOwnMessage, ownMessages } from '../../discord/messages.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { escapeHtml as e } from '../status.js';
 import { type Option, type PageContext, csrfField, head, layout, select } from './pages.js';
 

@@ -1,5 +1,5 @@
 import type { AppContext } from '../context.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { ApiBlockedError, api } from '../warframe/fetch.js';
 import { searchItems } from '../warframe/market.js';
 import { type Grade, type MarketComparable, type StatInput, type TopRolls, gradeRiven, topRolls } from './grade.js';

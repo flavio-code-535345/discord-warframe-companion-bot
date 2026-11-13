@@ -8,11 +8,11 @@ import { handleFeedButton } from './feeds/handlers.js';
 import { handlePurgeButton } from './commands/moderation.js';
 import { handleGiveawayButton } from '../giveaways/service.js';
 import { handleRoleButton } from '../selfroles/service.js';
-import { handleWeeklyButton } from './weekly.js';
+import { handleNotifyButton } from './subscriptions.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
-/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `weekly:toggle`, `feeds:<mine|plan>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
+/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `notify:<key>` (and the older `weekly:toggle`), `feeds:<mine|plan>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
 export async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
   const [kind, rawId, action] = interaction.customId.split(':');
   const id = Number(rawId);
@@ -33,8 +33,9 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
     await handleRoleButton(interaction, ctx, rawId ?? '');
     return;
   }
-  if (kind === 'weekly') {
-    await handleWeeklyButton(interaction, ctx);
+  // `notify:<key>` switches an on/off notification; `weekly:toggle` is the same button on posts from before it was renamed.
+  if (kind === 'notify' || kind === 'weekly') {
+    await handleNotifyButton(interaction, ctx, kind === 'weekly' ? 'weekly' : (rawId ?? ''));
     return;
   }
   if (kind === 'giveaway') {

@@ -2,9 +2,9 @@ import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
 import { type WorldState, isBaroHere, resurgenceItemName } from '../../warframe/worldstate.js';
 import { e, emojiUrl } from '../emoji.js';
-import { buttonRow, mineButton, notifyRow, roleButton } from './controls.js';
+import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, card, compact, fit, num, section } from './parts.js';
-import { type FeedInput, type FeedPing, type PriceLookup, STALE_NOTE } from './types.js';
+import { type FeedInput, type PriceLookup, STALE_NOTE } from './types.js';
 
 /**
  * 🛒┃traders: Baro Ki'Teer in the first message (his whole inventory with ducats and credits while he is at a relay, else where and
@@ -103,8 +103,7 @@ function teshinPart(ws: WorldState, now: number): Part {
 }
 
 export function traderBoard(input: FeedInput, prices: PriceLookup | null = null): ContainerBuilder[][] {
-  const { ws, now, settings, selfRoles } = input;
-  const role = settings.baroRoleId && selfRoles.has(settings.baroRoleId) ? settings.baroRoleId : null;
+  const { ws, now } = input;
   const parts: Part[] = ws ? [darvoPart(ws, now), DIVIDER, varziaPart(ws, now), DIVIDER, teshinPart(ws, now)] : ['The world state is not available right now.'];
   return [
     [baroCard(ws, now, prices)],
@@ -115,22 +114,8 @@ export function traderBoard(input: FeedInput, prices: PriceLookup | null = null)
         input.stale ? `-# ${STALE_NOTE}` : null,
         DIVIDER,
         notifyRow('traders', '🔔 DM me when…'),
-        buttonRow(mineButton(), role ? roleButton(role, "Ping me when Baro lands", 'baro') : null),
+        buttonRow(mineButton()),
       ]),
     ],
-  ];
-}
-
-/** Baro landing: the Baro role's note, until he leaves. */
-export function traderPings(input: FeedInput): FeedPing[] {
-  const { ws, now } = input;
-  const t = ws?.voidTrader;
-  if (!ws || !t || !isBaroHere(ws, now)) return [];
-  return [
-    {
-      key: `baro:${toMs(t.activation)}`,
-      until: toMs(t.expiry),
-      text: `${e('baro')} **Baro Ki'Teer has arrived** at **${t.location}** with ${t.inventory.length} items · leaves ${discordTime(t.expiry, 'R')}`,
-    },
   ];
 }

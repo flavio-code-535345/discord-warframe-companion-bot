@@ -15,7 +15,7 @@ import {
 import type { AppContext } from '../../context.js';
 import { MAX_PURGE, OLD_DELETE_CAP, type PurgeFilter, parseAmount, runPurge } from '../../moderation/purge.js';
 import { assertCanAct, auditReason, lockChannel, modContext, modLog, notifyUser, unlockChannel } from '../../moderation/service.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { discordTime, formatDuration, parseDuration } from '../../time.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';

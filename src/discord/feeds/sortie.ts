@@ -2,7 +2,7 @@ import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
 import { type WorldState, archimedeaName } from '../../warframe/worldstate.js';
 import { e, emojiUrl, factionTag, shardEmoji } from '../emoji.js';
-import { buttonRow, mineButton, notifyRow, weeklyButton } from './controls.js';
+import { buttonRow, mineButton, notifyButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, card, nodeName, planetOf, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
 
@@ -91,7 +91,7 @@ export function sortieBoard(input: FeedInput): ContainerBuilder[][] {
   const { ws, now } = input;
   if (!ws) {
     const off = 'The world state is not available right now.';
-    return [[card(COLOR.sortie, [`## ${e('sortie')} Daily sortie`, off])], [card(COLOR.weekly, [`## 🧩 Weekly missions`, off, DIVIDER, notifyRow('sortie'), buttonRow(mineButton(), weeklyButton())])]];
+    return [[card(COLOR.sortie, [`## ${e('sortie')} Daily sortie`, off])], [card(COLOR.weekly, [`## 🧩 Weekly missions`, off, DIVIDER, notifyRow('sortie'), buttonRow(mineButton(), notifyButton('weekly'))])]];
   }
   const archimedeas = archimedeaPart(ws, now);
   return [
@@ -105,7 +105,7 @@ export function sortieBoard(input: FeedInput): ContainerBuilder[][] {
         input.stale ? `-# ${STALE_NOTE}` : null,
         DIVIDER,
         notifyRow('sortie'),
-        buttonRow(mineButton(), weeklyButton()),
+        buttonRow(mineButton(), notifyButton('weekly')),
         '-# **Weeklies by DM**: every Monday the Circuit, Nightwave, the Archon Hunt and Steel Path in one message.',
       ]),
     ],

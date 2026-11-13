@@ -95,14 +95,14 @@ test('store: squads track their voice channel, expiry and host presence', () => 
 
 test('store: activities are case-insensitive and can be renamed', () => {
   const store = new Store(':memory:');
-  store.saveActivity({ name: 'Eidolon hunt', imageUrl: 'https://example.com/e.png', roleId: 'r1', channelId: null });
+  store.saveActivity({ name: 'Eidolon hunt', imageUrl: 'https://example.com/e.png', channelId: null });
   assert.equal(store.getActivity('eidolon HUNT')?.imageUrl, 'https://example.com/e.png');
 
-  store.saveActivity({ name: 'Eidolon Hunt', imageUrl: null, roleId: 'r1', channelId: 'c1' });
+  store.saveActivity({ name: 'Eidolon Hunt', imageUrl: null, channelId: 'c1' });
   assert.equal(store.listActivities().length, 1);
   assert.equal(store.getActivity('eidolon hunt')?.name, 'Eidolon Hunt');
 
-  store.saveActivity({ name: 'Eidolons', imageUrl: null, roleId: 'r1', channelId: 'c1' }, 'Eidolon Hunt');
+  store.saveActivity({ name: 'Eidolons', imageUrl: null, channelId: 'c1' }, 'Eidolon Hunt');
   assert.deepEqual(store.listActivities().map((a) => a.name), ['Eidolons']);
   assert.equal(store.removeActivity('EIDOLONS'), true);
   assert.equal(store.removeActivity('Eidolons'), false);

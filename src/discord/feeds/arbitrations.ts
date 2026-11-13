@@ -2,9 +2,9 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ContainerBuilder, ty
 import { discordTime } from '../../time.js';
 import { type ArbitrationData, type ArbitrationSlot, type ArbyTier, TIERS, TIER_HINT, atLeast } from '../../warframe/arbitrations.js';
 import { e, emojiUrl, factionTag } from '../emoji.js';
-import { buttonRow, mineButton, notifyRow, roleButton } from './controls.js';
+import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, GAP, card, section } from './parts.js';
-import { type FeedInput, type FeedPing, STALE_NOTE } from './types.js';
+import { type FeedInput, STALE_NOTE } from './types.js';
 
 /**
  * ⚖️┃arbitrations: four messages, read from the bottom up like a channel is: the one running now with what comes next and the
@@ -82,7 +82,7 @@ export function planMessage(data: ArbitrationData | null, now: number, range: Pl
 
 /** The board: the week's best, the next 24 hours, the 24 after, and now with the controls. Always four messages. */
 export function arbitrationBoard(input: FeedInput): ContainerBuilder[][] {
-  const { arby, now, settings, selfRoles } = input;
+  const { arby, now } = input;
   const trusted = arby.scheduleTrusted;
   const next24 = arby.upcoming.filter((s) => s.start < now + 24 * HOUR);
   const later = arby.upcoming.filter((s) => s.start >= now + 24 * HOUR);
@@ -115,7 +115,6 @@ export function arbitrationBoard(input: FeedInput): ContainerBuilder[][] {
   ]);
 
   const cur = arby.current;
-  const role = settings.arbitrationsRoleId && selfRoles.has(settings.arbitrationsRoleId) ? settings.arbitrationsRoleId : null;
   const nowCard = card(cur ? TIER_COLOR[cur.tier] : TIER_COLOR.F, [
     section(
       cur
@@ -134,21 +133,9 @@ export function arbitrationBoard(input: FeedInput): ContainerBuilder[][] {
     input.stale || arby.stale ? `-# ${STALE_NOTE}` : null,
     DIVIDER,
     notifyRow('arbitrations', '🔔 DM me before…'),
-    buttonRow(planButton(), mineButton(), role ? roleButton(role, 'Ping me for S/A', 'arbitration') : null),
+    buttonRow(planButton(), mineButton()),
     SOURCES,
   ]);
 
   return [[best], [day], [tomorrow], [nowCard]];
-}
-
-/** S and A tier hours, 10 minutes before they start: the ping note for the Arbitrations role (it goes when the hour ends). */
-export function arbitrationPings(input: FeedInput, leadMs = 10 * 60_000): FeedPing[] {
-  const { arby, now } = input;
-  if (!arby.scheduleTrusted) return [];
-  const soon = [arby.current, ...arby.upcoming].filter((s): s is ArbitrationSlot => Boolean(s) && s!.end > now && s!.start - leadMs <= now && atLeast(s!.tier, 'A'));
-  return soon.map((s) => ({
-    key: `arbitration:${s.start}`,
-    until: s.end,
-    text: `${tierBadge(s.tier)} **${TIER_NAME[s.tier]} Arbitration** ${s.start > now ? `starts ${discordTime(s.start, 'R')}` : 'is running now'}: **${s.name}**${s.planet ? `, ${s.planet}` : ''} · ${s.mission}${s.faction ? ` · ${s.faction}` : ''} · ends ${discordTime(s.end, 't')}`,
-  }));
 }

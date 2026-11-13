@@ -35,14 +35,11 @@ function sampleBackup(): ServerBackup {
     bans: [{ id: 'u-troll', reason: 'spam' }],
     botSettings: {
       alertsChannelId: null,
-      alertsRoleId: null,
       arbitrationsChannelId: null,
-      arbitrationsRoleId: null,
       fissuresChannelId: null,
       sortieChannelId: null,
       cyclesChannelId: null,
       tradersChannelId: null,
-      baroRoleId: null,
       invasionsChannelId: null,
       announcementsChannelId: 'c-news',
       welcomeChannelId: 'c-general',
@@ -59,13 +56,11 @@ function sampleBackup(): ServerBackup {
       lfgVoiceCategoryId: null,
       lfgVoiceGraceMinutes: null,
       autoVcHubChannelId: null,
-      eventsRoleId: 'r-verified',
-      lfgRoleId: null,
       birthdayChannelId: null,
       weeklyChannelId: null,
-      weeklyRoleId: null,
       promoChannelId: null,
       newsChannelId: null,
+      lfgChannelId: null,
     },
     includesMessages: true,
   };
@@ -174,7 +169,6 @@ test('restoreBackup recreates missing roles and channels with mapped parents, ov
   assert.equal(result.bansAdded, 1);
   assert.equal(store.getSettings('g-new').announcementsChannelId, result.channelMap.get('c-news'));
   assert.equal(store.getSettings('g-new').welcomeChannelId, result.channelMap.get('c-general'));
-  assert.equal(store.getSettings('g-new').eventsRoleId, verifiedId);
   // Existing channels are left alone in "missing" mode.
   assert.equal(calls.filter((c) => c.op === 'channel.edit').length, 0);
 });

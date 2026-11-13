@@ -1,5 +1,5 @@
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import type { Command } from '../command.js';
 import { COLORS, clampLines } from '../embeds.js';
 import { FEEDS } from '../feeds/index.js';

@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 import type { Sticky } from '../db.js';
 import { COLORS } from '../discord/embeds.js';
 import { validImageUrl } from '../lfg/lifecycle.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 
 /**
  * Sticky messages. Instead of Discord's pins, Ordis keeps its own message as the last one in a channel: after

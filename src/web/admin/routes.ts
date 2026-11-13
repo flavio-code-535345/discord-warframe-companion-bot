@@ -199,7 +199,7 @@ export function adminRouter(ctx: AppContext): Router {
     const activities = store.listActivities();
     const nameOfId = (cid: string | null, list: Option[]) => (cid ? e(list.find((o) => o.value === cid)?.label ?? cid) : '—');
     const field = (label: string, name: keyof GuildSettings, opts: Option[], empty?: string) => `<label>${label}${select(name, opts, s[name] as string | null, empty)}</label>`;
-    const body = `${head('Settings', 'Where Ordis posts, who gets pinged, and which safety tools are switched on.')}
+    const body = `${head('Settings', 'Where Ordis posts and which safety tools are switched on.')}
 <h2>Channels</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings">${csrfField(p.session)}
 ${CHANNEL_SETTINGS.map(
@@ -209,13 +209,9 @@ ${CHANNEL_SETTINGS.map(
 <div><button>Save channels</button></div></form></div>
 <h2>World State boards</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings/feeds">${csrfField(p.session)}
-<p class="muted">One live board per channel, kept current by Ordis; a channel holds one board. Members use its menus to get DMs, and the roles are pinged for what is new.</p>
+<p class="muted">One live board per channel, kept current by Ordis; a channel holds one board. Members pick what they want to hear about in its menus and get a DM; Ordis pings no role.</p>
 <div class="row">
 ${FEEDS.map((f) => field(e(f.label), f.channel, channels)).join('\n')}
-</div><div class="row">
-${field('Alerts and invasions ping role', 'alertsRoleId', roles)}
-${field('S/A tier Arbitration ping role', 'arbitrationsRoleId', roles)}
-${field("Baro Ki'Teer ping role", 'baroRoleId', roles)}
 </div><div><button>Save boards</button></div></form></div>
 <h2>Squad voice channels</h2>
 <div class="card"><form class="stack" method="post" action="/admin/settings/lfgvoice">${csrfField(p.session)}
@@ -229,20 +225,19 @@ ${s.lfgVoiceCategoryId ? `<p>${actionButton(p.session, '/admin/settings/lfgvoice
 <div class="card">
 ${
   activities.length
-    ? `<table><tr><th>Activity</th><th>Picture</th><th>Ping role</th><th>Channel</th><th></th></tr>${activities
+    ? `<table><tr><th>Activity</th><th>Picture</th><th>Channel</th><th></th></tr>${activities
         .map(
           (a) =>
-            `<tr><td>${e(a.name)}</td><td>${a.imageUrl ? `<img src="${e(a.imageUrl)}" alt="" width="40" height="40" class="thumb">` : '—'}</td><td>${nameOfId(a.roleId, roles)}</td><td>${nameOfId(a.channelId, channels)}</td><td>${actionButton(p.session, `/admin/settings/activity/remove?name=${encodeURIComponent(a.name)}`, 'Remove', { danger: true, confirm: true })}</td></tr>`,
+            `<tr><td>${e(a.name)}</td><td>${a.imageUrl ? `<img src="${e(a.imageUrl)}" alt="" width="40" height="40" class="thumb">` : '—'}</td><td>${nameOfId(a.channelId, channels)}</td><td>${actionButton(p.session, `/admin/settings/activity/remove?name=${encodeURIComponent(a.name)}`, 'Remove', { danger: true, confirm: true })}</td></tr>`,
         )
         .join('')}</table>`
-    : '<p class="muted">No activity has a picture, role or channel yet.</p>'
+    : '<p class="muted">No activity has a picture or channel yet.</p>'
 }
 <form class="stack" method="post" action="/admin/settings/activity">${csrfField(p.session)}
-<p class="muted">Add an activity or update one by using its name again. Empty fields keep what is already set. The picture must be a direct https image link.</p>
+<p class="muted">Add an activity or update one by using its name again. Empty fields keep what is already set. The picture must be a direct https image link. An activity with a channel has its squads posted there.</p>
 <div class="row">
 <label>Activity name<input name="name" maxlength="100" required placeholder="Eidolon hunt"></label>
 <label>Picture URL<input name="image" maxlength="1000" placeholder="https://…/image.png"></label>
-<label>Ping role${select('role', roles, null, '— unchanged —')}</label>
 <label>Fixed channel${select('channel', channels, null, '— unchanged —')}</label>
 </div><div><button>Save activity</button></div></form></div>
 <h2>Honeypot</h2>
@@ -293,11 +288,6 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
         if (v && !g.channels.cache.has(v)) throw new UserError('One of the channels no longer exists.');
         patch[f.channel] = v;
       }
-      for (const key of ['alertsRoleId', 'arbitrationsRoleId', 'baroRoleId'] as const) {
-        const v = id(req.body[key]);
-        if (v && !g.roles.cache.has(v)) throw new UserError('One of the roles no longer exists.');
-        patch[key] = v;
-      }
       assertChannelFree(ctx, patch);
       store.updateSettings(guildId, patch);
       await audit(session, 'Changed the World State boards');
@@ -341,12 +331,10 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
       const imageText = typeof req.body.image === 'string' ? req.body.image.trim() : '';
       const imageUrl = imageText ? validImageUrl(imageText) : (existing?.imageUrl ?? null);
       if (imageText && !imageUrl) throw new UserError('The picture must be a direct https link to an image, without spaces.');
-      const role = id(req.body.role) ?? existing?.roleId ?? null;
       const channel = id(req.body.channel) ?? existing?.channelId ?? null;
-      if (role && !g.roles.cache.has(role)) throw new UserError('That role no longer exists.');
       if (channel && !g.channels.cache.has(channel)) throw new UserError('That channel no longer exists.');
-      if (!imageUrl && !role && !channel) throw new UserError('Set a picture, a role or a channel.');
-      store.saveActivity({ name: existing?.name ?? name, imageUrl, roleId: role, channelId: channel });
+      if (!imageUrl && !channel) throw new UserError('Set a picture or a channel.');
+      store.saveActivity({ name: existing?.name ?? name, imageUrl, channelId: channel });
       await audit(session, existing ? 'Updated an LFG activity' : 'Added an LFG activity', [{ name: 'Activity', value: name }]);
       return `Saved "${name}".`;
     }),

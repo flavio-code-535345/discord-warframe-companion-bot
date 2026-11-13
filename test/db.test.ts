@@ -53,12 +53,12 @@ test('lfg: host auto-joins, join/leave, close', () => {
 
 test('settings: partial updates keep other fields', () => {
   const store = new Store(':memory:');
-  store.updateSettings(G, { alertsChannelId: 'a', alertsRoleId: 'r' });
+  store.updateSettings(G, { alertsChannelId: 'a', lfgChannelId: 'l' });
   store.updateSettings(G, { announcementsChannelId: 'b' });
   assert.deepEqual(store.getSettings(G), {
     guildId: G,
     alertsChannelId: 'a',
-    alertsRoleId: 'r',
+    lfgChannelId: 'l',
     announcementsChannelId: 'b',
     welcomeChannelId: null,
     chatChannelId: null,
@@ -74,20 +74,15 @@ test('settings: partial updates keep other fields', () => {
     lfgVoiceCategoryId: null,
     lfgVoiceGraceMinutes: null,
     autoVcHubChannelId: null,
-    eventsRoleId: null,
-    lfgRoleId: null,
     birthdayChannelId: null,
     weeklyChannelId: null,
-    weeklyRoleId: null,
     promoChannelId: null,
     newsChannelId: null,
     arbitrationsChannelId: null,
-    arbitrationsRoleId: null,
     fissuresChannelId: null,
     sortieChannelId: null,
     cyclesChannelId: null,
     tradersChannelId: null,
-    baroRoleId: null,
     invasionsChannelId: null,
   });
   store.updateSettings(G, { lfgVoiceGraceMinutes: 7 });
@@ -169,6 +164,59 @@ test('panel admins and sessions: removal signs the admin out, expired sessions a
   assert.equal(store.getPanelSession('s1'), null);
 });
 
+/** The schema versions some migrations start from (how many migrations ran before them). */
+const CACHE_REMOVAL = 25;
+const PING_ROLES_REMOVAL = 37;
+
+test('the ping roles move out of the settings into a note for the one-time conversion, and the squads channel setting arrives', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = mkdtempSync(join(tmpdir(), 'ordis-db-'));
+  const file = join(dir, 'bot.db');
+  try {
+    new Store(file, { migrateTo: PING_ROLES_REMOVAL }).close();
+    const raw = new DatabaseSync(file);
+    raw.exec(
+      "INSERT INTO guild_settings (guild_id, alerts_channel_id, alerts_role_id, arbitrations_role_id, baro_role_id, weekly_role_id, events_role_id, lfg_role_id) VALUES ('g1', 'c-alerts', 'r-alerts', 'r-arby', 'r-baro', 'r-weekly', 'r-events', 'r-squads')",
+    );
+    // A second server that never had a ping role gets no note.
+    raw.exec("INSERT INTO guild_settings (guild_id, alerts_channel_id) VALUES ('g2', 'c2')");
+    raw.exec("INSERT INTO activities (name, image_url, role_id, channel_id) VALUES ('Eidolon hunt', 'https://x.test/e.png', 'r-eidolon', 'c-lfg')");
+    raw.close();
+
+    const store = new Store(file);
+    assert.deepEqual(JSON.parse(store.getMeta('legacy_ping_roles:g1') ?? 'null'), {
+      alerts: 'r-alerts',
+      arbitrations: 'r-arby',
+      baro: 'r-baro',
+      weekly: 'r-weekly',
+      events: 'r-events',
+      squads: 'r-squads',
+    });
+    assert.equal(store.getMeta('legacy_ping_roles:g2'), null);
+    const settings = store.getSettings('g1') as unknown as Record<string, unknown>;
+    assert.equal(settings.alertsChannelId, 'c-alerts', 'the channels stay');
+    assert.equal(settings.lfgChannelId, null);
+    for (const gone of ['alertsRoleId', 'arbitrationsRoleId', 'baroRoleId', 'weeklyRoleId', 'eventsRoleId', 'lfgRoleId']) assert.ok(!(gone in settings), gone);
+    assert.deepEqual(store.getActivity('eidolon hunt'), { name: 'Eidolon hunt', imageUrl: 'https://x.test/e.png', channelId: 'c-lfg' });
+    store.updateSettings('g1', { lfgChannelId: 'c-lfg' });
+    assert.equal(store.getSettings('g1').lfgChannelId, 'c-lfg');
+    store.close();
+
+    const check = new DatabaseSync(file);
+    const cols = (check.prepare('PRAGMA table_info(guild_settings)').all() as { name: string }[]).map((c) => c.name);
+    assert.ok(!cols.some((c) => c.endsWith('_role_id')), `no role column is left, got ${cols.filter((c) => c.endsWith('_role_id')).join(', ')}`);
+    assert.ok(!(check.prepare('PRAGMA table_info(activities)').all() as { name: string }[]).some((c) => c.name === 'role_id'));
+    check.close();
+  } finally {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {}
+  }
+});
+
 test('the answer cache is dropped with its switch and settings, also from a database that had it', async () => {
   const { mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
@@ -177,27 +225,15 @@ test('the answer cache is dropped with its switch and settings, also from a data
   const dir = mkdtempSync(join(tmpdir(), 'ordis-db-'));
   const file = join(dir, 'bot.db');
   try {
-    new Store(file).close();
-    // As a database from before the removal: the table, its switch and a panel setting, one migration behind.
+    // A database as it was just before the answer cache was removed (the 26th migration): built by running only the migrations up to
+    // then, so its tables and columns are the real ones of that time. The later migrations then run when it is opened normally.
+    new Store(file, { migrateTo: CACHE_REMOVAL }).close();
     const raw = new DatabaseSync(file);
-    const version = (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-    raw.exec("CREATE TABLE answer_cache (guild_id TEXT, key TEXT); INSERT INTO answer_cache VALUES ('g', 'q');");
+    assert.equal((raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, CACHE_REMOVAL);
+    raw.exec("INSERT INTO answer_cache (guild_id, key, question) VALUES ('g', 'q', 'what is a riven?')");
     raw.exec(
       "INSERT INTO bot_meta (key, value) VALUES ('ai_toggle_cache', 'off'), ('cfg_ANSWER_REFRESH_MAX', 'v:12'), ('local_ai_model', 'gemma4:e4b'), ('brain_settings', '{}'), ('cfg_EMBED_MODEL', 'v:x'), ('cfg_LOCAL_AI_MODEL', 'v:old-model'), ('ai_toggle_local', 'on'), ('cfg_WORLDSTATE_URL', 'v:https://docs.warframestat.us/'), ('avatar_sha256', 'abc')",
     );
-    // Back to before the cache migration (twelve from the end). The review column it was followed by is gone again by now, the
-    // migrations after it are replayed as they come: add the column, clean the settings, drop the corrections and ratings, add the
-    // community tables (undone here first, so they can be added again), drop the research board and starboard again, drop
-    // verification and the AI switches (their columns put back first), add the World State board channels and the AlecaFrame links.
-    raw.exec(`PRAGMA user_version = ${version - 12}`);
-    raw.exec('DROP TABLE alecaframe_links');
-    for (const col of ['events_role_id', 'lfg_role_id', 'birthday_channel_id', 'weekly_channel_id', 'weekly_role_id', 'promo_channel_id', 'news_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
-    for (const col of ['arbitrations_channel_id', 'arbitrations_role_id', 'fissures_channel_id', 'sortie_channel_id', 'cycles_channel_id', 'traders_channel_id', 'baro_role_id', 'invasions_channel_id']) raw.exec(`ALTER TABLE guild_settings DROP COLUMN ${col}`);
-    for (const col of ['verify_channel_id TEXT', 'verify_panel_message_id TEXT', 'verify_role_id TEXT', 'verify_min_account_age_days INTEGER']) raw.exec(`ALTER TABLE guild_settings ADD COLUMN ${col}`);
-    raw.exec('ALTER TABLE events DROP COLUMN discord_event_id');
-    for (const t of ['self_roles', 'giveaway_entries', 'giveaways', 'birthdays', 'member_activity']) raw.exec(`DROP TABLE ${t}`);
-    for (const col of ['message_id TEXT', 'rating TEXT', 'rated_by TEXT', 'rated_at INTEGER']) raw.exec(`ALTER TABLE ai_log ADD COLUMN ${col}`);
-    raw.exec('CREATE INDEX ai_log_message ON ai_log (guild_id, message_id); CREATE TABLE corrections (id INTEGER PRIMARY KEY)');
     raw.close();
 
     const store = new Store(file);

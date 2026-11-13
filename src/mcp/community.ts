@@ -6,7 +6,7 @@ import { addSelfRole, postRolesPanel, removeSelfRole } from '../selfroles/servic
 import { sendWeekly } from '../discord/weekly.js';
 import { weekStart } from '../time.js';
 import { getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
 
 /** The self-assign role menu and the inactivity report, the same operations as /roles and /inactive. */

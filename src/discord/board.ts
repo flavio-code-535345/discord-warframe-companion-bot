@@ -144,39 +144,20 @@ export async function clearBoard(ctx: Pick<AppContext, 'store'>, channel: Pick<B
   ctx.store.setMeta(key, '');
 }
 
-/**
- * A ping note: the one short plain message under a board that pings a role (an edit can't ping anyone). The next note replaces it and
- * it is removed after its time, so a board channel holds the board plus at most one note. Kept in bot_meta `note:<channelId>`.
- */
-export interface NoteChannel {
-  id: string;
-  send(payload: { content: string; allowedMentions: { roles: string[] } }): Promise<{ id: string }>;
-  messages: { delete(messageId: string): Promise<unknown> };
-}
-
 export const noteKey = (channelId: string) => `note:${channelId}`;
 
-function readNote(raw: string | null): { messageId: string; until: number } | null {
+/**
+ * Boards used to ping a role with one short note under them (bot_meta `note:<channelId>`). Notifications are DMs now, so a note that
+ * is still there is removed, once; with nothing recorded this is a single lookup.
+ */
+export async function removeNote(ctx: Pick<AppContext, 'store'>, channel: Pick<BoardChannel, 'id' | 'messages'>): Promise<void> {
+  const raw = ctx.store.getMeta(noteKey(channel.id));
+  if (!raw) return;
   try {
-    const r = JSON.parse(raw || 'null') as { messageId?: unknown; until?: unknown } | null;
-    return r && typeof r.messageId === 'string' ? { messageId: r.messageId, until: Number(r.until) || 0 } : null;
+    const id = (JSON.parse(raw) as { messageId?: unknown } | null)?.messageId;
+    if (typeof id === 'string') await channel.messages.delete(id).catch(() => {});
   } catch {
-    return null;
+    // Unreadable: nothing to delete.
   }
-}
-
-/** Posts a note that pings `roleId` and lives until `until`; the previous note of the channel goes. */
-export async function postNote(ctx: Pick<AppContext, 'store'>, channel: NoteChannel, content: string, roleId: string, until: number): Promise<void> {
-  const previous = readNote(ctx.store.getMeta(noteKey(channel.id)));
-  const sent = await channel.send({ content: `<@&${roleId}> ${content}`, allowedMentions: { roles: [roleId] } });
-  ctx.store.setMeta(noteKey(channel.id), JSON.stringify({ messageId: sent.id, until }));
-  if (previous) await channel.messages.delete(previous.messageId).catch(() => {});
-}
-
-/** Removes the channel's note once its time is over, or at once with `now: Infinity` (the role was unset). */
-export async function expireNote(ctx: Pick<AppContext, 'store'>, channel: Pick<NoteChannel, 'id' | 'messages'>, now = Date.now()): Promise<void> {
-  const saved = readNote(ctx.store.getMeta(noteKey(channel.id)));
-  if (!saved || now < saved.until) return;
-  await channel.messages.delete(saved.messageId).catch(() => {});
   ctx.store.setMeta(noteKey(channel.id), '');
 }

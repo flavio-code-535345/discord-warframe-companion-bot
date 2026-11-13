@@ -1,4 +1,4 @@
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import type { CardReading } from './roles.js';
 
 /**

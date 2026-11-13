@@ -1,4 +1,4 @@
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import { ApiBlockedError, ApiBusyError, apiFetch } from '../warframe/fetch.js';
 import type { Refinement } from '../warframe/relics.js';
 

@@ -12,6 +12,8 @@ import type { AppContext } from '../context.js';
 import type { ClanEvent, GuildSettings, LfgPost } from '../db.js';
 import { COLORS } from '../discord/embeds.js';
 import { brandIcon } from '../discord/identity.js';
+import { notifyClanEvent } from '../discord/subscriptions.js';
+import { UserError } from '../errors.js';
 import { MAX_EVENT_LENGTH_MS, discordTime } from '../time.js';
 
 /**
@@ -19,7 +21,8 @@ import { MAX_EVENT_LENGTH_MS, discordTime } from '../time.js';
  * goes through here so both entry points behave the same way.
  */
 
-export class UserError extends Error {}
+// Defined in errors.ts (a file with no imports, so the data modules can throw it too); re-exported for everything that works with Discord.
+export { UserError };
 
 /** Fetches a channel the bot can post in, restricted to the clan's own server. */
 export async function getSendableChannel(ctx: AppContext, channelId: string): Promise<SendableChannels & { guildId: string }> {
@@ -145,15 +148,12 @@ export async function createClanEvent(ctx: AppContext, input: CreateEventInput):
     endsAt,
     createdBy: input.createdBy,
   });
-  const roleId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).eventsRoleId;
-  const message = await channel.send({
-    ...renderEvent(ctx, event),
-    content: roleId ? `<@&${roleId}>` : undefined,
-    allowedMentions: { parse: [], roles: roleId ? [roleId] : [] },
-  });
+  const message = await channel.send({ ...renderEvent(ctx, event), allowedMentions: { parse: [] } });
   ctx.store.setEventMessage(event.id, channel.id, message.id);
   const link = `https://discord.com/channels/${ctx.config.DISCORD_GUILD_ID}/${channel.id}/${message.id}`;
   ctx.store.setDiscordEventId(event.id, await createDiscordEvent(ctx, event, link));
+  // Nobody is pinged in the channel: the members who asked for new events get a DM with a link to the post.
+  await notifyClanEvent(ctx, event, link).catch((err) => console.warn(`[events] could not DM event #${event.id} to its subscribers:`, (err as Error).message));
   return ctx.store.getEvent(event.id)!;
 }
 

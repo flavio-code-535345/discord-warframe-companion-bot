@@ -5,14 +5,12 @@ import { Store } from '../src/db.js';
 import {
   type BoardChannel,
   type BoardComponent,
-  type NoteChannel,
   BOARD_MIN_EDIT_MS,
   BOARD_VERIFY_MS,
   boardKey,
   clearBoard,
-  expireNote,
   noteKey,
-  postNote,
+  removeNote,
   syncBoard,
 } from '../src/discord/board.js';
 
@@ -132,30 +130,21 @@ describe('live boards', () => {
     await assert.rejects(syncBoard({ store }, channel, 'arby', render('z'), { now: t0 + 2 * BOARD_MIN_EDIT_MS, version: '2' }), /Missing Permissions/);
   });
 
-  it('keeps one ping note per channel and removes it when its time is over', async () => {
+  it('removes the ping note a board used to keep under it, once', async () => {
     const store = new Store(':memory:');
-    const sent: { id: string; content: string; roles: string[] }[] = [];
-    const deleted: string[] = [];
-    const channel: NoteChannel = {
-      id: 'c1',
-      send: async (p) => {
-        const id = `n${sent.length + 1}`;
-        sent.push({ id, content: p.content, roles: p.allowedMentions.roles });
-        return { id };
-      },
-      messages: { delete: async (id) => void deleted.push(id) },
-    };
-    await postNote({ store }, channel, '⚖️ **S tier** now', 'r1', 1_000);
-    assert.deepEqual(sent[0], { id: 'n1', content: '<@&r1> ⚖️ **S tier** now', roles: ['r1'] });
-    await postNote({ store }, channel, 'next one', 'r1', 2_000);
-    assert.deepEqual(deleted, ['n1'], 'the next note replaces the last');
-    await expireNote({ store }, channel, 1_999);
-    assert.deepEqual(deleted, ['n1']);
-    await expireNote({ store }, channel, 2_000);
-    assert.deepEqual(deleted, ['n1', 'n2']);
+    const { channel, log } = fakeChannel();
+    // As left behind by the version that pinged roles: the note's message and when it would have expired.
+    store.setMeta(noteKey('c1'), JSON.stringify({ messageId: 'n7', until: 9_999_999_999_999 }));
+    await removeNote({ store }, channel);
+    assert.deepEqual(log, ['delete n7'], 'whatever its time was');
     assert.equal(store.getMeta(noteKey('c1')), '');
-    await expireNote({ store }, channel, Infinity);
-    assert.deepEqual(deleted, ['n1', 'n2'], 'nothing left to remove');
+    await removeNote({ store }, channel);
+    assert.deepEqual(log, ['delete n7'], 'nothing left to remove');
+    // Something unreadable is just forgotten.
+    store.setMeta(noteKey('c1'), 'not json');
+    await removeNote({ store }, channel);
+    assert.deepEqual(log, ['delete n7']);
+    assert.equal(store.getMeta(noteKey('c1')), '');
   });
 
   it('clears a board', async () => {

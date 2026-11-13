@@ -3,8 +3,8 @@ import type WorldStateParser from 'warframe-worldstate-parser';
 import { readFile, writeFile } from 'node:fs/promises';
 import { own } from '../own.js';
 import { toMs } from '../time.js';
-import { UserError } from '../services/clan.js';
-import { ApiBlockedError, api, apiFetch } from './fetch.js';
+import { UserError } from '../errors.js';
+import { ApiBlockedError, apiFetch } from './fetch.js';
 
 /**
  * The community warframestat.us API, which serves the parsed world state as JSON per platform. The bot never calls Digital

@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { type DropLocation, searchDrops } from '../../warframe/drops.js';
 import { lookupItem, suggestItems } from '../../warframe/items.js';
 import { loadRelicBook } from '../../warframe/relics.js';

@@ -1,5 +1,5 @@
 import { own } from '../own.js';
-import { UserError } from '../services/clan.js';
+import { UserError } from '../errors.js';
 import type { StatInput } from './grade.js';
 import { statKey } from './ranges.js';
 import type { RivenAttribute } from './types.js';

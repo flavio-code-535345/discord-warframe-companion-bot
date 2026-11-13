@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { UserError } from '../../services/clan.js';
+import { UserError } from '../../errors.js';
 import { REFINEMENTS, type Refinement, type Squad, type VaultFilter, bestRelics, loadRelicBook } from '../../warframe/relics.js';
 import type { Command } from '../command.js';
 import { bestRelicsEmbed } from '../lookup-embeds.js';
