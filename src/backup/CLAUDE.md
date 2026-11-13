@@ -1,0 +1,5 @@
+# Server backups
+
+Notes for this folder. The rules that apply everywhere, the commands and the list of the other notes are in the root `CLAUDE.md`.
+
+**Backups** (`src/backup/`): `snapshot.ts` serializes the guild (bitfields as decimal strings; icon and emojis as base64 so they outlive the CDN; messages only with the Message Content intent) into `backups.data`. A small `summary` JSON sits next to it so listings stay cheap. `service.ts` holds `takeBackup` (single-flight) and `backupIfDue` (the hourly `backups` job: one a day, keeps 14 automatic backups). `restore.ts`: `planRestore` is pure and powers the confirmation preview. `restoreBackup` maps backup IDs to live or recreated IDs (roles first, then categories, then channels, then one bulk `setPositions`). It never deletes, it downgrades Community-only channel types, and it re-points Ordis's settings. The `/backup load` confirmation always takes a safety backup first. `test/backup.test.ts` drives the restore against an in-memory fake Guild.
