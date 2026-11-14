@@ -34,7 +34,7 @@ of chatter that names no wiki page. It needs the Message Content intent: enable 
 
 | Command | What it does |
 | --- | --- |
-| `/now [share]` | One card with what is worth doing right now: the Arbitration and its tier, the quick fissure of each relic tier, alerts and invasions that pay something good, night on the Plains, Baro and Darvo, running events, and when the sortie resets. Only you see it unless you share it |
+| `/now [share]` | One card with what is worth doing right now: the Arbitration and its tier, the quick fissure of each relic tier, alerts and invasions that pay something good, night on the Plains, Baro and Darvo, running events, and when the sortie resets. With AlecaFrame linked it also says which of your own relics are worth cracking in those fissures. Only you see it unless you share it (a shared card never shows your relics) |
 | `/ask question` | Ask Ordis anything about Warframe |
 | `/item name` | Stats for a Warframe (abilities, polarities), weapon (damage, crit, status, riven disposition), mod or arcane (max-rank effect, best drop sources) or relic (contents with intact → radiant chances, each reward's price, what a run is worth, vaulted status) |
 | `/relics [refinement] [squad] [vaulted] [tier]` | The relics worth the most plat per run, alone or in a radshare |
@@ -43,8 +43,9 @@ of chatter that names no wiki page. It needs the Message Content intent: enable 
 | `/wiki query` | Wiki article summary and link |
 | `/wf cycles · fissures · sortie · archon · baro · steelpath · invasions · nightwave · deals · events · archimedea · bounties · resurgence` | Live world state, including Darvo's deal, events, Deep/Temporal Archimedea, syndicate bounties and Varzia's Prime Resurgence |
 | `/riven grade · scan · find · watch · top · status` | Grade a riven from its stats or a screenshot, list the cheapest matching rivens for sale, get a DM when one is listed below your price |
+| `/wishlist add · show · list · remove` | The prime sets you are collecting: which parts are still missing, what they cost, which relics hold them (the ones that still drop first) and, with AlecaFrame linked, which of those relics you own. Tick the parts you have in the menu on the card. Ordis DMs you when Varzia sells a set on your list and when one leaves or re-enters the drop tables |
 | `/alecaframe link · stats · relics · unlink` | Link your own AlecaFrame stats (opt-in, see below) |
-| `/track reward · notable · fissure · cycle · baro · arbitration · sortie · archon · weekly · events · squads · price · list · remove` | Personal DM notifications (Ordis pings no role): a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), any alert or invasion worth running, fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a new clan event, a new squad (all of them or one activity), a market price dropping. The same DMs can be set up from each World State board's menu and the roles panel |
+| `/track reward · notable · fissure · cycle · baro · arbitration · sortie · archon · weekly · events · squads · price · crack · list · remove` | Personal DM notifications (Ordis pings no role): a reward containing a word (invasions, alerts, events, Darvo, Baro, Varzia, Steel Path), any alert or invasion worth running, fissures matching tier/mission/Steel Path/Void Storm, a cycle starting (e.g. Cetus night), Baro arriving, an Arbitration of a tier or mission type, a sortie or Archon Hunt, the weekly reset, a new clan event, a new squad (all of them or one activity), a market price dropping, and "crack now": a quick fissure for relics of your own that are worth opening (needs AlecaFrame, see below). The same DMs can be set up from each World State board's menu and the roles panel |
 | `/clan info · register · unregister · whois · roster` | Link Discord members to in-game names, MR and platform |
 | `/event create · list · cancel · repeat` | Clan events with ✅ / 🤔 / ❌ RSVP buttons, an optional end, a matching Discord scheduled event, a DM to the members who asked for new events and a reminder ping 15 min before start. `repeat:` makes it a clan night: every day, week, 2 weeks or 4 weeks it is posted again with fresh RSVP buttons once the last round is over, at the same time of day in the clan time zone. `/event cancel` takes one round off, `/event cancel series:True` or `/event repeat every:Never` ends the series |
 | `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; the members who asked for squads get a DM with a link, and the squad's own members are pinged when it is full. With squad voice on, it also gets its own voice channel |
@@ -124,6 +125,19 @@ can expect from one reward; in a radshare it is the best of four. Forma counts a
 too (the answer says so). What relics themselves sell for isn't used: warframe.market has too few live orders per
 refinement for that to be reliable.
 
+### Prime wishlist
+
+`/wishlist add item:Saryn Prime` puts a prime set on your list (up to 20) and shows its card, which only you see: every part
+you still need with its price, its ducats and the relics that hold it. Relics that still drop are in bold and come first,
+vaulted ones carry a 🔒. With AlecaFrame linked (and **Relics** shared) the card also says which of those relics you own,
+at which refinement. The menu under the card ticks the parts you already have, so the list and the price shrink to what is
+really missing; `/wishlist list` shows all your sets in a line each, `/wishlist show` works for any prime set, on your list
+or not, and `/wishlist remove` takes one off.
+
+Ordis sends you a DM when Varzia starts selling a set on your list (the set itself, a pack with it, or the relics of its
+Prime Resurgence), once per visit, and when a set on your list leaves the drop tables or comes back to them. Prices are
+WFInfo's averages from warframe.market, the same ones `/relics` uses.
+
 ### AlecaFrame (opt-in)
 
 A member can link their own [AlecaFrame](https://alecaframe.com) stats: in AlecaFrame open **Stats**, press **Create
@@ -135,7 +149,13 @@ in AlecaFrame at any time, and reads AlecaFrame at most once a second.
   opened and trading totals (never trade partners' names). Only you see it unless you choose `share`.
 - `/alecaframe relics` lists your most valuable relics to open and the ones worth refining to Radiant, using the relic
   values above.
-- `/alecaframe unlink` forgets the token.
+- `/track crack [worth] [quiet]` ("crack now", also in the Fissures board's menu) sends you a DM when a quick fissure
+  (Capture, Extermination, Sabotage, Rescue, Spy; normal mode, at least 20 minutes left) is open for relics you own that
+  are expected to pay `worth` platinum or more a run (default 10): per relic tier the fissure, how many such relics you
+  have and the best three. Some quick fissure is open most of the day, so `quiet` sets how often Ordis may tell you: at
+  most once in 3, 6, 12 (default), 24 or 48 hours. `/now` shows the same for the moment you ask.
+- `/wishlist` marks which relics you own for the prime parts you are still missing.
+- `/alecaframe unlink` forgets the token (and switches "crack now" off, which cannot work without it).
 
 AlecaFrame's overlays and anything its public link doesn't share (riven data, the rest of the inventory) are out of
 reach for a bot.
@@ -212,7 +232,7 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 | --- | --- | --- |
 | Alerts | Alerts with reward, node and levels; events with progress and interim rewards; Nightwave | Anything worth running (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …), or one reward by name |
 | Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead; "Squad up" puts you in a squad for the Arbitration with one tap | A tier or better (S, A, B) or a mission type, 10 minutes before the hour starts |
-| Fissures | Normal, Steel Path and Void Storms, by relic tier | Steel Path by tier, Void Storms, Omnia and Requiem, quick missions (Capture, Extermination, …) |
+| Fissures | Normal, Steel Path and Void Storms, by relic tier | Steel Path by tier, Void Storms, Omnia and Requiem, quick missions (Capture, Extermination, …), and "crack now" for your own relics (with AlecaFrame linked) |
 | Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | The daily sortie (or only one with a mission type), the Archon Hunt, the weekly reset summary |
 | Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | A state starting: Cetus night, a warm Orb Vallis, Fass or Vome, … |
 | Traders | Baro Ki'Teer's whole inventory with ducats and credits and, within minutes of his arrival, what each item sells for on warframe.market (plat per ducat, the best resale); Darvo's deal, Varzia's Prime Resurgence, Teshin | Baro's arrival, Umbra Forma |

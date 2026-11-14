@@ -1,5 +1,6 @@
 import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
+import { FAST } from '../../warframe/fissures.js';
 import { FISSURE_TIERS, type Fissure } from '../../warframe/worldstate.js';
 import { e, emojiUrl, factionTag, tierEmoji } from '../emoji.js';
 import { mineButton, notifyRow, buttonRow } from './controls.js';
@@ -12,9 +13,6 @@ import { type FeedInput, STALE_NOTE } from './types.js';
  */
 
 const COLOR = { normal: 0x8b5cf6, steel: 0xdc2626, storm: 0x0ea5e9 } as const;
-
-/** Missions that crack a relic quickly, marked so they are easy to find (the `/now` card lists only these). */
-export const FAST = /^(capture|extermination|sabotage|rescue|spy)$/i;
 
 function fissureLine(f: Fissure): string {
   const planet = planetOf(f.node);

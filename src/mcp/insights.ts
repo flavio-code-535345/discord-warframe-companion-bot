@@ -16,6 +16,7 @@ import { jobs } from '../jobs.js';
 import { emojiStatus } from '../discord/app-emojis.js';
 import { listDatabaseCopies } from '../backup/database.js';
 import { lostSettings } from '../discord/broken-settings.js';
+import { crackState } from '../discord/crack.js';
 import { emojiReport } from '../discord/emoji.js';
 import { feedHealth } from '../discord/feeds/index.js';
 import { vaultWatchState } from '../discord/vault-watch.js';
@@ -203,6 +204,13 @@ export function registerInsightTools(server: McpServer, ctx: AppContext): void {
           return v && { ...v, recordedAt: iso(v.recordedAt), lastChangeAt: v.lastChangeAt === null ? null : iso(v.lastChangeAt) };
         })(),
         alecaframeLinks: store.countAlecaLinks(),
+        // The prime wishlists (src/wishlist/): how many sets are being collected, by how many members.
+        wishlist: (() => {
+          const wishes = store.listWishes(config.DISCORD_GUILD_ID);
+          return { sets: wishes.length, members: new Set(wishes.map((w) => w.userId)).size };
+        })(),
+        // "Crack now" (discord/crack.ts): per notification when its member was last told and when their relics are looked at next.
+        crackNow: Object.entries(crackState(store)).map(([tracker, m]) => ({ tracker: Number(tracker), lastSentAt: m.lastAt ? iso(m.lastAt) : null, nextLookAt: iso(m.checkAt) })),
         // Features switched off because their channel was deleted, until they get a new one (discord/broken-settings.ts).
         lostSettings: lostSettings(ctx).map((l) => ({ setting: l.key, what: l.what, was: l.name, at: iso(l.at), setAgainWith: l.setup })),
         // The nightly copies of the database itself (backup/database.ts); the `db-copy` job under `jobs` says whether the last try worked.

@@ -41,7 +41,7 @@ export interface FeedDef {
 export const FEEDS: readonly FeedDef[] = [
   { id: 'alerts', label: 'Alerts, events and Nightwave', channel: 'alertsChannelId', version: '2', needsWorldState: true, render: alertBoard },
   { id: 'arbitrations', label: 'Arbitrations (schedule and tiers)', channel: 'arbitrationsChannelId', version: '3', needsWorldState: false, render: arbitrationBoard },
-  { id: 'fissures', label: 'Void fissures', channel: 'fissuresChannelId', version: '1', needsWorldState: true, render: fissureBoard },
+  { id: 'fissures', label: 'Void fissures', channel: 'fissuresChannelId', version: '2', needsWorldState: true, render: fissureBoard },
   { id: 'sortie', label: 'Sortie, Archon Hunt and Archimedea', channel: 'sortieChannelId', version: '2', needsWorldState: true, render: sortieBoard },
   { id: 'cycles', label: 'Open world cycles, Duviri and bounties', channel: 'cyclesChannelId', version: '1', needsWorldState: true, render: cycleBoard },
   { id: 'traders', label: "Baro, Darvo, Varzia and Teshin", channel: 'tradersChannelId', version: '2', needsWorldState: true, render: (i) => traderBoard(i, i.prices ?? null) },

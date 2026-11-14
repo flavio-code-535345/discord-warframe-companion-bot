@@ -8,6 +8,7 @@ import { UserError } from '../../errors.js';
 import { loadRelicBook } from '../../warframe/relics.js';
 import { alecaStatsEmbed, relicPlanEmbed, sharedText } from '../alecaframe-embeds.js';
 import type { Command } from '../command.js';
+import { crackTrackerOf } from '../crack.js';
 import { e } from '../emoji.js';
 import { COLORS } from '../embeds.js';
 import { footer } from '../style.js';
@@ -55,11 +56,17 @@ async function link(interaction: ChatInputCommandInteraction, ctx: AppContext): 
 }
 
 async function unlink(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
+  const guildId = ctx.config.DISCORD_GUILD_ID;
   const known = ctx.store.getAlecaLink(interaction.user.id);
   if (known) forgetToken(known.token);
   const removed = ctx.store.removeAlecaLink(interaction.user.id);
+  // "Crack now" works from the member's relics: without the link it could never speak again.
+  const crack = removed ? crackTrackerOf(ctx.store, guildId, interaction.user.id) : null;
+  if (crack) ctx.store.deleteTracker(guildId, interaction.user.id, crack.id);
   await interaction.reply({
-    content: removed ? '✅ Unlinked. Ordis no longer has your AlecaFrame token. To stop the token working anywhere, delete the link in AlecaFrame too.' : 'Your AlecaFrame is not linked.',
+    content: removed
+      ? `✅ Unlinked. Ordis no longer has your AlecaFrame token${crack ? ', and your "crack now" notification is off with it' : ''}. To stop the token working anywhere, delete the link in AlecaFrame too.`
+      : 'Your AlecaFrame is not linked.',
     flags: MessageFlags.Ephemeral,
   });
 }

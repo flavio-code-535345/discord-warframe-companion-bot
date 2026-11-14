@@ -8,10 +8,12 @@ import {
   describeTracker,
   parseSpec,
 } from '../../trackers.js';
+import { CRACK_QUIET_HOURS, DEFAULT_CRACK_PLAT, DEFAULT_CRACK_QUIET_HOURS as DEFAULT_QUIET_HOURS } from '../../alecaframe/crack.js';
 import type { ArbyTier } from '../../warframe/arbitrations.js';
 import { getItemIndex, resolveItem, searchItems } from '../../warframe/market.js';
 import { FISSURE_TIERS } from '../../warframe/worldstate.js';
 import type { Command } from '../command.js';
+import { crackLinkProblem, crackTrackerOf } from '../crack.js';
 import { COLORS } from '../embeds.js';
 import { sameSpec } from '../feeds/controls.js';
 import { ACTIVITIES } from './lfg.js';
@@ -88,6 +90,18 @@ export const track: Command = {
         .addStringOption((o) => o.setName('item').setDescription('Item, e.g. Arcane Energize').setRequired(true).setAutocomplete(true))
         .addIntegerOption((o) => o.setName('below').setDescription('Tell me when someone online sells it for this many platinum or less').setRequired(true).setMinValue(1).setMaxValue(100000)),
     )
+    .addSubcommand((s) =>
+      s
+        .setName('crack')
+        .setDescription('A quick fissure is open for relics of yours worth opening (needs /alecaframe link with Relics)')
+        .addIntegerOption((o) => o.setName('worth').setDescription(`A relic counts when a run is expected to pay this much platinum (default ${DEFAULT_CRACK_PLAT})`).setMinValue(1).setMaxValue(500))
+        .addIntegerOption((o) =>
+          o
+            .setName('quiet')
+            .setDescription(`At most one DM in this many hours (default ${DEFAULT_QUIET_HOURS})`)
+            .addChoices(...CRACK_QUIET_HOURS.map((h) => ({ name: `${h} hours`, value: h }))),
+        ),
+    )
     .addSubcommand((s) => s.setName('list').setDescription('Your trackers'))
     .addSubcommand((s) =>
       s
@@ -161,6 +175,11 @@ export const track: Command = {
       const item = await resolveItem(query).catch(() => null);
       if (!item) throw new UserError(`No tradable item on warframe.market matches "${query}".`);
       spec = { kind: 'price', slug: item.slug, name: item.name, below: interaction.options.getInteger('below', true) };
+    } else if (sub === 'crack') {
+      // It works from the member's own relics, so it needs a link that shares them.
+      const problem = crackLinkProblem(ctx.store, userId);
+      if (problem) throw new UserError(problem);
+      spec = { kind: 'crack', minPlat: interaction.options.getInteger('worth') ?? DEFAULT_CRACK_PLAT, quietHours: interaction.options.getInteger('quiet') ?? DEFAULT_QUIET_HOURS };
     } else {
       spec = { kind: 'baro' };
     }
@@ -168,10 +187,20 @@ export const track: Command = {
     const mine = ctx.store.listTrackers(guildId, userId);
     // The same notification twice would only send everything twice.
     if (mine.some((t) => sameSpec(t.spec, spec))) throw new UserError(`You already have that one: ${describeTracker(spec)}.`);
-    if (mine.length >= MAX_TRACKERS_PER_USER) {
+    // There is one "crack now" per member: setting it again changes it.
+    const replaced = spec.kind === 'crack' ? crackTrackerOf(ctx.store, guildId, userId) : null;
+    if (replaced) ctx.store.deleteTracker(guildId, userId, replaced.id);
+    else if (mine.length >= MAX_TRACKERS_PER_USER) {
       throw new UserError(`You already have ${MAX_TRACKERS_PER_USER} trackers. Remove one with \`/track remove\`.`);
     }
     const created = ctx.store.createTracker(guildId, userId, JSON.stringify(spec));
+    if (spec.kind === 'crack') {
+      await reply(
+        `Tracker **#${created.id}** ${replaced ? 'changed' : 'set'}: ${describeTracker(spec)}. Ordis reads your relics from AlecaFrame and DMs you when a quick fissure is open for the ones worth opening. ` +
+          'Make sure Privacy Settings → Direct Messages from server members is on for this server.',
+      );
+      return;
+    }
     // These are sent when something happens or on a day, not matched against what is running now.
     const later = spec.kind === 'price' || spec.kind === 'weekly' || spec.kind === 'clanEvent' || spec.kind === 'squad';
     await reply(

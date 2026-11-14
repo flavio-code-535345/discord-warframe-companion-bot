@@ -29,7 +29,12 @@ export type TrackerSpec =
    * A riven for sale on warframe.market (rivens/watch.ts): this weapon, these bonuses (more are fine), the curse rule, at most `maxPrice`.
    * `label` is the filter in words, kept so the tracker list needs no stat names.
    */
-  | { kind: 'riven'; weapon: string; weaponName: string; positives: string[]; negative?: string; noCurse?: boolean; maxPrice: number; label: string };
+  | { kind: 'riven'; weapon: string; weaponName: string; positives: string[]; negative?: string; noCurse?: boolean; maxPrice: number; label: string }
+  /**
+   * "Crack now" (discord/crack.ts): a quick fissure is open for relics the member owns (their AlecaFrame link) that are expected to pay
+   * `minPlat` or more a run. At most one DM every `quietHours`, since some quick fissure is open most of the day.
+   */
+  | { kind: 'crack'; minPlat: number; quietHours: number };
 
 export const MAX_TRACKERS_PER_USER = 15;
 
@@ -80,7 +85,7 @@ export type TrackableSource =
 export interface Trackable {
   /** Stable identity: the same item keeps its key across polls, a new rotation gets a new one. */
   key: string;
-  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly' | 'riven' | 'notable' | 'clanEvent' | 'squad'>;
+  kind: Exclude<TrackerSpec['kind'], 'price' | 'weekly' | 'riven' | 'notable' | 'clanEvent' | 'squad' | 'crack'>;
   source: TrackableSource;
   title: string;
   /** Searchable reward text for reward trackers. */
@@ -237,9 +242,10 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
 /**
  * null when `t` doesn't match; otherwise the matching reward rows (empty for non-reward trackers).
  *
- * Price, riven, weekly, clan event and squad trackers never match here: prices are checked against warframe.market
+ * Price, riven, weekly, clan event, squad and crack trackers never match here: prices are checked against warframe.market
  * (discord/price-alerts.ts), so are rivens (rivens/watch.ts), the weekly post is sent by discord/weekly.ts, clan events and squads are
- * sent when they are posted (discord/subscriptions.ts), and no trackable has any of these kinds.
+ * sent when they are posted (discord/subscriptions.ts), "crack now" looks at the member's own relics (discord/crack.ts), and no
+ * trackable has any of these kinds.
  */
 export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
   // "Anything worth running" is not one kind of trackable: it looks at what alerts and invasions pay.
@@ -325,6 +331,8 @@ export function describeTracker(spec: TrackerSpec): string {
       return spec.activity ? `Squads for ${spec.activity} (/lfg)` : 'Every squad someone posts with /lfg';
     case 'riven':
       return `${spec.weaponName} riven with ${spec.label} at ${spec.maxPrice.toLocaleString('en-US')}p or less`;
+    case 'crack':
+      return `Crack now: a quick fissure for relics of mine worth ${spec.minPlat}p or more (at most every ${spec.quietHours} h)`;
   }
 }
 

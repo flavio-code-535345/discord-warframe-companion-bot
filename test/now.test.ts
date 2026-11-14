@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { MessageFlags } from 'discord.js';
 import { Store } from '../src/db.js';
-import { answerNow } from '../src/discord/commands/now.js';
 import { EMOJI, loadEmojis } from '../src/discord/emoji.js';
 import { componentText, messageStats } from '../src/discord/feeds/parts.js';
 import type { FeedInput } from '../src/discord/feeds/types.js';
-import { nowCard, quickFissures } from '../src/discord/now.js';
+import { nowCard } from '../src/discord/now.js';
 import type { ArbitrationSlot, ArbitrationView } from '../src/warframe/arbitrations.js';
+import { quickFissures } from '../src/warframe/fissures.js';
 import type { WorldState } from '../src/warframe/worldstate.js';
 
 const GUILD = '111111111111111111';
@@ -253,41 +252,6 @@ describe('/now', () => {
       assert.match(cut, /Your relic line number 0 .*\n[^]*-# …and \d+ more\n/, 'the lines that did not fit are counted');
       assert.ok(!cut.includes('Your relic line number 59'));
       assert.ok(messageStats([nowCard(full, { personal })]).text > 3000, 'and the card is as full as it may be');
-    });
-  });
-
-  describe('the command', () => {
-    type Call = [string, { flags?: number; components?: unknown[]; allowedMentions?: unknown }];
-    const fake = () => {
-      const calls: Call[] = [];
-      const record = (name: string) => async (o: Call[1] = {}) => void calls.push([name, o]);
-      return { calls, interaction: { reply: record('reply'), deferReply: record('deferReply'), editReply: record('editReply') } as unknown as Parameters<typeof answerNow>[0] };
-    };
-
-    it('answers with the card at once when the data is at hand, for the member alone unless shared', async () => {
-      const mine = fake();
-      await answerNow(mine.interaction, Promise.resolve(input()), false);
-      assert.deepEqual(mine.calls.map(([name]) => name), ['reply']);
-      assert.equal(mine.calls[0]![1].flags, MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral);
-      assert.equal(mine.calls[0]![1].components?.length, 1);
-      assert.deepEqual(mine.calls[0]![1].allowedMentions, { parse: [] });
-
-      const shared = fake();
-      await answerNow(shared.interaction, Promise.resolve(input()), true);
-      assert.equal(shared.calls[0]![1].flags, MessageFlags.IsComponentsV2);
-    });
-
-    it('says it is thinking first when the source is slow', async () => {
-      const slow = fake();
-      await answerNow(slow.interaction, new Promise((done) => setTimeout(() => done(input()), 60)), false, 5);
-      assert.deepEqual(slow.calls.map(([name]) => name), ['deferReply', 'editReply']);
-      assert.equal(slow.calls[0]![1].flags, MessageFlags.Ephemeral);
-      assert.equal(slow.calls[1]![1].flags, MessageFlags.IsComponentsV2);
-      assert.equal(slow.calls[1]![1].components?.length, 1);
-
-      const shared = fake();
-      await answerNow(shared.interaction, new Promise((done) => setTimeout(() => done(input()), 60)), true, 5);
-      assert.equal(shared.calls[0]![1].flags, undefined, 'a shared card is deferred in the open');
     });
   });
 });

@@ -45,7 +45,7 @@ export function loadedBy(file: string): string[] {
 const isData = (f: string) =>
   f.startsWith('warframe/') || f.startsWith('wiki/') || f.startsWith('imaging/') || ['trackers.ts', 'errors.ts', 'own.ts', 'time.ts', 'timeout.ts', 'queue.ts', 'scheduler.ts'].includes(f);
 /** The layers built on top of them: Discord, the service layer, the web pages, MCP and the wiring. */
-const isUpper = (f: string) => /^(discord|services|web|mcp|lfg|selfroles|moderation|sticky|leveling|giveaways|birthdays)\//.test(f) || ['index.ts', 'jobs.ts', 'http.ts'].includes(f);
+const isUpper = (f: string) => /^(discord|services|web|mcp|lfg|selfroles|moderation|sticky|leveling|giveaways|birthdays|wishlist)\//.test(f) || ['index.ts', 'jobs.ts', 'http.ts'].includes(f);
 
 describe('the layers', () => {
   const files = sourceFiles();

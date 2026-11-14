@@ -1,29 +1,18 @@
-import { type ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { withTimeout } from '../../timeout.js';
+import { type ContainerBuilder, SlashCommandBuilder } from 'discord.js';
+import type { AppContext } from '../../context.js';
+import { replyCard } from '../card-reply.js';
 import type { Command } from '../command.js';
-import type { FeedInput } from '../feeds/types.js';
+import { personalLines } from '../crack.js';
 import { nowCard, nowInput } from '../now.js';
 
-/** How long the card may take before the reply is deferred: Discord gives a command three seconds to answer. */
-const QUICK_MS = 1500;
+/** How long the card waits for the member's own relics (AlecaFrame): it is answered within Discord's three seconds either way. */
+const PERSONAL_WAIT_MS = 1100;
 
-/**
- * Answers with the card. Both sources are cached, so the card is nearly always ready at once and is the reply itself; only when one
- * of them is being read at this very moment and is slow does the reply say "thinking" first and get the card afterwards.
- */
-export async function answerNow(
-  interaction: Pick<ChatInputCommandInteraction, 'reply' | 'deferReply' | 'editReply'>,
-  reading: Promise<FeedInput>,
-  share: boolean,
-  quickMs = QUICK_MS,
-): Promise<void> {
-  const ready = await withTimeout(reading, quickMs, () => new Error('still reading')).catch(() => null);
-  if (ready) {
-    await interaction.reply({ components: [nowCard(ready)], flags: share ? MessageFlags.IsComponentsV2 : MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
-    return;
-  }
-  await interaction.deferReply(share ? {} : { flags: MessageFlags.Ephemeral });
-  await interaction.editReply({ components: [nowCard(await reading)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+/** The card for one member: the snapshot everyone gets, and, unless it is shared, what their own relics add to it. */
+async function buildNow(ctx: AppContext, userId: string, share: boolean): Promise<ContainerBuilder> {
+  const input = await nowInput(ctx);
+  const personal = share ? [] : await personalLines(ctx, userId, input.ws, input.now, { waitMs: PERSONAL_WAIT_MS });
+  return nowCard(input, { personal });
 }
 
 /** `/now`: what is worth doing in the game right now, on one card. Only the member who asked sees it unless they share it. */
@@ -35,6 +24,8 @@ export const now: Command = {
     .toJSON(),
 
   async execute(interaction, ctx) {
-    await answerNow(interaction, nowInput(ctx), interaction.options.getBoolean('share') ?? false);
+    const share = interaction.options.getBoolean('share') ?? false;
+    // Both sources are cached, so the card is nearly always ready at once and is the reply itself.
+    await replyCard(interaction, buildNow(ctx, interaction.user.id, share), { ephemeral: !share });
   },
 };

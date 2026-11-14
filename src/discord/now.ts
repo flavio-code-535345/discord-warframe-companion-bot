@@ -3,11 +3,11 @@ import type { AppContext } from '../context.js';
 import { discordTime, toMs } from '../time.js';
 import { arbitrationView, atLeast, loadArbitrations } from '../warframe/arbitrations.js';
 import { projectCycles } from '../warframe/cycles.js';
-import { FISSURE_TIERS, type Fissure, type WorldState, getWorldState, groupAlerts, isBaroHere, isNotableReward, rewardText, worldStateEnabled } from '../warframe/worldstate.js';
+import { quickFissures } from '../warframe/fissures.js';
+import { type Fissure, type WorldState, getWorldState, groupAlerts, isBaroHere, isNotableReward, rewardText, worldStateEnabled } from '../warframe/worldstate.js';
 import { cycleEmoji, e, factionTag, rewardEmoji, tierEmoji } from './emoji.js';
 import { squadButton, tierBadge } from './feeds/arbitrations.js';
 import { buttonRow } from './feeds/controls.js';
-import { FAST } from './feeds/fissures.js';
 import { feedInput } from './feeds/index.js';
 import { CARD_TEXT_BUDGET, DIVIDER, type Part, card, fit, nodeName, planetOf } from './feeds/parts.js';
 import { type FeedInput, STALE_NOTE } from './feeds/types.js';
@@ -20,31 +20,18 @@ import { COLORS } from './style.js';
  * daily and weekly resets. It is a snapshot, not a board: the times on it keep counting, the lists do not change.
  */
 
-const MIN = 60_000;
-const HOUR = 60 * MIN;
-/** A fissure that closes sooner than this is not worth walking to. */
-const FISSURE_MIN_LEFT_MS = 5 * MIN;
-const MAX_FISSURES = 8;
+const HOUR = 3_600_000;
 const MAX_REWARDS = 5;
 
-const place = (node: string): string => {
+/** "Hepit, Void". */
+export const place = (node: string): string => {
   const planet = planetOf(node);
   return `${nodeName(node)}${planet ? `, ${planet}` : ''}`;
 };
 
-/** The quick fissures worth opening now (pure): per relic tier the one that stays open longest, normal ones before the Steel Path. */
-export function quickFissures(ws: WorldState | null, now: number): Fissure[] {
-  const open = (ws?.fissures ?? []).filter((f) => !f.isStorm && FAST.test(f.missionType) && toMs(f.expiry) - now >= FISSURE_MIN_LEFT_MS);
-  const tiers: string[] = [...FISSURE_TIERS];
-  const order = (tier: string) => (tiers.includes(tier) ? tiers.indexOf(tier) : tiers.length);
-  const best = new Map<string, Fissure>();
-  for (const f of open) {
-    const key = `${f.isHard ? 1 : 0}:${f.tier}`;
-    const held = best.get(key);
-    if (!held || toMs(f.expiry) > toMs(held.expiry)) best.set(key, f);
-  }
-  return [...best.values()].sort((a, b) => Number(a.isHard) - Number(b.isHard) || order(a.tier) - order(b.tier)).slice(0, MAX_FISSURES);
-}
+/** One quick fissure as a line: the tier and the mission, where it is and when it closes. */
+export const fissureLine = (f: Fissure): string =>
+  `${e('bolt')} ${tierEmoji(f.tier)} **${f.tier} ${f.missionType}**${f.isHard ? ` ${e('steelPath')} Steel Path` : ''} · ${place(f.node)} · closes ${discordTime(f.expiry, 'R')}`;
 
 function arbitrationPart(input: FeedInput): string | null {
   const { arby, now } = input;
@@ -65,8 +52,7 @@ function fissurePart(ws: WorldState | null, now: number): string | null {
   const quick = quickFissures(ws, now);
   const open = (ws.fissures ?? []).filter((f) => toMs(f.expiry) > now).length;
   if (!quick.length) return open ? `${e('fissure')} **Fissures** · no quick mission open right now (${open} fissures in all)` : null;
-  const line = (f: Fissure) => `${e('bolt')} ${tierEmoji(f.tier)} **${f.tier} ${f.missionType}**${f.isHard ? ` ${e('steelPath')} Steel Path` : ''} · ${place(f.node)} · closes ${discordTime(f.expiry, 'R')}`;
-  return [`**Quick fissures** · one per relic tier`, ...quick.map(line)].join('\n');
+  return [`**Quick fissures** · one per relic tier`, ...quick.map(fissureLine)].join('\n');
 }
 
 /** The alerts and invasions that pay something worth a detour. */

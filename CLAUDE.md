@@ -45,7 +45,7 @@ Tests need no network and no Discord: `new Store(':memory:')` for the database (
 `src/index.ts` builds one `AppContext` (`config`, `store`, discord `client`, see `src/context.ts`) and hands it to three consumers that run in the same process:
 
 1. **Discord** (`src/discord/bot.ts`): slash commands (`src/discord/commands/*`, each exporting a `Command`), autocomplete, buttons, menus and modals. Commands are registered **guild-scoped** to `DISCORD_GUILD_ID` on every `ClientReady`: the bot deliberately serves only that one guild. Each message goes through the handlers in a fixed order (honeypot, screenshot roles, riven channel, then chat; the first one that takes it ends the chain), while the sticky keeper, the activity tracker and leveling see every message.
-2. **Notifier** (`src/discord/notifier.ts`): every minute the `world-state` job reads the world state and the Arbitration schedule, redraws the seven World State boards (`src/discord/feeds/`), DMs what matches the members' trackers and makes the weekly post.
+2. **Notifier** (`src/discord/notifier.ts`): every minute the `world-state` job reads the world state and the Arbitration schedule, redraws the seven World State boards (`src/discord/feeds/`), DMs what matches the members' trackers, their wishlists and their own relics, and makes the weekly post.
 3. **HTTP server** (`src/http.ts`): the public status page `/` with `/status.json` and `/logo.png` (`src/web/status.ts`), `/health` (no auth, used by the Docker HEALTHCHECK), the admin panel at `/admin` (`src/web/admin/`) and, only when `MCP_AUTH_TOKEN` is set, `POST /mcp`. MCP is **stateless Streamable HTTP**: a new `McpServer` (`src/mcp/server.ts`) and transport are built per request, so `createMcpServer` must not do I/O; bearer auth runs before body parsing, and `MCP_ALLOWED_HOSTS` adds DNS-rebinding Host checks. Every answer carries `securityHeaders`, and `errorHandler` is the last middleware: a failure is logged and answered with one line, never a stack. Express 5 reports listen errors through the `app.listen` callback, and the bot exits on them.
 
 **Background jobs** (`src/scheduler.ts`, `src/jobs.ts`): every recurring task is one named job of the `jobs` scheduler, registered in `registerJobs` and started at ClientReady (`jobs.stop()` in `shutdown`): `events` (reminders, ended events, the next round of repeating events), `giveaways`, `birthdays`, `promo-codes`, `news`, `price-alerts` (30 min), `riven-watch` (5 min), `world-state`, `baro-prices` (20 s while Baro is here, else asleep until he lands), `squad-voice`, `voice-xp`, `backups` (hourly check), `db-copy` (hourly check, the nightly copy of `bot.db`), `vault-watch` (hourly), `emojis` (30 min), `riven-crawl` and `wiki-index`. A job never runs twice at once, a throw is logged and counted but stops nothing else, and a job may return the delay until its next run. `get_bot_health.jobs` and the admin Overview show each job's runs, failures, whether the last round failed (`lastFailed`), the last error and the next run. Do not add a `setInterval` for a new recurring task: add a job. `test/scheduler.test.ts` uses a fake clock.
@@ -78,9 +78,9 @@ Each folder below has a `CLAUDE.md` with the details of what lives there. It loa
 
 | Folder | What its notes cover |
 |---|---|
-| `src/discord/` | interaction routing and custom IDs, the notifier, the `/now` card, live boards (`board.ts`), trackers and DMs, notifications as DM subscriptions, emojis, embed style, identity, editing Ordis's messages, events (end times, repeating), a deleted channel or role, the vault watch, price alerts, the weekly post, promo codes, game news |
+| `src/discord/` | interaction routing and custom IDs, the notifier, the `/now` card, a command answered with one card, "crack now", live boards (`board.ts`), trackers and DMs, notifications as DM subscriptions, emojis, embed style, identity, editing Ordis's messages, events (end times, repeating), a deleted channel or role, the vault watch, price alerts, the weekly post, promo codes, game news |
 | `src/discord/feeds/` | the seven World State boards |
-| `src/warframe/` | the world state (warframestat.us, polling), the API client, item and drop lookups, Arbitrations, relic values, Baro prices, web search |
+| `src/warframe/` | the world state (warframestat.us, polling), the API client, item and drop lookups, Arbitrations, relic values, quick fissures, Baro prices, web search |
 | `src/wiki/` | the local wiki index: crawler, cleaning, FTS5 search |
 | `src/answers/` | chat answers (the order in `smartAnswer`, intents, wiki quotes), what was removed with the model answers, the question log |
 | `src/rivens/` | the riven analyzer: market crawl, grading, OCR scan, the picture, find and watch |
@@ -88,7 +88,8 @@ Each folder below has a `CLAUDE.md` with the details of what lives there. It loa
 | `src/imaging/` | WebP decoding, the image size guard, drawing with pureimage |
 | `src/web/` | the status page, the admin panel, the web theme, the Config page (runtime config) |
 | `src/mcp/` | the MCP server, the insight tools, the server admin tools |
-| `src/alecaframe/` | AlecaFrame links, the stats chart, the relic planner |
+| `src/alecaframe/` | AlecaFrame links, the stats chart, the relic planner, a member's relics for other features, "crack now" |
+| `src/wishlist/` | the prime wishlist: missing parts, their relics and prices, the DMs about Varzia and the vault |
 | `src/lfg/` | squads, squad voice, "Squad up" for the Arbitration, activities, join-to-create rooms |
 | `src/selfroles/`, `src/activity/`, `src/giveaways/`, `src/birthdays/` | the roles panel, the inactivity report, giveaways, birthdays |
 | `src/moderation/`, `src/backup/`, `src/leveling/`, `src/sticky/`, `src/logging/` | purge, lock and honeypot; server backups and restore, the nightly database copy; XP and level roles; sticky messages; the audit log |

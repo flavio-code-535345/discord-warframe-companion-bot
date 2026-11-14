@@ -4,6 +4,8 @@ import { discordTime } from '../time.js';
 import { collectTrackables, describeTracker, matchTracker, parseSpec } from '../trackers.js';
 import { type ArbitrationSlot, arbitrationView, loadArbitrations } from '../warframe/arbitrations.js';
 import { type WorldState, getWorldState, worldStateEnabled } from '../warframe/worldstate.js';
+import { notifyWishlistVarzia } from '../wishlist/service.js';
+import { notifyCrack } from './crack.js';
 import { type DmGroup, sendDm, trackerDm } from './dm.js';
 import { repeatEvents } from './event-repeat.js';
 import { feedInput, syncFeeds } from './feeds/index.js';
@@ -36,6 +38,9 @@ export async function worldStateJob(ctx: AppContext): Promise<void> {
   // The schedule's hours only while it agrees with the game; otherwise the world state's own entry (without a tier) is used.
   const slots = arby.scheduleTrusted ? [arby.current, ...arby.upcoming].filter((s): s is ArbitrationSlot => s !== null) : undefined;
   await notifyTrackers(ctx, ws, now, slots);
+  // The two that look at what a member owns or collects: Varzia selling a set on their wishlist, a quick fissure for their relics.
+  await notifyWishlistVarzia(ctx, ws, now).catch((err) => console.error('[notifier] the wishlist notes failed:', err));
+  await notifyCrack(ctx, ws, now).catch((err) => console.error('[notifier] the crack-now notes failed:', err));
   if (ws) await postWeeklyReset(ctx, ws).catch((err) => console.error('[notifier] weekly reset post failed:', err));
   ctx.store.pruneSeen(SEEN_RETENTION_MS);
   if (wsError) throw wsError;

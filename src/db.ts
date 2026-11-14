@@ -234,6 +234,18 @@ export interface Tracker {
   createdAt: number;
 }
 
+/** A prime set a member is collecting (/wishlist). */
+export interface Wish {
+  id: number;
+  guildId: string;
+  userId: string;
+  /** The set's name as the relic book has it ("Saryn Prime"). */
+  item: string;
+  /** The names of the parts the member already has. */
+  have: string[];
+  createdAt: number;
+}
+
 export interface Member {
   guildId: string;
   userId: string;
@@ -786,9 +798,32 @@ const MIGRATIONS: string[] = [
   ALTER TABLE events ADD COLUMN series_id INTEGER;
   ALTER TABLE events ADD COLUMN next_id INTEGER;
   `,
+  // The prime wishlist: the sets a member is collecting, each with the parts they already have (a JSON list of part names).
+  `
+  CREATE TABLE wishlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    item TEXT NOT NULL COLLATE NOCASE,
+    have TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    UNIQUE (guild_id, user_id, item)
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+function toWish(r: Row): Wish {
+  let have: string[] = [];
+  try {
+    const list = JSON.parse(String(r.have ?? '[]')) as unknown;
+    if (Array.isArray(list)) have = list.filter((n): n is string => typeof n === 'string');
+  } catch {
+    // An unreadable list is an empty one.
+  }
+  return { id: Number(r.id), guildId: String(r.guild_id), userId: String(r.user_id), item: String(r.item), have, createdAt: Number(r.created_at) };
+}
 
 function toCrawlRow(r: Row): RivenCrawlRow {
   return { weapon: String(r.weapon), fetchedAt: r.fetched_at === null ? null : Number(r.fetched_at), attemptedAt: Number(r.attempted_at), listings: Number(r.listings), error: str(r.error) };
@@ -1535,6 +1570,39 @@ export class Store {
   /** Deletes one of the user's own trackers. */
   deleteTracker(guildId: string, userId: string, id: number): boolean {
     return this.db.prepare('DELETE FROM trackers WHERE guild_id = ? AND user_id = ? AND id = ?').run(guildId, userId, id).changes > 0;
+  }
+
+  // --- the prime wishlist ---
+
+  /** Puts a set on a member's wishlist; the entry that is already there is returned as it is (the name is compared without case). */
+  addWish(guildId: string, userId: string, item: string, now = Date.now()): Wish {
+    this.db.prepare('INSERT OR IGNORE INTO wishlist (guild_id, user_id, item, created_at) VALUES (?, ?, ?, ?)').run(guildId, userId, item, now);
+    return toWish(this.db.prepare('SELECT * FROM wishlist WHERE guild_id = ? AND user_id = ? AND item = ?').get(guildId, userId, item) as Row);
+  }
+
+  /** One member's wishlist, or everyone's, oldest first. */
+  listWishes(guildId: string, userId?: string): Wish[] {
+    const rows = (
+      userId
+        ? this.db.prepare('SELECT * FROM wishlist WHERE guild_id = ? AND user_id = ? ORDER BY id').all(guildId, userId)
+        : this.db.prepare('SELECT * FROM wishlist WHERE guild_id = ? ORDER BY id').all(guildId)
+    ) as Row[];
+    return rows.map(toWish);
+  }
+
+  getWish(id: number): Wish | null {
+    const r = this.db.prepare('SELECT * FROM wishlist WHERE id = ?').get(id) as Row | undefined;
+    return r ? toWish(r) : null;
+  }
+
+  /** Which parts of a wished set the member already has. */
+  setWishHave(id: number, have: string[]): void {
+    this.db.prepare('UPDATE wishlist SET have = ? WHERE id = ?').run(JSON.stringify(have), id);
+  }
+
+  /** Takes a set off the member's own wishlist. */
+  removeWish(guildId: string, userId: string, id: number): boolean {
+    return this.db.prepare('DELETE FROM wishlist WHERE guild_id = ? AND user_id = ? AND id = ?').run(guildId, userId, id).changes > 0;
   }
 
   // --- moderation ---

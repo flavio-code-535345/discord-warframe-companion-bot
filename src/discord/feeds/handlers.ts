@@ -15,6 +15,7 @@ import { discordTime } from '../../time.js';
 import { MAX_TRACKERS_PER_USER, describeTracker, parseSpec } from '../../trackers.js';
 import { lastArbitrations } from '../../warframe/arbitrations.js';
 import { getWorldState } from '../../warframe/worldstate.js';
+import { crackLinkProblem, crackTrackerOf } from '../crack.js';
 import { BOUNTY_SYNDICATES, bountiesEmbed } from '../embeds.js';
 import { COLORS } from '../style.js';
 import { isPlanRange, planMessage } from './arbitrations.js';
@@ -113,6 +114,7 @@ export async function handleFeedSelect(interaction: StringSelectMenuInteraction,
     const specs = existing.map((t) => t.spec);
     const added: string[] = [];
     const had: string[] = [];
+    const refused: string[] = [];
     let full = false;
     for (const value of interaction.values) {
       const option = trackOption(value);
@@ -120,6 +122,14 @@ export async function handleFeedSelect(interaction: StringSelectMenuInteraction,
       if (specs.some((s) => sameSpec(s, option.spec))) {
         had.push(describeTracker(option.spec));
         continue;
+      }
+      if (option.spec.kind === 'crack') {
+        // There is one per member (`/track crack` changes it), and it needs a link that shares their relics.
+        const own = crackTrackerOf(ctx.store, guildId, userId);
+        const problem = own ? null : crackLinkProblem(ctx.store, userId);
+        if (own) had.push(describeTracker(own.spec));
+        else if (problem) refused.push(problem);
+        if (own || problem) continue;
       }
       if (specs.length >= MAX_TRACKERS_PER_USER) {
         full = true;
@@ -133,6 +143,7 @@ export async function handleFeedSelect(interaction: StringSelectMenuInteraction,
     const parts = [
       added.length ? `🔔 Ordis will DM you for:\n${added.map((a) => `• ${a}`).join('\n')}` : '',
       had.length ? `Already set:\n${had.map((a) => `• ${a}`).join('\n')}` : '',
+      ...refused,
       full ? `You have ${MAX_TRACKERS_PER_USER} notifications, the most allowed: remove some with **My notifications**.` : '',
     ].filter(Boolean);
     await interaction.followUp({ components: [mineMessage(ctx, userId, parts.join('\n\n') || 'Nothing changed.')], flags: V2_EPHEMERAL });

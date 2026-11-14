@@ -1,4 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type MessageActionRowComponentBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { DEFAULT_CRACK_PLAT, DEFAULT_CRACK_QUIET_HOURS } from '../../alecaframe/crack.js';
 import { CYCLE_CHOICES, type TrackerSpec } from '../../trackers.js';
 import { type EmojiName, emojiFor } from '../emoji.js';
 import type { Row } from './parts.js';
@@ -63,6 +64,14 @@ export const TRACK_OPTIONS: TrackOption[] = [
   { value: 'arbitration', feeds: ['arbitrations'], label: 'Every Arbitration', description: 'Every hour, 10 minutes before it starts', spec: { kind: 'arbitration' } },
   ...['Survival', 'Defense', 'Interception', 'Excavation', 'Disruption', 'Mirror Defense', 'Defection', 'Infested Salvage'].map(arbitrationType),
 
+  {
+    value: 'crack',
+    feeds: ['fissures'],
+    label: 'Crack now: my own relics',
+    description: 'A quick fissure for relics of yours worth opening (needs /alecaframe link)',
+    emoji: 'bolt',
+    spec: { kind: 'crack', minPlat: DEFAULT_CRACK_PLAT, quietHours: DEFAULT_CRACK_QUIET_HOURS },
+  },
   fissure('steel-path-fissure', 'Any Steel Path fissure', 'Every new hard-mode fissure', { steelPath: true }, 'steelPath'),
   ...(['Lith', 'Meso', 'Neo', 'Axi'] as const).map((tier) =>
     fissure(`fissure-sp-${tier.toLowerCase()}`, `Steel Path ${tier}`, `New ${tier} fissures on the Steel Path`, { tier, steelPath: true }, tier.toLowerCase() as EmojiName),

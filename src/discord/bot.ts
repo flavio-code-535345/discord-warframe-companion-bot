@@ -49,8 +49,10 @@ import { riven } from './commands/riven.js';
 import { relics } from './commands/relics.js';
 import { alecaframe } from './commands/alecaframe.js';
 import { drops, price, wf } from './commands/warframe.js';
+import { wishlist } from './commands/wishlist.js';
+import { handleWishSelect } from '../wishlist/service.js';
 
-export const COMMANDS: Command[] = [now, wf, item, price, relics, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [now, wf, item, price, relics, wishlist, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 /** What a message may ping when it doesn't say: the members it mentions and the member it replies to, never a role or everyone. */
 export const DEFAULT_MENTIONS = { parse: ['users'], repliedUser: true } as const satisfies { parse: readonly ['users']; repliedUser: boolean };
@@ -170,6 +172,16 @@ export function attachHandlers(ctx: AppContext): void {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('feeds:')) {
       try {
         await handleFeedSelect(interaction, ctx);
+      } catch (err) {
+        await replyError(interaction, err);
+      }
+      return;
+    }
+
+    // The wishlist card's menu: the parts a member already has.
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('wish:')) {
+      try {
+        await handleWishSelect(interaction, ctx);
       } catch (err) {
         await replyError(interaction, err);
       }

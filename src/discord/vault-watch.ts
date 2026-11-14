@@ -3,6 +3,7 @@ import type { AppContext } from '../context.js';
 import type { Store } from '../db.js';
 import { getSendableChannel } from '../services/clan.js';
 import { RELIC_TIERS, type RelicBook, loadRelicBook } from '../warframe/relics.js';
+import { notifyWishlistVault } from '../wishlist/service.js';
 import { COLORS, footer } from './style.js';
 
 /**
@@ -215,14 +216,18 @@ export async function watchVault(ctx: AppContext, opts: { now?: number; book?: R
   const fresh: VaultChanges = { vaultedSets: [], openedSets: [], newSets: [], vaultedRelics: [], openedRelics: [], newRelics: [] };
   for (const [list, what, change] of KINDS) fresh[list] = all[list].filter((name) => !ctx.store.hasSeen(seenKey(what, change, name)));
   const channelId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).newsChannelId;
-  if (!total(fresh) || !channelId) {
+  if (!total(fresh)) {
     record();
     return null;
   }
-  // Recorded only once the post is out: a channel that cannot be posted in today gets the news when it can.
-  const channel = await getSendableChannel(ctx, channelId);
-  await channel.send({ embeds: [vaultEmbed(fresh)], allowedMentions: { parse: [] } });
+  if (channelId) {
+    // Recorded only once the post is out: a channel that cannot be posted in today gets the news when it can.
+    const channel = await getSendableChannel(ctx, channelId);
+    await channel.send({ embeds: [vaultEmbed(fresh)], allowedMentions: { parse: [] } });
+  }
+  // The members who collect one of these sets are told themselves, with or without a news channel.
+  await notifyWishlistVault(ctx, fresh).catch((err) => console.error('[vault] the wishlist notes failed:', err));
   for (const [list, what, change] of KINDS) for (const name of fresh[list]) ctx.store.markSeen(seenKey(what, change, name));
   record();
-  return fresh;
+  return channelId ? fresh : null;
 }

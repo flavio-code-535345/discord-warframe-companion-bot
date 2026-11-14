@@ -86,6 +86,8 @@ describe('bot health tool', () => {
     assert.equal(out.features.leveling, true);
     assert.deepEqual(out.lostSettings, []);
     assert.deepEqual(out.databaseCopies, { kept: 0, totalBytes: 0, newest: null });
+    assert.deepEqual(out.wishlist, { sets: 0, members: 0 });
+    assert.deepEqual(out.crackNow, []);
   });
 
   it('lists the features that lost their channel', async () => {
