@@ -25,6 +25,7 @@ import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { checkSettings, reportDeletedChannel, reportDeletedRole } from './broken-settings.js';
 import { greyOldWeeklies } from './weekly.js';
+import { isClanMember, isDmInteraction, syncDmCommands } from './dm-commands.js';
 import { handleChatMessage } from './chat.js';
 import { syncChatTopic } from './chat-topic.js';
 import { postWelcome } from './welcome.js';
@@ -105,6 +106,8 @@ export function attachHandlers(ctx: AppContext): void {
     // Guild-scoped commands update instantly, unlike global ones.
     await guild.commands.set(COMMANDS.map((c) => c.data));
     console.log(`[discord] registered ${COMMANDS.length} slash commands in "${guild.name}"`);
+    // The personal commands also work in a DM with Ordis, for members of the server (discord/dm-commands.ts).
+    await syncDmCommands(ctx, COMMANDS).catch((err) => console.error('[discord] registering the DM commands failed:', err));
     // Once, after the update that made every notification a DM: the members who held a ping role get the matching notification.
     await convertPingRoles(ctx).catch((err) => console.error('[ping-roles] the move to DM notifications failed:', err));
     // What was deleted while Ordis was offline: the settings that pointed at it are cleared and the staff are told.
@@ -138,10 +141,15 @@ export function attachHandlers(ctx: AppContext): void {
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.guildId !== config.DISCORD_GUILD_ID) {
-      if (interaction.isRepliable()) {
-        await interaction.reply({ content: `This bot only serves the ${config.CLAN_NAME} server.`, flags: MessageFlags.Ephemeral });
+      // A DM with Ordis: the personal commands, for members of the server only.
+      const dmOk = interaction.guildId === null && isDmInteraction(interaction) && (await isClanMember(ctx, interaction.user.id).catch(() => false));
+      if (!dmOk) {
+        if (interaction.isAutocomplete()) await interaction.respond([]).catch(() => {});
+        else if (interaction.isRepliable()) {
+          await interaction.reply({ content: `This bot only serves the ${config.CLAN_NAME} server: join it to use me here.`, flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+        return;
       }
-      return;
     }
 
     if (interaction.isAutocomplete()) {

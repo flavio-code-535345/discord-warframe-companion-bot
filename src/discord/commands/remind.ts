@@ -32,12 +32,12 @@ export const remindme: Command = {
     if (sub === 'set') {
       const r = addReminder(ctx, {
         userId: interaction.user.id,
-        channelId: interaction.channelId,
+        channelId: interaction.inGuild() ? interaction.channelId : null,
         when: interaction.options.getString('when', true),
         message: interaction.options.getString('message', true),
       });
       await reply(
-        `⏰ Got it. I will DM you ${discordTime(r.dueAt, 'F')} (${discordTime(r.dueAt)}):\n> ${neutralise(r.message)}\n-# Times without a zone are read in ${ctx.config.CLAN_TIMEZONE}. If your DMs are closed I answer in this channel instead.`,
+        `⏰ Got it. I will DM you ${discordTime(r.dueAt, 'F')} (${discordTime(r.dueAt)}):\n> ${neutralise(r.message)}\n-# Times without a zone are read in ${ctx.config.CLAN_TIMEZONE}. ${interaction.inGuild() ? 'If your DMs are closed I answer in this channel instead.' : 'Keep this DM open, so I can reach you.'}`,
       );
     } else if (sub === 'list') {
       const list = ctx.store.listReminders(guildId, interaction.user.id);
