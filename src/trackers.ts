@@ -19,6 +19,8 @@ export type TrackerSpec =
   | { kind: 'archon' }
   | { kind: 'price'; slug: string; name: string; below: number }
   | { kind: 'weekly' }
+  /** A named Incarnon weapon is among this week's Steel Path Circuit choices. */
+  | { kind: 'incarnon'; weapon: string }
   /** Any alert or invasion with a reward worth running (`isNotableReward`): Forma, Catalysts, Nitain, rare parts, a big Kuva payout. */
   | { kind: 'notable' }
   /** A new clan event is posted. Sent when the event is created (services/clan.ts), never matched against the world state. */
@@ -202,6 +204,8 @@ export function collectTrackables(ws: WorldState | null, now = Date.now(), extra
   // The Duviri Circuit's Warframe choices change weekly: a reward tracker such as "Mesa" matches them like any other reward.
   const circuit = (ws.duviriCycle as { choices?: { category?: string; choices?: string[] }[] } | undefined)?.choices?.find((c) => c.category === 'normal')?.choices;
   if (circuit?.length) out.push({ key: `circuit:${circuit.join(',')}`, kind: 'reward', source: 'circuit', title: 'Duviri Circuit (Warframes)', rewards: circuit, detail: "This week's Circuit choices" });
+  const incarnon = (ws.duviriCycle as { choices?: { category?: string; choices?: string[] }[] } | undefined)?.choices?.find((c) => c.category === 'hard')?.choices;
+  if (incarnon?.length) out.push({ key: `incarnon:${incarnon.join(',')}`, kind: 'incarnon', source: 'circuit', title: 'Steel Path Circuit (Incarnon weapons)', rewards: incarnon, detail: "This week's Incarnon choices" });
 
   for (const f of ws.fissures ?? []) {
     if (!live(f.expiry)) continue;
@@ -261,6 +265,11 @@ export function matchTracker(spec: TrackerSpec, t: Trackable): string[] | null {
       const hits = (t.rewards ?? []).filter((r) => r.toLowerCase().includes(k));
       return hits.length ? hits : null;
     }
+    case 'incarnon': {
+      const k = spec.weapon.toLowerCase().trim();
+      const hits = (t.rewards ?? []).filter((r) => r.toLowerCase().includes(k));
+      return k && hits.length ? hits : null;
+    }
     case 'fissure': {
       const f = t.fissure!;
       if (spec.tier && spec.tier.toLowerCase() !== f.tier.toLowerCase()) return null;
@@ -301,6 +310,8 @@ export function describeTracker(spec: TrackerSpec): string {
   switch (spec.kind) {
     case 'reward':
       return `Reward containing "${spec.keyword}"`;
+    case 'incarnon':
+      return `${spec.weapon} Incarnon in the Steel Path Circuit`;
     case 'fissure': {
       const parts = [spec.tier, spec.mission].filter(Boolean).join(' ') || 'Any';
       const flags = [spec.steelPath === true ? 'Steel Path' : spec.steelPath === false ? 'normal' : null, spec.storm === true ? 'Void Storm' : spec.storm === false ? 'no storms' : null].filter(Boolean);

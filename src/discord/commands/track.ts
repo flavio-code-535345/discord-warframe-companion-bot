@@ -8,6 +8,7 @@ import {
   describeTracker,
   parseSpec,
 } from '../../trackers.js';
+import { loadRotations } from '../../answers/circuit.js';
 import { CRACK_QUIET_HOURS, DEFAULT_CRACK_PLAT, DEFAULT_CRACK_QUIET_HOURS as DEFAULT_QUIET_HOURS } from '../../alecaframe/crack.js';
 import type { ArbyTier } from '../../warframe/arbitrations.js';
 import { getItemIndex, resolveItem, searchItems } from '../../warframe/market.js';
@@ -50,6 +51,12 @@ export const track: Command = {
         ),
     )
     .addSubcommand((s) => s.setName('baro').setDescription("Baro Ki'Teer arriving at a relay"))
+    .addSubcommand((s) =>
+      s
+        .setName('incarnon')
+        .setDescription('A DM when an Incarnon weapon is up in the Steel Path Circuit this week')
+        .addStringOption((o) => o.setName('weapon').setDescription('Incarnon weapon, e.g. Soma').setRequired(true).setMinLength(2).setMaxLength(60).setAutocomplete(true)),
+    )
     .addSubcommand((s) =>
       s
         .setName('arbitration')
@@ -142,6 +149,8 @@ export const track: Command = {
     let spec: TrackerSpec;
     if (sub === 'reward') {
       spec = { kind: 'reward', keyword: interaction.options.getString('keyword', true).trim() };
+    } else if (sub === 'incarnon') {
+      spec = { kind: 'incarnon', weapon: interaction.options.getString('weapon', true).trim() };
     } else if (sub === 'fissure') {
       const tier = interaction.options.getString('tier') ?? undefined;
       const mission = interaction.options.getString('mission') ?? undefined;
@@ -214,6 +223,14 @@ export const track: Command = {
     if (focused.name === 'item') {
       const matches = searchItems(await getItemIndex(), focused.value);
       await interaction.respond(matches.map((m) => ({ name: m.name.slice(0, 100), value: m.slug })));
+      return;
+    }
+    if (focused.name === 'weapon') {
+      const typed = focused.value.toLowerCase().trim();
+      // The wiki's Circuit rotation lists every Incarnon weapon; without it the member can still type a name.
+      const rotations = await loadRotations().catch(() => null);
+      const names = [...new Set((rotations?.incarnon ?? []).flat())].sort();
+      await interaction.respond(names.filter((n) => n.toLowerCase().includes(typed)).slice(0, 25).map((n) => ({ name: n.slice(0, 100), value: n.slice(0, 60) })));
       return;
     }
     if (focused.name === 'activity') {
