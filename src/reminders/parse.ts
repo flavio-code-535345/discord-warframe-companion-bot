@@ -4,7 +4,7 @@ import { wallClock, zonedEpoch } from '../time.js';
  * Reads the `when` of /remindme. No network, no model: a small grammar.
  *
  * - a length of time, counted from now: "2h", "3 days", "1w 2d", "in 90 minutes", "1 hour 30 min", "2 weeks and 3 days"
- * - a date and/or time of day, read in the clan time zone: "2026-12-01 18:00", "2026-12-01", "24.12.2026 20:00", "tomorrow 9am",
+ * - a date and/or time of day, read in the clan time zone: "2026-12-01 18:00", "2026-12-01", "24.12.2026 20:00", "24.12.26", "24-12-2026 20:00", "24/12/26" (day first, the German way; "20 Uhr" and "20:00 Uhr" work too), "tomorrow 9am",
  *   "today 18:30", "friday", "next monday 8pm", "21:00" (the next time the clock shows it)
  * - an ISO-8601 moment with its own zone: "2026-12-01T18:00:00Z", "2026-12-01T18:00+01:00"
  *
@@ -19,9 +19,9 @@ const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const UNIT_WORD = '(?:weeks?|wks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)';
 const DURATION_PART = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${UNIT_WORD})\\b`, 'g');
 const DURATION_ALL = new RegExp(`^(?:\\d+(?:\\.\\d+)?\\s*${UNIT_WORD}(?:\\s*(?:,|and|&)?\\s*|$))+$`);
-const TIME = '(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?';
+const TIME = '(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?:\\s*(uhr))?';
 const DATE_TIME = new RegExp(
-  `^(?:(today|tomorrow|tmrw)|(?:(next)\\s+)?(sun|mon|tue|wed|thu|fri|sat)[a-z]*|(\\d{4})-(\\d{1,2})-(\\d{1,2})|(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4}))?(?:\\s*(?:t|at|@)?\\s*${TIME})?$`,
+  `^(?:(today|tomorrow|tmrw)|(?:(next)\\s+)?(sun|mon|tue|wed|thu|fri|sat)[a-z]*|(\\d{4})-(\\d{1,2})-(\\d{1,2})|(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4}|\\d{2}))?(?:\\s*(?:t|at|@)?\\s*${TIME})?$`,
 );
 
 /** A length of time in milliseconds, or null. Zero or a text that is not entirely a length is null. */
@@ -45,6 +45,12 @@ function addDays(date: { y: number; mo: number; d: number }, days: number): { y:
   return { y: w.getUTCFullYear(), mo: w.getUTCMonth() + 1, d: w.getUTCDate() };
 }
 
+/** Whether the day exists (no 31 February, no month 13). */
+function real(y: number, mo: number, d: number): boolean {
+  const w = new Date(Date.UTC(y, mo - 1, d));
+  return w.getUTCFullYear() === y && w.getUTCMonth() === mo - 1 && w.getUTCDate() === d;
+}
+
 export function parseReminderTime(input: string, now: number, timeZone: string): number | null {
   const raw = input.trim();
   if (!raw || raw.length > 60) return null;
@@ -62,12 +68,12 @@ export function parseReminderTime(input: string, now: number, timeZone: string):
 
   const m = s.match(DATE_TIME);
   if (!m) return null;
-  const [, relDay, next, weekday, isoY, isoMo, isoD, dmD, dmMo, dmY, hh, mm, ampm] = m;
+  const [, relDay, next, weekday, isoY, isoMo, isoD, dmD, dmMo, dmY, hh, mm, ampm, uhr] = m;
   const hasDate = Boolean(relDay || weekday || isoY || dmY);
   const hasTime = hh !== undefined;
   if (!hasDate && !hasTime) return null;
   // A bare number is a length with a missing unit, not a time of day.
-  if (!hasDate && mm === undefined && ampm === undefined) return null;
+  if (!hasDate && mm === undefined && ampm === undefined && !uhr) return null;
 
   let hour = DEFAULT_HOUR;
   let minute = 0;
@@ -84,8 +90,11 @@ export function parseReminderTime(input: string, now: number, timeZone: string):
   const today = zoneDate(now, timeZone);
   const at = (date: { y: number; mo: number; d: number }) => zonedEpoch(date.y, date.mo, date.d, hour, minute, timeZone);
 
-  if (isoY) return at({ y: Number(isoY), mo: Number(isoMo), d: Number(isoD) });
-  if (dmY) return at({ y: Number(dmY), mo: Number(dmMo), d: Number(dmD) });
+  if (isoY) return real(Number(isoY), Number(isoMo), Number(isoD)) ? at({ y: Number(isoY), mo: Number(isoMo), d: Number(isoD) }) : null;
+  if (dmY) {
+    const y = dmY.length === 2 ? 2000 + Number(dmY) : Number(dmY);
+    return real(y, Number(dmMo), Number(dmD)) ? at({ y, mo: Number(dmMo), d: Number(dmD) }) : null;
+  }
   if (relDay === 'today') return at(today);
   if (relDay) return at(addDays(today, 1));
 

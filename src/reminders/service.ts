@@ -33,7 +33,7 @@ export function addReminder(ctx: AppContext, input: { userId: string; channelId:
   const zone = ctx.config.CLAN_TIMEZONE;
   const dueAt = parseReminderTime(input.when, now, zone);
   if (dueAt === null) {
-    throw new UserError(`I could not read "${input.when.slice(0, 60)}" as a time. Try "2h", "3 days", "1w 2d", "tomorrow 9am" or "2026-12-01 18:00" (dates are in ${zone}).`);
+    throw new UserError(`I could not read "${input.when.slice(0, 60)}" as a time. Try "2h", "3 days", "1w 2d", "tomorrow 9am", "24.12.2026 18:00" or "2026-12-01 18:00" (dates are in ${zone}).`);
   }
   if (dueAt < now + MIN_AHEAD_MS) throw new UserError(dueAt <= now ? 'That time has already passed.' : 'The soonest I can remind you is 1 minute from now.');
   if (dueAt > now + MAX_AHEAD_MS) throw new UserError('I can remind you at most 2 years ahead.');

@@ -35,6 +35,23 @@ describe('reminder time parser', () => {
     assert.equal(parseReminderTime('2027-07-01 18:00', NOW, 'Europe/Berlin'), Date.UTC(2027, 6, 1, 16));
   });
 
+  it('reads the German day-first dates, with two or four digit years and any of . - /', () => {
+    const dec = Date.UTC(2026, 11, 24, 9);
+    for (const t of ['24.12.2026', '24.12.26', '24-12-26', '24-12-2026', '24/12/26', '24.12.26']) assert.equal(parseReminderTime(t, NOW, 'UTC'), dec, t);
+    assert.equal(parseReminderTime('22-11-26', NOW, 'UTC'), Date.UTC(2026, 10, 22, 9));
+    assert.equal(parseReminderTime('24.12.2026 20:00', NOW, 'UTC'), Date.UTC(2026, 11, 24, 20));
+    assert.equal(parseReminderTime('24.12.26 20 Uhr', NOW, 'UTC'), Date.UTC(2026, 11, 24, 20));
+    assert.equal(parseReminderTime('24.12.26 20:30 Uhr', NOW, 'Europe/Berlin'), Date.UTC(2026, 11, 24, 19, 30));
+    assert.equal(parseReminderTime('2026-12-01 18:00', NOW, 'UTC'), Date.UTC(2026, 11, 1, 18), 'the ISO order still works');
+    assert.equal(parseReminderTime('31.02.26', NOW, 'UTC'), null);
+    assert.equal(parseReminderTime('13.13.26', NOW, 'UTC'), null);
+  });
+
+  it('"18 Uhr" is a time of day, a bare number is still not', () => {
+    assert.equal(parseReminderTime('18 Uhr', NOW, 'UTC'), Date.UTC(2026, 10, 14, 18));
+    assert.equal(parseReminderTime('18', NOW, 'UTC'), null);
+  });
+
   it('keeps an explicit zone as written', () => {
     assert.equal(parseReminderTime('2026-12-01T18:00:00Z', NOW, 'Europe/Berlin'), Date.UTC(2026, 11, 1, 18));
   });
