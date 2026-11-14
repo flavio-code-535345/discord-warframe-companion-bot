@@ -51,6 +51,7 @@ of chatter that names no wiki page. It needs the Message Content intent: enable 
 | `/lfg activity [details] [size] [expires]` | Squad post with Join / Leave / Close buttons; the members who asked for squads get a DM with a link, and the squad's own members are pinged when it is full. With squad voice on, it also gets its own voice channel |
 | `/activity set · clear · list` | (Manage Server) a picture and a fixed channel for each LFG activity |
 | `/giveaway start · end · reroll · list` | A giveaway with an Enter button and 1–10 winners, drawn when it ends |
+| `/remindme set · list · cancel` | Ordis DMs you a note at a time you pick (`2h`, `3 days`, `tomorrow 9am`, `2026-12-01 18:00` in the clan time zone); max 25 waiting; if your DMs are closed he answers in the channel |
 | `/birthday set · remove · list` | Ordis wishes you a happy birthday on the day (only day and month are stored) |
 | `/rank` · `/leaderboard` · `/xp` | Levels from chat and voice, with Level roles; staff can give XP, set levels and ignore channels |
 | `/roles add · remove · post · list` | (Manage Roles) a self-assign panel with one button per role (platform, region, …); its last row switches the clan event, squad and weekly DMs on and off |

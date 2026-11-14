@@ -56,10 +56,28 @@ export function validTimeZone(zone: string): boolean {
 }
 
 /** What the clocks in a time zone show at a moment, written as if it were UTC (whole seconds). */
-function wallClock(at: number, timeZone: string): number {
+export function wallClock(at: number, timeZone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(at);
   const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'));
+}
+
+/**
+ * The moment the clocks of a time zone show this date and time (an unknown zone counts as UTC). Null when the date does not exist
+ * (31 February). A time the clocks skip that night lands an hour beside it, one they show twice is the first.
+ */
+export function zonedEpoch(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): number | null {
+  const wanted = Date.UTC(year, month - 1, day, hour, minute);
+  const check = new Date(wanted);
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day || hour > 23 || minute > 59) return null;
+  const zone = validTimeZone(timeZone) ? timeZone : 'UTC';
+  let guess = wanted;
+  for (let i = 0; i < 3; i++) {
+    const off = wanted - wallClock(guess, zone);
+    if (off === 0) break;
+    guess += off;
+  }
+  return guess;
 }
 
 /**

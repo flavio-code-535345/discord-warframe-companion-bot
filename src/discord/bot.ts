@@ -32,6 +32,7 @@ import { convertPingRoles } from './ping-roles.js';
 import type { Command } from './command.js';
 import { ask } from './commands/ask.js';
 import { birthday, giveaway, inactive, roles } from './commands/community.js';
+import { remindme } from './commands/remind.js';
 import { activity } from './commands/activity.js';
 import { backup } from './commands/backup.js';
 import { clan } from './commands/clan.js';
@@ -53,7 +54,7 @@ import { drops, price, wf } from './commands/warframe.js';
 import { wishlist } from './commands/wishlist.js';
 import { handleWishSelect } from '../wishlist/service.js';
 
-export const COMMANDS: Command[] = [now, wf, item, price, relics, wishlist, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [now, wf, item, price, relics, wishlist, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, remindme, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 /** What a message may ping when it doesn't say: the members it mentions and the member it replies to, never a role or everyone. */
 export const DEFAULT_MENTIONS = { parse: ['users'], repliedUser: true } as const satisfies { parse: readonly ['users']; repliedUser: boolean };

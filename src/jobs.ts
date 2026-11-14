@@ -2,6 +2,7 @@ import type { AppContext } from './context.js';
 import { DB_COPY_CHECK_MS, databaseCopyIfDue } from './backup/database.js';
 import { BACKUP_CHECK_MS, backupIfDue } from './backup/service.js';
 import { postBirthdays } from './birthdays/service.js';
+import { remindersJob } from './reminders/service.js';
 import { refreshEmojis } from './discord/app-emojis.js';
 import { eventsJob, newsJob, worldStateJob } from './discord/notifier.js';
 import { PRICE_CHECK_MS, checkPriceTrackers } from './discord/price-alerts.js';
@@ -29,6 +30,7 @@ export function registerJobs(ctx: AppContext, parts: { rivenCrawler: RivenCrawle
   jobs
     // Reminders don't depend on the world state, so they still go out when its source is down.
     .every('events', MIN, () => eventsJob(ctx))
+    .every('reminders', 30_000, () => remindersJob(ctx), { firstMs: 20_000 })
     .every('giveaways', MIN, () => endDueGiveaways(ctx))
     .every('birthdays', 5 * MIN, () => postBirthdays(ctx), { firstMs: MIN })
     .every('promo-codes', MIN, () => updatePromoCodes(ctx), { firstMs: MIN })

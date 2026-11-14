@@ -171,6 +171,17 @@ export interface Birthday {
   day: number;
 }
 
+export interface Reminder {
+  id: number;
+  guildId: string;
+  userId: string;
+  channelId: string | null;
+  message: string;
+  dueAt: number;
+  createdAt: number;
+  attempts: number;
+}
+
 /** When a member last wrote or was in voice (null: not since tracking began). */
 export interface MemberActivity {
   userId: string;
@@ -810,6 +821,21 @@ const MIGRATIONS: string[] = [
     UNIQUE (guild_id, user_id, item)
   );
   `,
+  // /remindme: a member's own reminders (a DM at due_at; the channel is the fallback when DMs are closed).
+  `
+  CREATE TABLE reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    channel_id TEXT,
+    message TEXT NOT NULL,
+    due_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_reminders_due ON reminders (due_at);
+  CREATE INDEX idx_reminders_user ON reminders (guild_id, user_id);
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -823,6 +849,19 @@ function toWish(r: Row): Wish {
     // An unreadable list is an empty one.
   }
   return { id: Number(r.id), guildId: String(r.guild_id), userId: String(r.user_id), item: String(r.item), have, createdAt: Number(r.created_at) };
+}
+
+function toReminder(r: Row): Reminder {
+  return {
+    id: Number(r.id),
+    guildId: String(r.guild_id),
+    userId: String(r.user_id),
+    channelId: str(r.channel_id),
+    message: String(r.message),
+    dueAt: Number(r.due_at),
+    createdAt: Number(r.created_at),
+    attempts: Number(r.attempts),
+  };
 }
 
 function toCrawlRow(r: Row): RivenCrawlRow {
@@ -1818,6 +1857,52 @@ export class Store {
 
   listBirthdays(guildId: string): Birthday[] {
     return (this.db.prepare('SELECT * FROM birthdays WHERE guild_id = ? ORDER BY month, day').all(guildId) as Row[]).map((r) => ({ userId: String(r.user_id), month: Number(r.month), day: Number(r.day) }));
+  }
+
+  // --- reminders ---
+
+  addReminder(r: { guildId: string; userId: string; channelId: string | null; message: string; dueAt: number; createdAt: number }): number {
+    const res = this.db
+      .prepare('INSERT INTO reminders (guild_id, user_id, channel_id, message, due_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(r.guildId, r.userId, r.channelId, r.message, r.dueAt, r.createdAt);
+    return Number(res.lastInsertRowid);
+  }
+
+  /** A member's pending reminders, soonest first. */
+  listReminders(guildId: string, userId: string): Reminder[] {
+    return (this.db.prepare('SELECT * FROM reminders WHERE guild_id = ? AND user_id = ? ORDER BY due_at, id').all(guildId, userId) as Row[]).map(toReminder);
+  }
+
+  countReminders(guildId: string, userId: string): number {
+    return Number((this.db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as Row).n);
+  }
+
+  /** Reminders whose time has come, oldest first. */
+  dueReminders(now: number, limit = 50): Reminder[] {
+    return (this.db.prepare('SELECT * FROM reminders WHERE due_at <= ? ORDER BY due_at, id LIMIT ?').all(now, limit) as Row[]).map(toReminder);
+  }
+
+  /** The time of the next pending reminder, or null when there is none. */
+  nextReminderAt(): number | null {
+    const r = this.db.prepare('SELECT MIN(due_at) AS t FROM reminders').get() as Row;
+    return r.t === null || r.t === undefined ? null : Number(r.t);
+  }
+
+  /** Only the owner can cancel: returns false when it is not theirs or not there. */
+  removeReminder(id: number, guildId: string, userId: string): boolean {
+    return this.db.prepare('DELETE FROM reminders WHERE id = ? AND guild_id = ? AND user_id = ?').run(id, guildId, userId).changes > 0;
+  }
+
+  /** Deletes a reminder after delivery (or giving up). */
+  deleteReminder(id: number): void {
+    this.db.prepare('DELETE FROM reminders WHERE id = ?').run(id);
+  }
+
+  /** Counts a failed delivery and returns the new count. */
+  bumpReminderAttempts(id: number): number {
+    this.db.prepare('UPDATE reminders SET attempts = attempts + 1 WHERE id = ?').run(id);
+    const r = this.db.prepare('SELECT attempts FROM reminders WHERE id = ?').get(id) as Row | undefined;
+    return r ? Number(r.attempts) : 0;
   }
 
   // --- member activity (for the inactivity report) ---
