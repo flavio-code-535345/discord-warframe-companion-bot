@@ -243,7 +243,7 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 typing a command. The Arbitration schedule and tiers come from [browse.wf](https://browse.wf) (the world state itself from
 warframestat.us); Digital Extremes' servers are never called.
 
-A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it),
+A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it; the older posts turn grey with an "Outdated" note when a new one comes),
 game news from the in-game news panel and Warframe's Steam announcements, plus a post whenever prime sets and their relics
 are vaulted, come back or are new (`/setup news`), the active promo codes from the
 wiki (`/setup promos`) and birthday wishes (`/setup birthdays`).
