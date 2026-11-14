@@ -34,6 +34,7 @@ of chatter that names no wiki page. It needs the Message Content intent: enable 
 
 | Command | What it does |
 | --- | --- |
+| `/now [share]` | One card with what is worth doing right now: the Arbitration and its tier, the quick fissure of each relic tier, alerts and invasions that pay something good, night on the Plains, Baro and Darvo, running events, and when the sortie resets. Only you see it unless you share it |
 | `/ask question` | Ask Ordis anything about Warframe |
 | `/item name` | Stats for a Warframe (abilities, polarities), weapon (damage, crit, status, riven disposition), mod or arcane (max-rank effect, best drop sources) or relic (contents with intact → radiant chances, each reward's price, what a run is worth, vaulted status) |
 | `/relics [refinement] [squad] [vaulted] [tier]` | The relics worth the most plat per run, alone or in a radshare |
@@ -84,6 +85,11 @@ channel behind), when `expires` runs out (like `30m`, `2h`, `1d`), or when someo
 squad's voice channel is deleted as soon as it is empty, so nobody is kicked mid-conversation. Each host can have one open
 squad with voice at a time. The upkeep runs once a minute and survives restarts. `/setup off feature:Squad voice channels`
 turns it off.
+
+**Squad up** on the Arbitrations board (and on the `/now` card) is `/lfg` in one tap: the first member to press it starts a
+squad of four for the Arbitration that is running (for the next one when under 15 minutes are left), with its voice channel
+when squad voice is on, and everyone who presses it after that joins the same squad. A full squad makes room for a new one,
+and the squad closes when the Arbitration ends. The button is there once squads have a channel (`/setup lfg`).
 
 `/activity set name [image] [channel]` gives an activity (any name, the suggestions in `/lfg` are only hints) a
 **picture** shown on its squad posts and a **fixed channel** to post in. Nobody is pinged: the members who asked for squads (`/track squads`, or the button on the roles panel) get a DM with a link to the post. Use a
@@ -205,7 +211,7 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 | Board | What it shows | DMs its menu offers |
 | --- | --- | --- |
 | Alerts | Alerts with reward, node and levels; events with progress and interim rewards; Nightwave | Anything worth running (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …), or one reward by name |
-| Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead | A tier or better (S, A, B) or a mission type, 10 minutes before the hour starts |
+| Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead; "Squad up" puts you in a squad for the Arbitration with one tap | A tier or better (S, A, B) or a mission type, 10 minutes before the hour starts |
 | Fissures | Normal, Steel Path and Void Storms, by relic tier | Steel Path by tier, Void Storms, Omnia and Requiem, quick missions (Capture, Extermination, …) |
 | Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | The daily sortie (or only one with a mission type), the Archon Hunt, the weekly reset summary |
 | Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | A state starting: Cetus night, a warm Orb Vallis, Fass or Vome, … |

@@ -13,8 +13,8 @@ import { type FeedInput, STALE_NOTE } from './types.js';
 
 const COLOR = { normal: 0x8b5cf6, steel: 0xdc2626, storm: 0x0ea5e9 } as const;
 
-/** Missions that crack a relic quickly, marked so they are easy to find. */
-const FAST = /^(capture|extermination|sabotage|rescue|spy)$/i;
+/** Missions that crack a relic quickly, marked so they are easy to find (the `/now` card lists only these). */
+export const FAST = /^(capture|extermination|sabotage|rescue|spy)$/i;
 
 function fissureLine(f: Fissure): string {
   const planet = planetOf(f.node);

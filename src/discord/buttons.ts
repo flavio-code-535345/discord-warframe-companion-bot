@@ -1,6 +1,7 @@
 import { type ButtonInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import type { AppContext } from '../context.js';
 import type { RsvpStatus } from '../db.js';
+import { squadFullNotice } from '../lfg/squads.js';
 import { closeSquad, setSquadVoiceAccess } from '../lfg/voice.js';
 import { UserError, renderEvent, renderLfg } from '../services/clan.js';
 import { handleBackupButton } from './commands/backup.js';
@@ -12,7 +13,7 @@ import { handleNotifyButton } from './subscriptions.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
-/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `notify:<key>` (and the older `weekly:toggle`), `feeds:<mine|plan>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
+/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `notify:<key>` (and the older `weekly:toggle`), `feeds:<mine|plan|squad>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
 export async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
   const [kind, rawId, action] = interaction.customId.split(':');
   const id = Number(rawId);
@@ -90,12 +91,7 @@ export async function handleButton(interaction: ButtonInteraction, ctx: AppConte
     else if (action === 'leave') await setSquadVoiceAccess(ctx, updated, interaction.user.id, false);
 
     const now = ctx.store.lfgMembers(id);
-    if (action === 'join' && now.length >= updated.size) {
-      await interaction.followUp({
-        content: `🐀 Squad full for **${updated.activity}**! ${now.map((u) => `<@${u}>`).join(' ')} — host: <@${updated.hostId}>, send invites.`,
-        allowedMentions: { users: now },
-      });
-    }
+    if (action === 'join' && now.length >= updated.size) await interaction.followUp(squadFullNotice(updated, now));
     return;
   }
 

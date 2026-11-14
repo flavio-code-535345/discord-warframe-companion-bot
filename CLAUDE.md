@@ -78,7 +78,7 @@ Each folder below has a `CLAUDE.md` with the details of what lives there. It loa
 
 | Folder | What its notes cover |
 |---|---|
-| `src/discord/` | interaction routing and custom IDs, the notifier, live boards (`board.ts`), trackers and DMs, notifications as DM subscriptions, emojis, embed style, identity, editing Ordis's messages, events (end times, repeating), a deleted channel or role, the vault watch, price alerts, the weekly post, promo codes, game news |
+| `src/discord/` | interaction routing and custom IDs, the notifier, the `/now` card, live boards (`board.ts`), trackers and DMs, notifications as DM subscriptions, emojis, embed style, identity, editing Ordis's messages, events (end times, repeating), a deleted channel or role, the vault watch, price alerts, the weekly post, promo codes, game news |
 | `src/discord/feeds/` | the seven World State boards |
 | `src/warframe/` | the world state (warframestat.us, polling), the API client, item and drop lookups, Arbitrations, relic values, Baro prices, web search |
 | `src/wiki/` | the local wiki index: crawler, cleaning, FTS5 search |
@@ -89,7 +89,7 @@ Each folder below has a `CLAUDE.md` with the details of what lives there. It loa
 | `src/web/` | the status page, the admin panel, the web theme, the Config page (runtime config) |
 | `src/mcp/` | the MCP server, the insight tools, the server admin tools |
 | `src/alecaframe/` | AlecaFrame links, the stats chart, the relic planner |
-| `src/lfg/` | squads, squad voice, activities, join-to-create rooms |
+| `src/lfg/` | squads, squad voice, "Squad up" for the Arbitration, activities, join-to-create rooms |
 | `src/selfroles/`, `src/activity/`, `src/giveaways/`, `src/birthdays/` | the roles panel, the inactivity report, giveaways, birthdays |
 | `src/moderation/`, `src/backup/`, `src/leveling/`, `src/sticky/`, `src/logging/` | purge, lock and honeypot; server backups and restore, the nightly database copy; XP and level roles; sticky messages; the audit log |
 

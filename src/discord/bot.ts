@@ -37,6 +37,7 @@ import { clan } from './commands/clan.js';
 import { event } from './commands/event.js';
 import { lfg } from './commands/lfg.js';
 import { MODERATION_COMMANDS } from './commands/moderation.js';
+import { now } from './commands/now.js';
 import { item, wiki } from './commands/lookup.js';
 import { ailog } from './commands/ailog.js';
 import { LEVEL_COMMANDS } from './commands/levels.js';
@@ -49,7 +50,7 @@ import { relics } from './commands/relics.js';
 import { alecaframe } from './commands/alecaframe.js';
 import { drops, price, wf } from './commands/warframe.js';
 
-export const COMMANDS: Command[] = [wf, item, price, relics, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
+export const COMMANDS: Command[] = [now, wf, item, price, relics, riven, alecaframe, drops, wiki, ask, track, clan, event, lfg, activity, giveaway, birthday, roles, inactive, vc, sticky, ailog, ...LEVEL_COMMANDS, setup, ...MODERATION_COMMANDS, backup];
 
 /** What a message may ping when it doesn't say: the members it mentions and the member it replies to, never a role or everyone. */
 export const DEFAULT_MENTIONS = { parse: ['users'], repliedUser: true } as const satisfies { parse: readonly ['users']; repliedUser: boolean };

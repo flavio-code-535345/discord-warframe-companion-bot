@@ -3,7 +3,7 @@ import type { AppContext } from '../context.js';
 import type { LfgPost } from '../db.js';
 import { notifySquad } from '../discord/subscriptions.js';
 import { UserError, getSendableChannel, renderLfg } from '../services/clan.js';
-import { createSquadVoice, deleteSquadVoice, squadVoiceCategory } from './voice.js';
+import { createSquadVoice, deleteSquadVoice, setSquadVoiceAccess, squadVoiceCategory } from './voice.js';
 
 /**
  * Posting a squad: the one implementation behind `/lfg` and the "Squad up" button on the Arbitration board. It creates the squad's
@@ -72,4 +72,34 @@ export async function createSquad(ctx: AppContext, input: SquadInput): Promise<C
   }
   await notifySquad(ctx, stored, url, input.hostName).catch((err) => console.warn('[lfg] could not DM the squad to its subscribers:', (err as Error).message));
   return { post: ctx.store.getLfg(post.id)!, channelId: channel.id, voiceChannelId: voiceId, url };
+}
+
+/** What is posted under a squad the moment it fills up: the one message of a squad that pings, and only its own members. */
+export function squadFullNotice(post: Pick<LfgPost, 'activity' | 'hostId'>, members: string[]): { content: string; allowedMentions: { users: string[] } } {
+  return {
+    content: `🐀 Squad full for **${post.activity}**! ${members.map((u) => `<@${u}>`).join(' ')} — host: <@${post.hostId}>, send invites.`,
+    allowedMentions: { users: members },
+  };
+}
+
+/**
+ * Puts a member into an open squad from somewhere other than the squad's own Join button (the "Squad up" button on the Arbitration
+ * board): the squad's post is redrawn, they are let into its voice channel, and a squad that is full now says so in its channel.
+ * The caller has checked that the squad is open, has room and does not hold them yet.
+ */
+export async function joinSquad(ctx: AppContext, postId: number, userId: string): Promise<{ post: LfgPost; members: string[]; full: boolean }> {
+  ctx.store.joinLfg(postId, userId);
+  const post = ctx.store.getLfg(postId)!;
+  const members = ctx.store.lfgMembers(postId);
+  const full = members.length >= post.size;
+  try {
+    const channel = await getSendableChannel(ctx, post.channelId);
+    const message = post.messageId ? await channel.messages.fetch(post.messageId).catch(() => null) : null;
+    await message?.edit({ ...renderLfg(ctx, post), content: '' });
+    if (full) await channel.send(squadFullNotice(post, members));
+  } catch (err) {
+    console.warn(`[lfg] could not redraw squad #${postId} after a join:`, (err as Error).message);
+  }
+  await setSquadVoiceAccess(ctx, post, userId, true);
+  return { post, members, full };
 }
