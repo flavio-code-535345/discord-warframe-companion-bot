@@ -13,7 +13,7 @@ import { handleNotifyButton } from './subscriptions.js';
 
 const RSVP_STATUSES: RsvpStatus[] = ['going', 'maybe', 'declined'];
 
-/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `notify:<key>` (and the older `weekly:toggle`), `feeds:<mine|plan|squad>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
+/** Handles button custom IDs `rsvp:<eventId>:<status>`, `lfg:<postId>:<action>`, `roles:<roleId>`, `giveaway:<id>:enter`, `notify:<key>` (and the older `weekly:toggle`), `feeds:<mine|plan|squad|incarnon>`, `purge:<token>:<confirm|cancel>` and `backup:<token>:<confirm|cancel>`. */
 export async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
   const [kind, rawId, action] = interaction.customId.split(':');
   const id = Number(rawId);

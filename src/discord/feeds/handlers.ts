@@ -21,6 +21,7 @@ import { COLORS } from '../style.js';
 import { isPlanRange, planMessage } from './arbitrations.js';
 import { sameSpec, trackOption } from './controls.js';
 import { shownComponents } from './index.js';
+import { pickMessage } from '../track-pick.js';
 import { DIVIDER, card } from './parts.js';
 import { FEED_IDS } from './types.js';
 
@@ -75,6 +76,10 @@ async function resetBoardMenu(interaction: StringSelectMenuInteraction): Promise
 export async function handleFeedButton(interaction: ButtonInteraction, ctx: AppContext, action: string): Promise<void> {
   if (action === 'mine') {
     await interaction.reply({ components: [mineMessage(ctx, interaction.user.id)], flags: V2_EPHEMERAL });
+    return;
+  }
+  if (action === 'incarnon') {
+    await interaction.reply(await pickMessage(ctx, 'incarnon'));
     return;
   }
   if (action === 'plan') {
@@ -156,6 +161,10 @@ export async function handleFeedSelect(interaction: StringSelectMenuInteraction,
     return;
   }
 
+  if (action === 'incarnon') {
+    await interaction.reply(await pickMessage(ctx, 'incarnon'));
+    return;
+  }
   if (action === 'plan') {
     const range = interaction.values[0] ?? '';
     await interaction.update({ components: [planMessage(lastArbitrations(), Date.now(), isPlanRange(range) ? range : 'sa14')], flags: MessageFlags.IsComponentsV2 });

@@ -13,7 +13,7 @@ import type { AppContext } from '../context.js';
 import type { SelfRole } from '../db.js';
 import { DANGEROUS } from '../discord/permissions.js';
 import { COLORS } from '../discord/embeds.js';
-import { mineButton, notifyButton } from '../discord/feeds/controls.js';
+import { incarnonButton, mineButton, notifyButton } from '../discord/feeds/controls.js';
 import { FEEDS } from '../discord/feeds/index.js';
 import { brandIcon } from '../discord/identity.js';
 import { levelTier } from '../leveling/xp.js';
@@ -91,7 +91,7 @@ export function rolesPanel(ctx: AppContext, roles: SelfRole[]): Pick<MessageCrea
   const chunk = (list: SelfRole[]) => Array.from({ length: Math.ceil(list.length / 5) }, (_, i) => list.slice(i * 5, i * 5 + 5));
   let rows = [...groups.values()].flatMap(chunk);
   if (rows.length > MAX_ROLE_ROWS) rows = chunk([...groups.values()].flat());
-  const notifications = new ActionRowBuilder<ButtonBuilder>().addComponents(notifyButton('clanEvent'), notifyButton('squad'), notifyButton('weekly'), mineButton());
+  const notifications = new ActionRowBuilder<ButtonBuilder>().addComponents(notifyButton('clanEvent'), notifyButton('squad'), notifyButton('weekly'), incarnonButton(), mineButton());
   return { embeds: [embed], components: [...rows.map((row) => new ActionRowBuilder<ButtonBuilder>().addComponents(row.map(button))), notifications] };
 }
 

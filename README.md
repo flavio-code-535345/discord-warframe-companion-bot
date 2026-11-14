@@ -238,7 +238,7 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 | Traders | Baro Ki'Teer's whole inventory with ducats and credits and, within minutes of his arrival, what each item sells for on warframe.market (plat per ducat, the best resale); Darvo's deal, Varzia's Prime Resurgence, Teshin | Baro's arrival, Umbra Forma |
 | Invasions | Every invasion with both rewards and its progress | Anything worth running, or one reward by name |
 
-**Ordis pings no role.** Every notification is a DM a member asked for: from a board's **🔔 DM me when…** menu, with `/track`, or with the three buttons on the roles panel (clan events, squads, the weekly reset). **My notifications** lists and removes them, so members can set up their own DMs without
+**Ordis pings no role.** Every notification is a DM a member asked for: from a board's **🔔 DM me when…** menu, with `/track`, or with the buttons on the roles panel (clan events, squads, the weekly reset, an Incarnon weapon dropdown). **My notifications** lists and removes them, so members can set up their own DMs without
 typing a command. The Arbitration schedule and tiers come from [browse.wf](https://browse.wf) (the world state itself from
 warframestat.us); Digital Extremes' servers are never called.
 

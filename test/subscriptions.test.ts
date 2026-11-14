@@ -341,7 +341,7 @@ describe('the one-time move from ping roles to DMs', () => {
     assert.deepEqual(w.store.listSelfRoles(G).map((r) => r.roleId), ['r-pc']);
     assert.equal(w.edits.length, 1);
     assert.equal(w.edits[0]!.channel, 'c-roles');
-    assert.deepEqual(buttonRows(w.edits[0]!.payload), [['roles:r-pc'], ['notify:clanEvent', 'notify:squad', 'notify:weekly', 'feeds:mine']]);
+    assert.deepEqual(buttonRows(w.edits[0]!.payload), [['roles:r-pc'], ['notify:clanEvent', 'notify:squad', 'notify:weekly', 'feeds:incarnon', 'feeds:mine']]);
 
     // Each member moved is told what they have now.
     assert.deepEqual(w.dms.map((d) => d.to).sort(), ['a', 'b']);

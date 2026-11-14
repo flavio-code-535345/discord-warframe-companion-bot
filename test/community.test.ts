@@ -19,7 +19,7 @@ const json = <T = Record<string, unknown>>(x: unknown): T => (x as { toJSON(): T
 const ctx = { config: { CLAN_NAME: 'The Rats Den 69', BOT_NAME: 'Cephalon Ordis', DISCORD_GUILD_ID: G }, client: { user: null }, store: new Store(':memory:') } as unknown as AppContext;
 /** The custom IDs of a panel's buttons, row by row. */
 const buttonRows = (panel: { components?: unknown }) => (panel.components as unknown[]).map((r) => json<{ components: { custom_id: string }[] }>(r).components.map((c) => c.custom_id));
-const NOTIFY_ROW = ['notify:clanEvent', 'notify:squad', 'notify:weekly', 'feeds:mine'];
+const NOTIFY_ROW = ['notify:clanEvent', 'notify:squad', 'notify:weekly', 'feeds:incarnon', 'feeds:mine'];
 
 describe('self-assign roles', () => {
   it('keeps the groups in the order they were added, each with its own row of buttons, and ends with the notifications', () => {
@@ -52,15 +52,15 @@ describe('self-assign roles', () => {
   it('puts at most five buttons in a row', () => {
     const roles = Array.from({ length: 12 }, (_, i) => ({ roleId: String(i), group: 'G', label: `R${i}`, emoji: null, description: null, position: i }));
     const rows = buttonRows(rolesPanel(ctx, roles));
-    assert.deepEqual(rows.map((r) => r.length), [5, 5, 2, 4]);
+    assert.deepEqual(rows.map((r) => r.length), [5, 5, 2, 5]);
   });
 
   it('packs the buttons together when a row per group would need more than four rows, so the notifications always fit', () => {
     const roles = Array.from({ length: 6 }, (_, i) => ({ roleId: String(i), group: `G${i}`, label: `R${i}`, emoji: null, description: null, position: i }));
-    assert.deepEqual(buttonRows(rolesPanel(ctx, roles)).map((r) => r.length), [5, 1, 4]);
+    assert.deepEqual(buttonRows(rolesPanel(ctx, roles)).map((r) => r.length), [5, 1, 5]);
     // The most the menu holds (20 roles) still leaves the fifth row for the notifications.
     const full = Array.from({ length: 25 }, (_, i) => ({ roleId: String(i), group: `G${i % 7}`, label: `R${i}`, emoji: null, description: null, position: i }));
-    assert.deepEqual(buttonRows(rolesPanel(ctx, full)).map((r) => r.length), [5, 5, 5, 5, 4]);
+    assert.deepEqual(buttonRows(rolesPanel(ctx, full)).map((r) => r.length), [5, 5, 5, 5, 5]);
   });
 
   it('a changed entry keeps its place, a removed one is gone', () => {
@@ -150,7 +150,7 @@ describe('weekly reset post', () => {
     assert.match(text, /Amber Archon Shard/);
     assert.match(text, /Umbra Forma Blueprint/);
     assert.doesNotMatch(text, /Weeklies by DM/, 'no button in a DM');
-    assert.match(componentText([weeklyCard(ws(monday), monday, monday + 600_000, true)]), /\[Weeklies by DM\]$/, 'the channel post ends with the button');
+    assert.match(componentText([weeklyCard(ws(monday), monday, monday + 600_000, true)]), /\[Weeklies by DM\] \[Incarnon weapon\]$/, 'the channel post ends with the button');
   });
 });
 

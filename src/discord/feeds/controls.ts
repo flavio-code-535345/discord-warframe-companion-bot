@@ -139,6 +139,9 @@ export function notifyRow(feed: FeedId, placeholder = '🔔 DM me when…'): Row
   );
 }
 
+/** Opens the dropdown of Incarnon weapons (`feeds:incarnon`, discord/track-pick.ts): a DM when that weapon is in the Steel Path Circuit. */
+export const incarnonButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('feeds:incarnon').setLabel('Incarnon weapon').setEmoji('🔧').setStyle(ButtonStyle.Secondary);
+
 export const mineButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('feeds:mine').setLabel('My notifications').setEmoji('📋').setStyle(ButtonStyle.Secondary);
 
 /**

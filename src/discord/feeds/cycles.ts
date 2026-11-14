@@ -4,7 +4,7 @@ import { CETUS, DUVIRI_MOODS, DUVIRI_MOOD_MS, VALLIS, projectCycles } from '../.
 import { type WorldState, bountyStanding } from '../../warframe/worldstate.js';
 import { BOUNTY_SYNDICATES } from '../embeds.js';
 import { cycleEmoji, e, emojiFor, emojiUrl } from '../emoji.js';
-import { buttonRow, mineButton, notifyRow } from './controls.js';
+import { buttonRow, incarnonButton, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, cap, card, num, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
 
@@ -96,7 +96,7 @@ export function cycleBoard(input: FeedInput): ContainerBuilder[][] {
   const { ws, now } = input;
   if (!ws) {
     const off = 'The world state is not available right now.';
-    return [[card(COLOR.worlds, [`## ${e('cycle')} Open worlds`, off])], [card(COLOR.duviri, [`## ${e('duviri')} Duviri and bounties`, off, DIVIDER, notifyRow('cycles'), buttonRow(mineButton())])]];
+    return [[card(COLOR.worlds, [`## ${e('cycle')} Open worlds`, off])], [card(COLOR.duviri, [`## ${e('duviri')} Duviri and bounties`, off, DIVIDER, notifyRow('cycles'), buttonRow(incarnonButton(), mineButton())])]];
   }
   let worlds: string[] = [];
   try {
@@ -114,7 +114,7 @@ export function cycleBoard(input: FeedInput): ContainerBuilder[][] {
         input.stale ? `-# ${STALE_NOTE}` : null,
         DIVIDER,
         notifyRow('cycles', '🔔 DM me when it turns…'),
-        buttonRow(mineButton()),
+        buttonRow(incarnonButton(), mineButton()),
       ]),
     ],
   ];

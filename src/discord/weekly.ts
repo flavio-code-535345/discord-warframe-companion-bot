@@ -5,7 +5,7 @@ import { WEEK_MS, discordTime, toMs, weekStart } from '../time.js';
 import type { WorldState } from '../warframe/worldstate.js';
 import { sendDm } from './dm.js';
 import { e } from './emoji.js';
-import { buttonRow, notifyButton } from './feeds/controls.js';
+import { buttonRow, incarnonButton, notifyButton } from './feeds/controls.js';
 import { DIVIDER, card } from './feeds/parts.js';
 import { archonPart, honorsPart } from './feeds/sortie.js';
 import { COLORS } from './style.js';
@@ -54,7 +54,7 @@ export function weeklyCard(ws: WorldState, week: number, now: number, button = f
     DIVIDER,
     honorsPart(ws, now),
     DIVIDER,
-    button ? buttonRow(notifyButton('weekly')) : null,
+    button ? buttonRow(notifyButton('weekly'), incarnonButton()) : null,
   ]);
 }
 
