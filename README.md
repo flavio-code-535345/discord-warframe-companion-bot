@@ -274,7 +274,7 @@ Slash commands are registered to that server automatically on startup. Then run 
 a couple of changes per hour. To change the logo, replace that file and ship a new image. The application name in
 the Developer Portal (General Information → Name) is separate: set it to `Cephalon Ordis` there too.
 
-**Clan time zone:** `CLAN_TIMEZONE` (default `UTC`; also on the panel's Config page, under Identity) is a zone name such as
+**Clan time zone:** `CLAN_TIMEZONE` (default `Europe/Berlin`, German time with the summer-time change; also on the panel's Config page, under Identity) is a zone name such as
 `Europe/Berlin`. A repeating event keeps its time of day in that zone when the clocks change; with `UTC` it would move by
 an hour for everyone twice a year. Event times themselves are still typed in UTC.
 

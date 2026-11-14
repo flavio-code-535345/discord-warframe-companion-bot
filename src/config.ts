@@ -19,7 +19,7 @@ export const EnvSchema = z.object({
   CLAN_NAME: z.string().default('The Rats Den 69'),
   BOT_NAME: z.string().min(2).max(32).default('Cephalon Ordis'),
   /** The clan's time zone (a name such as Europe/Berlin): a repeating event keeps its time of day there when the clocks change. */
-  CLAN_TIMEZONE: z.string().default('UTC').refine(validTimeZone, 'must be a time zone name such as Europe/Berlin or UTC'),
+  CLAN_TIMEZONE: z.string().default('Europe/Berlin').refine(validTimeZone, 'must be a time zone name such as Europe/Berlin or UTC'),
   WARFRAME_PLATFORM: z.enum(['pc', 'ps4', 'xbox', 'switch', 'mobile']).default('pc'),
   DATA_DIR: z.string().default('./data'),
   /** Fetch the live world state (from warframestat.us) at all. Off by default; alerts, fissures and the world tiles are paused while it is off. */

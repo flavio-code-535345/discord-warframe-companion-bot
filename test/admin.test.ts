@@ -305,7 +305,7 @@ test('the Events page sets how often an event repeats and stops a series', async
   const weekly = store.createEvent({ guildId: GUILD, title: 'Clan night', description: null, startsAt: start, createdBy: 'u1', repeatDays: 7 });
   const page = await (await get('/admin/events', cookie)).text();
   assert.match(page, /<select name="repeat"><option value="">— no, only once —<\/option><option value="1">Every day<\/option><option value="7">Every week<\/option><option value="14">Every 2 weeks<\/option><option value="28">Every 4 weeks<\/option><\/select>/);
-  assert.match(page, /at the same time of day in UTC/);
+  assert.match(page, /at the same time of day in Europe/Berlin/);
   assert.ok(page.includes(`action="/admin/events/${weekly.id}/repeat"`), 'a repeating event can be told to stop');
   assert.match(page, /<span class="badge info">every week<\/span>/);
 
