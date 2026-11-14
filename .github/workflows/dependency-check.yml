@@ -57,17 +57,30 @@ jobs:
               exit 1
               ;;
           esac
-          gh label create "$LABEL" --force --color D93F0B --description "Kept by the monthly dependency check"
-          open=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
+          # GitHub's API answers with a 5xx now and then (the first real run met one). What can be repeated without doing it twice
+          # gets three tries; opening an issue and commenting are done once, and a failure there fails the run.
+          try() {
+            for wait in 10 30 0; do
+              "$@" && return 0
+              sleep "$wait"
+            done
+            return 1
+          }
+          # A list that failed is not "no issue open": the step stops rather than open a second one.
+          open=$(try gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
           if [ "$TOTAL" -gt 0 ]; then
             if [ -n "$open" ]; then
-              gh issue edit "$open" --title "$TITLE" --body-file report.md
+              try gh issue edit "$open" --title "$TITLE" --body-file report.md
               gh issue comment "$open" --body "$COMMENT"
             else
+              # The label is made when the first issue needs it. One that is already there is left alone (that is the error
+              # swallowed here); without the label the next line fails, and says so.
+              gh label create "$LABEL" --color D93F0B --description "Kept by the monthly dependency check" || true
               gh issue create --title "$TITLE" --body-file report.md --label "$LABEL"
             fi
           elif [ -n "$open" ]; then
-            gh issue close "$open" --comment "$COMMENT"
+            gh issue comment "$open" --body "$COMMENT"
+            try gh issue close "$open"
           else
             echo "Nothing found and no issue open."
           fi

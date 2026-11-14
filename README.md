@@ -322,6 +322,22 @@ The bot also listens on `127.0.0.1:3000` on the host itself, for health checks a
 server. Watchtower needs the Docker socket, which gives root-level access to the host. Remove the service if
 you'd rather update with `docker compose pull && docker compose up -d`.
 
+### Watching it from outside
+
+The bot's own status reports (`/setup status`) cannot say that the bot is down, because they come from the bot. `GET /health` needs
+no login and answers `{"status":"ok","discord":true}` with HTTP 200 while the bot is connected to Discord, and
+`{"status":"starting","discord":false}` with HTTP 503 while it is not, so anything that can fetch an address can watch it. The live
+deployment is watched by a Home Assistant in the same house, set up without a line of YAML:
+
+- a **Scrape** sensor on `https://<your address>/health`, selector `body`, value template
+  `{{ 'up' if value_json is defined and value_json.status == 'ok' else 'down' }}`;
+- an automation that refreshes that sensor once a minute (`homeassistant.update_entity`; Scrape on its own asks every 10 minutes);
+- a **Template** binary sensor on top (`{{ is_state('sensor.<that sensor>', 'up') }}`, device class *connectivity*, *delay off* 5
+  minutes), so a restart during an update says nothing;
+- an automation that sends a phone notification when the binary sensor turns off and another one when it turns on again.
+
+Asking the public address also tests the tunnel or proxy in front of the bot, not only the container.
+
 ### Locally
 
 Requires Node.js 24+.
