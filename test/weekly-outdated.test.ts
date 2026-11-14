@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { MessageFlags, type SendableChannels } from 'discord.js';
-import { markOutdatedWeeklies, outdatedCard } from '../src/discord/weekly.js';
+import { markOutdatedWeeklies, outdatedCard, outdatedEmbeds } from '../src/discord/weekly.js';
 import { COLORS } from '../src/discord/style.js';
 
 const BOT = 'bot';
@@ -15,6 +15,13 @@ const weeklyRaw = (accent: number = COLORS.brand) => ({
   ],
 });
 
+/** A post from before the cards: three embeds and a button row. */
+function embedPost(id: string, title = "Weekly reset · week of 2026-11-02") {
+  const edits: unknown[] = [];
+  const embed = (t: string, color: number) => ({ toJSON: () => ({ title: t, description: "text", color }) });
+  return { id, author: { id: BOT }, flags: { has: () => false }, components: [], embeds: [embed(title, 0x3b9ac7), embed("Archon Hunt", 0xef4444)], edit: async (p: unknown) => edits.push(p), edits };
+}
+
 /** A message as the channel hands it over: a V2 container that knows its own JSON. */
 function message(id: string, raw: unknown, author = BOT, v2 = true) {
   const edits: unknown[] = [];
@@ -23,12 +30,13 @@ function message(id: string, raw: unknown, author = BOT, v2 = true) {
     author: { id: author },
     flags: { has: (f: number) => v2 && f === MessageFlags.IsComponentsV2 },
     components: [{ toJSON: () => raw }],
+    embeds: [],
     edit: async (p: unknown) => edits.push(p),
     edits,
   };
 }
 
-const channelOf = (messages: ReturnType<typeof message>[], fail = false) =>
+const channelOf = (messages: (ReturnType<typeof message> | ReturnType<typeof embedPost>)[], fail = false) =>
   ({ messages: { fetch: async () => (fail ? Promise.reject(new Error('no access')) : new Map(messages.map((m) => [m.id, m]))) } }) as unknown as SendableChannels;
 
 describe('older weekly posts', () => {
@@ -60,5 +68,23 @@ describe('older weekly posts', () => {
 
   it('a channel it cannot read is no failure', async () => {
     assert.equal(await markOutdatedWeeklies(channelOf([], true), BOT, 'fresh'), 0);
+  });
+  it("greys out the older embed posts too: grey colour, a note on the title, no buttons", async () => {
+    const old = embedPost("old");
+    const board = embedPost("board", "Fissures");
+    assert.equal(await markOutdatedWeeklies(channelOf([old, board]), BOT, "fresh"), 1);
+    const edit = old.edits[0] as { embeds: { title: string; color: number; description: string }[]; components: unknown[] };
+    assert.ok(edit.embeds.every((e) => e.color === COLORS.muted));
+    assert.match(edit.embeds[0]!.title, /^⚠️ Outdated · Weekly reset/);
+    assert.match(edit.embeds[0]!.description, /old weekly post/);
+    assert.deepEqual(edit.components, []);
+    assert.equal(board.edits.length, 0);
+    assert.equal(outdatedEmbeds([{ title: "Weekly reset", color: COLORS.muted }]).length, 1);
+  });
+  it("without a post to keep, the newest weekly post stays and the older ones turn grey", async () => {
+    const [a, b, c] = [message("100", weeklyRaw()), message("300", weeklyRaw()), message("200", weeklyRaw())];
+    assert.equal(await markOutdatedWeeklies(channelOf([a, b, c]), BOT), 2);
+    assert.equal(b.edits.length, 0, "the newest stays");
+    assert.equal(a.edits.length + c.edits.length, 2);
   });
 });

@@ -72,26 +72,61 @@ export function outdatedCard(raw: Raw): Raw {
   return { ...raw, accent_color: COLORS.muted, components: [{ type: 10, content: OUTDATED_NOTE }, { type: 14, divider: true, spacing: 1 } as Raw, ...rest] };
 }
 
+type RawEmbed = { title?: string; description?: string; color?: number };
+
+/** The posts from before the cards were Components V2 were embeds: the first one is titled "Weekly reset · week of …". */
+const isWeeklyEmbeds = (embeds: RawEmbed[]): boolean => !!embeds[0]?.title?.includes('Weekly reset') && embeds[0].color !== COLORS.muted;
+
+/** The same embeds, greyed out, with the note under the first title. Pure. */
+export function outdatedEmbeds(embeds: RawEmbed[]): RawEmbed[] {
+  return embeds.map((e, i) => ({ ...e, color: COLORS.muted, ...(i === 0 ? { title: `⚠️ Outdated · ${e.title ?? ''}`, description: `**This is an old weekly post. The latest one is further down.**\n${e.description ?? ''}`.trim() } : {}) }));
+}
+
 /**
- * Greys out the weekly posts the bot left in the channel before `keepId`, so nobody takes last week's Circuit for this week's. It reads the
- * channel's last 50 messages, which also takes in the posts from before this existed. A failure is logged and stops nothing: the new post
- * is already out.
+ * Greys out the weekly posts the bot left in the channel, all but `keepId` (the one just posted) or, without one, all but the newest. It
+ * reads the channel's last 50 messages, which takes in the Components V2 cards and the older embed posts. A failure is logged per message
+ * and stops nothing. Returns how many it greyed out.
  */
-export async function markOutdatedWeeklies(channel: SendableChannels, botId: string, keepId: string): Promise<number> {
-  let done = 0;
+export async function markOutdatedWeeklies(channel: SendableChannels, botId: string, keepId?: string): Promise<number> {
+  let batch;
   try {
-    const batch = await channel.messages.fetch({ limit: 50 });
-    for (const message of batch.values()) {
-      if (message.id === keepId || message.author.id !== botId || !message.flags.has(MessageFlags.IsComponentsV2)) continue;
-      const raw = message.components.map((c) => (c as { toJSON(): Raw }).toJSON());
-      if (!raw.some(isWeeklyCard)) continue;
-      await message.edit({ components: raw.map((r) => (isWeeklyCard(r) ? outdatedCard(r) : r)) as never, flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
-      done++;
-    }
+    batch = await channel.messages.fetch({ limit: 50 });
   } catch (err) {
-    console.warn('[weekly] could not grey out the older posts:', err instanceof Error ? err.message : err);
+    console.warn('[weekly] could not read the channel to grey out the older posts:', err instanceof Error ? err.message : err);
+    return 0;
+  }
+  // [message, its edit] for every live (not yet grey) weekly post of the bot's.
+  const posts: { id: string; edit: () => Promise<unknown> }[] = [];
+  for (const message of batch.values()) {
+    if (message.author.id !== botId) continue;
+    if (message.flags.has(MessageFlags.IsComponentsV2)) {
+      const raw = message.components.map((c) => (c as { toJSON(): Raw }).toJSON());
+      if (raw.some(isWeeklyCard)) posts.push({ id: message.id, edit: () => message.edit({ components: raw.map((r) => (isWeeklyCard(r) ? outdatedCard(r) : r)) as never, flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }) });
+    } else {
+      const embeds = message.embeds.map((e) => e.toJSON() as RawEmbed);
+      if (isWeeklyEmbeds(embeds)) posts.push({ id: message.id, edit: () => message.edit({ embeds: outdatedEmbeds(embeds), components: [], allowedMentions: { parse: [] } }) });
+    }
+  }
+  const keep = keepId ?? posts.reduce<string | null>((best, p) => (best === null || BigInt(p.id) > BigInt(best) ? p.id : best), null);
+  let done = 0;
+  for (const post of posts) {
+    if (post.id === keep) continue;
+    try {
+      await post.edit();
+      done++;
+    } catch (err) {
+      console.warn('[weekly] could not grey out a post:', err instanceof Error ? err.message : err);
+    }
   }
   return done;
+}
+
+/** Once at every start: the weekly channel's posts that a newer one replaced turn grey. Does nothing without a channel. */
+export async function greyOldWeeklies(ctx: AppContext): Promise<number> {
+  const channelId = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).weeklyChannelId;
+  if (!channelId || !ctx.client.user) return 0;
+  const channel = await getSendableChannel(ctx, channelId);
+  return markOutdatedWeeklies(channel, ctx.client.user.id);
 }
 
 /** Called when the channel is set: the week already under way is not posted halfway through, the first post is the next Monday. */
