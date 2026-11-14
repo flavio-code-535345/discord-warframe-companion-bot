@@ -107,6 +107,13 @@ export function namedIn(question: string, rotation: string[][]): string | null {
     if (n.length < 6 || n.includes(' ')) continue;
     if (words.some((w) => w.length >= 5 && w[0] === n[0] && distance(w, n) <= 1)) return name;
   }
+  // A name of several words ("Dual Ichor", asked as "dual inchor"): the words in a row, each right or one letter off.
+  const close = (w: string, n: string) => w === n || (n.length >= 5 && w.length >= 5 && w[0] === n[0] && distance(w, n) <= 1);
+  for (const name of names) {
+    const parts = norm(name).split(' ');
+    if (parts.length < 2) continue;
+    for (let i = 0; i + parts.length <= words.length; i++) if (parts.every((p, k) => close(words[i + k]!, p))) return name;
+  }
   return null;
 }
 

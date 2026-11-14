@@ -154,6 +154,9 @@ describe('the Circuit rotation', () => {
     assert.equal(namedIn('Ack & Brunt incarnon', incarnon), 'Ack & Brunt');
     assert.equal(namedIn('when is the toird incarnon', incarnon), null, 'five letters: no typo allowed');
     assert.equal(namedIn('when is the ballistca incarnon', incarnon), 'Ballistica');
+    assert.equal(namedIn('when is dual inchor incarnon', incarnon), 'Dual Ichor', 'a name of two words, one letter off');
+    assert.equal(namedIn('when is dual toxocist incarnon genesis', incarnon), 'Dual Toxocyst');
+    assert.equal(namedIn('when is the dual inkor incarnon', incarnon), null, 'two letters off is too far');
   });
 
   it('answers when a weapon is next on offer, exactly', async () => {
@@ -163,6 +166,7 @@ describe('the Circuit rotation', () => {
     assert.match(a, /This week \(until <t:1793577600:f>\): Vectis, Stug, Ballistica, Destreza and Obex\./);
     assert.match(a, /week 9 \(I\)/);
     assert.match((await circuitAnswer('is the obex incarnon available', deps()))!, /\*\*this week\*\*/);
+    assert.match((await circuitAnswer('when is dual inchor incarnon', deps()))!, /\*\*Dual Ichor Incarnon Genesis\*\* is/, 'the typo from a real question');
   });
 
   it('lists this week and next week, and the normal Circuit Warframes', async () => {
