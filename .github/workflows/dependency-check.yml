@@ -1,0 +1,73 @@
+name: Dependency check
+
+# Once a month npm is asked whether any version in package-lock.json has a known vulnerability. What it finds is kept in one issue
+# (label "dependency-check"): opened on the first finding, rewritten and commented on by every later run, closed by the first run
+# that finds nothing. A run that could not ask at all fails, so "could not check" never looks like "nothing found".
+
+on:
+  schedule:
+    # 06:17 UTC on the 1st of every month. Not on the hour, when GitHub's schedule is busiest and runs start late.
+    - cron: '17 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dependency-check
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      LABEL: dependency-check
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Nothing is installed: npm reads package-lock.json and asks its registry about those versions. Once for what ships in the
+      # image and once for everything, so the report can tell the two apart. npm exits with an error both when it finds something
+      # and when it could not ask; the next step tells those apart by what was written.
+      - name: Ask npm about known vulnerabilities
+        run: |
+          npm audit --package-lock-only --omit=dev --json > audit-shipped.json || true
+          npm audit --package-lock-only --json > audit-all.json || true
+
+      - name: Write the report
+        id: report
+        run: |
+          node .github/scripts/dependency-report.ts audit-shipped.json audit-all.json report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open, update or close the issue
+        env:
+          TOTAL: ${{ steps.report.outputs.total }}
+          TITLE: ${{ steps.report.outputs.title }}
+          COMMENT: ${{ steps.report.outputs.comment }}
+        run: |
+          case "$TOTAL" in
+            '' | *[!0-9]*)
+              echo "The report step gave no count: nothing is opened or closed." >&2
+              exit 1
+              ;;
+          esac
+          gh label create "$LABEL" --force --color D93F0B --description "Kept by the monthly dependency check"
+          open=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
+          if [ "$TOTAL" -gt 0 ]; then
+            if [ -n "$open" ]; then
+              gh issue edit "$open" --title "$TITLE" --body-file report.md
+              gh issue comment "$open" --body "$COMMENT"
+            else
+              gh issue create --title "$TITLE" --body-file report.md --label "$LABEL"
+            fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "$COMMENT"
+          else
+            echo "Nothing found and no issue open."
+          fi

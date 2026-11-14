@@ -423,6 +423,15 @@ It uses the repository secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (preferab
 read/write scope rather than the account password). The image name defaults to `<DOCKER_USERNAME>/rats-den-warframe-bot`; set a repository
 **variable** `DOCKERHUB_IMAGE` to override it.
 
+`.github/workflows/dependency-check.yml` asks npm on the 1st of every month whether a package in `package-lock.json` has a known
+vulnerability (`npm audit`; nothing is installed for it). What it finds is kept in one issue with the label `dependency-check`: each
+package with its severity, the advisories, the dependency that brings it in, how to fix it, and whether it is in the bot's image or
+only among the build and test tools. A later run rewrites the issue and adds a comment, and the first run that finds nothing closes
+it, so an open issue always means there is something to update. A run that could not ask npm fails instead of reporting nothing. Run
+it by hand under **Actions → Dependency check → Run workflow**. Usually the fix is `npm audit fix`, then `npm run typecheck`,
+`npm test`, commit `package-lock.json` and push. GitHub switches a schedule off after 60 days without a commit in a public
+repository (it sends a mail first); the workflow's page has a button to switch it on again.
+
 ## Data sources
 
 - World state: the community [warframestat.us](https://docs.warframestat.us) API (`api.warframestat.us/<platform>`). The bot does not
