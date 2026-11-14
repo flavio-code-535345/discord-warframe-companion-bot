@@ -17,6 +17,7 @@ import type { Command } from '../command.js';
 import { crackLinkProblem, crackTrackerOf } from '../crack.js';
 import { COLORS } from '../embeds.js';
 import { sameSpec } from '../feeds/controls.js';
+import { PICKERS, PICKER_LABELS, isPicker, pickMessage } from '../track-pick.js';
 import { ACTIVITIES } from './lfg.js';
 
 export const track: Command = {
@@ -55,7 +56,19 @@ export const track: Command = {
       s
         .setName('incarnon')
         .setDescription('A DM when an Incarnon weapon is up in the Steel Path Circuit this week')
-        .addStringOption((o) => o.setName('weapon').setDescription('Incarnon weapon, e.g. Soma').setRequired(true).setMinLength(2).setMaxLength(60).setAutocomplete(true)),
+        .addStringOption((o) => o.setName('weapon').setDescription('Incarnon weapon, e.g. Soma (leave empty to pick from a dropdown)').setMinLength(2).setMaxLength(60).setAutocomplete(true)),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('pick')
+        .setDescription('Choose what to track from a dropdown menu')
+        .addStringOption((o) =>
+          o
+            .setName('what')
+            .setDescription('The tracker to choose from a list')
+            .setRequired(true)
+            .addChoices(...PICKERS.map((p) => ({ name: PICKER_LABELS[p], value: p }))),
+        ),
     )
     .addSubcommand((s) =>
       s
@@ -146,11 +159,18 @@ export const track: Command = {
       return;
     }
 
+    if (sub === 'pick' || (sub === 'incarnon' && !interaction.options.getString('weapon'))) {
+      const what = sub === 'pick' ? interaction.options.getString('what', true) : 'incarnon';
+      if (!isPicker(what)) throw new UserError('Unknown tracker list.');
+      await interaction.reply(await pickMessage(ctx, what));
+      return;
+    }
+
     let spec: TrackerSpec;
     if (sub === 'reward') {
       spec = { kind: 'reward', keyword: interaction.options.getString('keyword', true).trim() };
     } else if (sub === 'incarnon') {
-      spec = { kind: 'incarnon', weapon: interaction.options.getString('weapon', true).trim() };
+      spec = { kind: 'incarnon', weapon: (interaction.options.getString('weapon') ?? '').trim() };
     } else if (sub === 'fissure') {
       const tier = interaction.options.getString('tier') ?? undefined;
       const mission = interaction.options.getString('mission') ?? undefined;

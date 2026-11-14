@@ -15,6 +15,7 @@ import type { AppContext } from '../context.js';
 import { UserError } from '../errors.js';
 import { handleButton } from './buttons.js';
 import { handleFeedSelect } from './feeds/handlers.js';
+import { handlePickSelect } from './track-pick.js';
 import { trackMessageActivity, trackVoiceActivity } from '../activity/service.js';
 import { handleVoiceStateUpdate } from '../lfg/autovc.js';
 import { handleHoneypotMessage } from '../moderation/honeypot.js';
@@ -172,6 +173,15 @@ export function attachHandlers(ctx: AppContext): void {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('feeds:')) {
       try {
         await handleFeedSelect(interaction, ctx);
+      } catch (err) {
+        await replyError(interaction, err);
+      }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('trackpick:')) {
+      try {
+        await handlePickSelect(interaction, ctx);
       } catch (err) {
         await replyError(interaction, err);
       }

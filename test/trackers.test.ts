@@ -99,3 +99,16 @@ test('rankItems prefers exact names and gameplay items over cosmetics', () => {
   ];
   assert.deepEqual(rankItems(items, 'bramma').map((i) => i.name), ['Bramma', 'Kuva Bramma', 'Bramma Skin']);
 });
+
+test('tracker dropdowns: menus of at most 25 options carry what the handler needs, and a pick builds the tracker', async () => {
+  const { ANY, pickRows, pickerSpec, isPicker } = await import('../src/discord/track-pick.js');
+  const choices = Array.from({ length: 60 }, (_, i) => ({ label: `Weapon ${i}`, value: `Weapon ${i}` }));
+  const rows = pickRows('incarnon', choices).map((r) => r.toJSON().components[0] as { custom_id: string; options: unknown[] });
+  assert.deepEqual(rows.map((r) => r.options.length), [25, 25, 10]);
+  assert.deepEqual(rows.map((r) => r.custom_id), ['trackpick:incarnon:0', 'trackpick:incarnon:1', 'trackpick:incarnon:2']);
+  assert.deepEqual(pickerSpec('incarnon', 'Soma'), { kind: 'incarnon', weapon: 'Soma' });
+  assert.deepEqual(pickerSpec('squads', ANY), { kind: 'squad' });
+  assert.deepEqual(pickerSpec('sortie', 'Spy'), { kind: 'sortie', mission: 'Spy' });
+  assert.deepEqual(pickerSpec('arbitration', 'Defense'), { kind: 'arbitration', type: 'Defense' });
+  assert.equal(isPicker('price'), false);
+});
