@@ -836,6 +836,14 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_reminders_due ON reminders (due_at);
   CREATE INDEX idx_reminders_user ON reminders (guild_id, user_id);
   `,
+  // Promo codes: when Ordis first read each code on the wiki (the added date of a code whose row gives no start date). NULL = it was
+  // already there on the first read, so the date is unknown. No earlier table held the codes, so there is nothing to fill in from.
+  `
+  CREATE TABLE promo_codes_seen (
+    code TEXT PRIMARY KEY COLLATE NOCASE,
+    first_seen INTEGER
+  );
+  `,
 ];
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -1956,6 +1964,24 @@ export class Store {
     this.db
       .prepare('INSERT INTO bot_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value')
       .run(key, value);
+  }
+
+  // --- promo codes (see discord/promo-codes.ts) ---
+
+  /**
+   * When each of `codes` was first read. A code not seen before is recorded with `now`, except on the very first read (the table is
+   * empty), when every code was already there and its date is unknown (null).
+   */
+  promoFirstSeen(codes: string[], now = Date.now()): Map<string, number | null> {
+    const first = Number((this.db.prepare('SELECT count(*) AS n FROM promo_codes_seen').get() as Row).n) === 0;
+    const insert = this.db.prepare('INSERT OR IGNORE INTO promo_codes_seen (code, first_seen) VALUES (?, ?)');
+    const read = this.db.prepare('SELECT first_seen FROM promo_codes_seen WHERE code = ?');
+    const out = new Map<string, number | null>();
+    for (const code of codes) {
+      insert.run(code, first ? null : now);
+      out.set(code, num((read.get(code) as Row | undefined)?.first_seen));
+    }
+    return out;
   }
 
   // --- worldstate notification de-duplication ---

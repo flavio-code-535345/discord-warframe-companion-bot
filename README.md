@@ -247,7 +247,7 @@ warframestat.us); Digital Extremes' servers are never called.
 A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it; the older posts turn grey with an "Outdated" note when a new one comes),
 game news from the in-game news panel and Warframe's Steam announcements, plus a post whenever prime sets and their relics
 are vaulted, come back or are new (`/setup news`), the active promo codes from the
-wiki (`/setup promos`) and birthday wishes (`/setup birthdays`).
+wiki, newest first with the date each was added and when it expires (`/setup promos`) and birthday wishes (`/setup birthdays`).
 
 **When a channel Ordis uses is deleted**, he says so in the staff channel (`/setup status`, else the mod log): which
 channel or category went, which features are off because of it and the `/setup` command that gives each a new home. The
