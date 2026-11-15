@@ -6,7 +6,7 @@ import { PNG } from 'pngjs';
 import { woffToSfnt } from '../src/imaging/font.js';
 import { cardCrop, rivenPicture, warningLines, wrapText } from '../src/rivens/picture.js';
 import { categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
-import { MIN_SAMPLES, OUT_OF_RANGE_TEXT, fitsTable, outOfRange, gradeRolls, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
+import { MIN_SAMPLES, OUT_OF_RANGE_TEXT, fitsTable, outOfRange, gradeRolls, gradeRollsWithBasis, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
 import type { RivenListing } from '../src/rivens/types.js';
 
 const listing = (id: string, stats: [string, number, boolean][]): RivenListing => ({ id, weapon: 'arca_scisco', price: 500, polarity: 'madurai', rerolls: 3, stats: stats.map(([slug, value, positive]) => ({ slug, value, positive })) });
@@ -68,6 +68,13 @@ describe('grading every stat of a riven', () => {
 
   it('turns a deviation into a letter', () => {
     assert.deepEqual([10, 9.159, 7.395, 4.042, 2, 0, -1, -3, -5, -7, -9.109, -9.9].map(letterFor), ['A+', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'C-', 'D']);
+    assert.equal(letterFor(7.63), 'A+', 'a third-party overlay gave +7.630% (Tenet Diplos) an A+');
+  });
+
+  it('grades a card that fits both ranges with today\'s range, not the weapon\'s old disposition (Croni-ignidex)', () => {
+    const r = gradeRollsWithBasis([], [{ slug: 'heat', value: 79.4 }, { slug: 'attack_speed', value: 49.2 }, { slug: 'status_chance', value: 75 }], null, { type: 'melee', disposition: 1.1 });
+    assert.deepEqual(r.basis, { source: 'table', kind: 'melee', multiplier: 1.2, disposition: false });
+    assert.deepEqual(r.rolls.map((x) => x.letter), ['B-', 'B', 'C-']);
   });
 });
 

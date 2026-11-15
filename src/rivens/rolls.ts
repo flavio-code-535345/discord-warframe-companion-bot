@@ -55,7 +55,7 @@ export type RollBasis =
 
 /** The letter for a deviation (percent, + is better). */
 export function letterFor(deviation: number): string {
-  const bands: [number, string][] = [[8, 'A+'], [6, 'A'], [3.5, 'A-'], [1.5, 'B+'], [-0.5, 'B'], [-2.5, 'B-'], [-4.5, 'C+'], [-6.5, 'C'], [-9.5, 'C-']];
+  const bands: [number, string][] = [[7.5, 'A+'], [6, 'A'], [3.5, 'A-'], [1.5, 'B+'], [-0.5, 'B'], [-2.5, 'B-'], [-4.5, 'C+'], [-6.5, 'C'], [-9.5, 'C-']];
   return bands.find(([min]) => deviation >= min)?.[1] ?? 'D';
 }
 
@@ -97,7 +97,9 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
   if (!stats.some(({ s }) => s.value !== null && s.value !== undefined)) return null;
   const hinted = categoryOf(weapon?.type);
   const kinds = [...(hinted ? [hinted] : []), ...CATEGORIES.filter((c) => c !== hinted)];
-  const multipliers = [...new Set([...(weapon?.disposition ? [weapon.disposition] : []), DEFAULT_MULTIPLIER])];
+  // Today's range first: every riven rolled since hotfix 44.1.3 has it, and a card that fits both is far more likely to be new (the
+  // disposition only explains an old riven never re-rolled since, whose values fit no 1.2 window).
+  const multipliers = [...new Set([DEFAULT_MULTIPLIER, ...(weapon?.disposition ? [weapon.disposition] : [])])];
   for (const kind of kinds) {
     for (const k of multipliers) {
       const out: RollGrade[] = [];
