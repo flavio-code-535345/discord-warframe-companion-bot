@@ -100,14 +100,10 @@ describe('grading from the game ranges', () => {
     assert.deepEqual(r.map((x) => x.letter), ['C-', 'B+', 'C', 'B']);
   });
 
-  it('reproduces the reference card with the weapon\'s disposition (1.1) and the kind the market names', () => {
-    const r = gradeRolls([], [{ slug: 'reload_speed', value: 46.9 }, { slug: 'heat', value: 101.3 }, { slug: 'puncture', value: 128.7 }], { slug: 'damage', value: 167.8 }, { type: 'pistol', disposition: 1.1 });
-    const d = devs(r);
-    near(d.heat, 9.159, 'heat');
-    near(d.puncture, 4.042, 'puncture');
-    assert.ok(Math.abs(d.reload_speed! - -9.109) < 0.1, 'reload ' + d.reload_speed);
-    near(d.damage, 7.395, 'damage curse');
-    assert.deepEqual(r.map((x) => x.letter), ['C-', 'A+', 'A-', 'A']);
+  it("does not grade a card from an old disposition: only today's range counts (the old Arca Scisco reference card)", () => {
+    const r = gradeRollsWithBasis([], [{ slug: 'reload_speed', value: 46.9 }, { slug: 'heat', value: 101.3 }, { slug: 'puncture', value: 128.7 }], { slug: 'damage', value: 167.8 }, { type: 'pistol', disposition: 1.1 });
+    assert.equal(r.basis.source, 'listings');
+    assert.ok(r.rolls.every((x) => x.letter === null));
   });
 
   it('grades a melee card with a faction multiplier as the curse (Ripkas)', () => {

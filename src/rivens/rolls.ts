@@ -97,9 +97,8 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
   if (!stats.some(({ s }) => s.value !== null && s.value !== undefined)) return null;
   const hinted = categoryOf(weapon?.type);
   const kinds = [...(hinted ? [hinted] : []), ...CATEGORIES.filter((c) => c !== hinted)];
-  // Today's range first: every riven rolled since hotfix 44.1.3 has it, and a card that fits both is far more likely to be new (the
-  // disposition only explains an old riven never re-rolled since, whose values fit no 1.2 window).
-  const multipliers = [...new Set([DEFAULT_MULTIPLIER, ...(weapon?.disposition ? [weapon.disposition] : [])])];
+  // Dispositions are gone: since hotfix 44.1.3 every riven has the same range, so the weapon's old disposition is never tried.
+  const multipliers = [DEFAULT_MULTIPLIER];
   for (const kind of kinds) {
     for (const k of multipliers) {
       const out: RollGrade[] = [];
