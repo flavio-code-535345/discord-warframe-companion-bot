@@ -77,6 +77,12 @@ describe('grading every stat of a riven', () => {
     assert.deepEqual(r.basis, { source: 'table', kind: 'melee', multiplier: 1.2, disposition: false });
     assert.deepEqual(r.rolls.map((x) => x.letter), ['B-', 'B', 'C-']);
   });
+
+  it("grades a card whose curse is the market's channeling_efficiency (Sepfahn Argides)", () => {
+    const r = gradeRollsWithBasis([], [{ slug: 'status_duration', value: 137.6 }, { slug: 'damage_vs_grineer', value: 1.73 }], { slug: 'channeling_efficiency', value: -43.1 }, { type: 'melee', disposition: 1 });
+    assert.equal(r.basis.source, 'table');
+    assert.deepEqual(r.rolls.map((x) => x.letter), ['C-', 'A+', 'B']);
+  });
 });
 
 describe('grading from the game ranges', () => {
