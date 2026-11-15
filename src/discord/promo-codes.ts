@@ -22,12 +22,17 @@ const TRY_META = 'promo_try';
 const RETRY_MS = 3_600_000;
 const REDEEM_URL = 'https://warframe.com/promocode';
 /** Part of the daily stamp: bump it when the message's wording or layout changes, so the live message is updated at once. */
-const PANEL_VERSION = 4;
+const PANEL_VERSION = 5;
 const DESCRIPTION_MAX = 4000;
+/** The longest reward text or summary shown for one code. */
+const REWARD_MAX = 200;
 
 export interface PromoCode {
   code: string;
+  /** The rewards joined with ", " (cut to REWARD_MAX). */
   reward: string;
+  /** The rewards one by one, as the wiki lists them in the cell (for summarizeRewards). */
+  items: string[];
   /** The first day of the row's "Dates Active" (YYYY-MM-DD), when the wiki gives one. */
   start?: string;
   /** The last day (YYYY-MM-DD), 'none' for an open end ("Indefinite"), absent when unknown ("?" or no date at all). */
@@ -104,8 +109,12 @@ export function parseActiveCodes(text: string, now = Date.now()): PromoCode[] {
     // The wiki can lag behind: a code past its own end date is left out even while it still stands under Active Codes.
     if (dates.end && dates.end !== 'none' && dates.end < today) continue;
     const rewards = dated >= 0 ? cells.slice(dated + 1) : cells.slice(-1);
-    const reward = (rewards.join(', ') || cells[1]!).replace(/^Adds\s+/i, '').slice(0, 200);
-    for (const code of codes) out.push({ code, reward, ...dates });
+    const items = (rewards.length ? rewards : [cells[1]!])
+      .flatMap((c) => c.split(/,\s+/))
+      .map((i) => i.replace(/^Adds\s+/i, '').trim())
+      .filter(Boolean);
+    const reward = items.join(', ').slice(0, REWARD_MAX);
+    for (const code of codes) out.push({ code, reward, items, ...dates });
   }
   return out;
 }
@@ -120,23 +129,83 @@ export function promoTextFromSource(source: string): string {
 
 const stamp = (ms: number, style: 'D' | 'R'): string => `<t:${Math.floor(ms / 1000)}:${style}>`;
 
-/** The dates line of one code. Pure. */
-export function datesLine(c: DatedPromoCode): string {
-  const added = c.added === null ? 'Added: date unknown' : `Added ${stamp(c.added, 'D')}`;
-  const expires =
-    c.expires === 'none' ? 'no end date' : c.expires === null ? 'no known expiry' : `expires ${stamp(c.expires, 'D')} (${stamp(c.expires, 'R')})`;
-  return `${added} · ${expires}`;
+/** The kinds of reward summarizeRewards recognises, each by how an item's name ends. */
+const KINDS: { kind: string; plural: string; re: RegExp }[] = [
+  { kind: 'display', plural: 'displays', re: /\bdisplay(?:\s+frame)?$/i },
+  { kind: 'glyph', plural: 'glyphs', re: /\bglyph$/i },
+  { kind: 'decoration', plural: 'decorations', re: /\bdecoration$/i },
+  { kind: 'sigil', plural: 'sigils', re: /\bsigil$/i },
+  { kind: 'emblem', plural: 'emblems', re: /\bemblem$/i },
+  { kind: 'booster', plural: 'boosters', re: /\bbooster$/i },
+  { kind: 'skin', plural: 'skins', re: /\bskin$/i },
+  { kind: 'syandana', plural: 'syandanas', re: /\bsyandana$/i },
+  { kind: 'ephemera', plural: 'ephemeras', re: /\bephemera$/i },
+  { kind: 'poster', plural: 'posters', re: /\bposter$/i },
+  { kind: 'scene', plural: 'scenes', re: /\bscene$/i },
+];
+/** Words that name a kind (or are part of one, "Fusion Display", "Display Frame"), never part of the theme. */
+const KIND_WORDS = new Set(['frame', 'fusion', ...KINDS.map((k) => k.kind)]);
+
+/**
+ * A short line for a code's rewards, by fixed rules (no model): one item is its name; several are counted by kind in the order the kinds
+ * first appear, with the words every name shares (the theme, kind words left out) before the first kind: "4 Movember displays",
+ * "Pride glyph and 2 displays", "3 Mistletoe Community glyphs". An item of a kind it doesn't know gives all the names joined with ", ".
+ * Cut to REWARD_MAX. Pure.
+ */
+export function summarizeRewards(items: readonly string[]): string {
+  const names = items.map((i) => i.trim()).filter(Boolean);
+  const cut = (s: string) => s.slice(0, REWARD_MAX);
+  if (names.length <= 1) return cut(names[0] ?? '');
+  const kinds = names.map((n) => KINDS.find((k) => k.re.test(n)));
+  if (kinds.some((k) => !k)) return cut(names.join(', '));
+  const counts = new Map<(typeof KINDS)[number], number>();
+  for (const k of kinds) counts.set(k!, (counts.get(k!) ?? 0) + 1);
+  const words = names.map((n) => new Set(n.toLowerCase().split(/\s+/)));
+  const theme = [...new Set(names[0]!.split(/\s+/))]
+    .filter((w) => !KIND_WORDS.has(w.toLowerCase()) && words.every((set) => set.has(w.toLowerCase())))
+    .join(' ');
+  const parts = [...counts].map(([k, n], i) => [n > 1 ? String(n) : '', i === 0 ? theme : '', n > 1 ? k.plural : k.kind].filter(Boolean).join(' '));
+  return cut(parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`);
 }
 
-/** The message: newest code first. Pure apart from the brand icon. */
+/** The expiry part of a code's dates line. Pure. */
+export function expiryText(c: DatedPromoCode): string {
+  return c.expires === 'none' ? 'no end date' : c.expires === null ? 'expiry unknown' : `ends ${stamp(c.expires, 'D')} (${stamp(c.expires, 'R')})`;
+}
+
+/** The dates line under a dated code. Pure. */
+export function datesLine(c: DatedPromoCode): string {
+  return `📅 ${c.added === null ? 'date unknown' : stamp(c.added, 'D')} · ${expiryText(c)}`;
+}
+
+/** A code as a bold link that fills it in on warframe.com, then its rewards. Pure. */
+const codeLine = (c: DatedPromoCode): string =>
+  `**[${c.code}](${REDEEM_URL}?code=${encodeURIComponent(c.code)})** · ${summarizeRewards(c.items)}`;
+
+/**
+ * The message: the dated codes newest first, each with its dates line, then the codes with no known added date under "Older codes",
+ * one line each. Pure apart from the brand icon.
+ */
 export function promoPanel(ctx: AppContext, codes: DatedPromoCode[], now = Date.now()): Pick<MessageCreateOptions, 'embeds' | 'components'> {
-  const intro = 'Free items. In the in-game Market, press **Redeem Code** and type in the code, or use the **Redeem** link here.\n';
-  let description = intro;
-  for (const c of codes) {
-    const entry = `\n**${c.code}** · [Redeem](${REDEEM_URL}?code=${encodeURIComponent(c.code)})\n-# ${c.reward}\n-# ${datesLine(c)}`;
-    // Whole entries only: a cut never leaves half a line or a broken timestamp.
-    if (description.length + entry.length > DESCRIPTION_MAX) break;
-    description += entry;
+  let description = 'Free items: tap a code to redeem it on warframe.com, or enter it in-game under **Market › Redeem Code**.';
+  // Whole entries only: a cut never leaves half a line, a broken timestamp or the heading with nothing under it.
+  const add = (text: string): boolean => {
+    if (description.length + text.length > DESCRIPTION_MAX) return false;
+    description += text;
+    return true;
+  };
+  let full = false;
+  for (const c of codes.filter((c) => c.added !== null)) {
+    if (!add(`\n\n${codeLine(c)}\n-# ${datesLine(c)}`)) {
+      full = true;
+      break;
+    }
+  }
+  let heading = '\n\n**Older codes**';
+  for (const c of full ? [] : codes.filter((c) => c.added === null)) {
+    const ends = typeof c.expires === 'number' ? ` · ends ${stamp(c.expires, 'D')}` : '';
+    if (!add(`${heading}\n${codeLine(c)}${ends}`)) break;
+    heading = '';
   }
   const icon = brandIcon(ctx);
   const embed = new EmbedBuilder()
