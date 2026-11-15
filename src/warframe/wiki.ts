@@ -100,6 +100,18 @@ export async function searchWiki(query: string, limit = 3, opts: { pageChunks?: 
 }
 
 /** One article as plain text, cut to `maxChars` (the wiki's long pages would otherwise flood a model's context). */
+/**
+ * A page's raw wikitext, for a reader that needs what the cleaned text loses (the `<br>` between items of one table cell). One cached
+ * request through the API client; null when the page is missing or the answer has an unexpected shape.
+ */
+export async function readWikiSource(title: string): Promise<string | null> {
+  const data = await api<unknown>({ action: 'query', prop: 'revisions', rvprop: 'content', rvslots: 'main', redirects: '1', titles: title, formatversion: '2' });
+  const pages = (data as { query?: { pages?: unknown } } | null)?.query?.pages;
+  if (!Array.isArray(pages)) return null;
+  const content = (pages[0] as { revisions?: { slots?: { main?: { content?: unknown } } }[] } | undefined)?.revisions?.[0]?.slots?.main?.content;
+  return typeof content === 'string' && content ? content : null;
+}
+
 export async function readWikiPage(title: string, maxChars = 8000): Promise<WikiResult | null> {
   const local = getWikiIndex();
   if (local?.ready()) {

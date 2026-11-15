@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AppContext } from '../src/context.js';
-import { datePromoCodes, datesLine, dayToMs, parseActiveCodes, parseDates, promoPanel } from '../src/discord/promo-codes.js';
+import { datePromoCodes, datesLine, dayToMs, parseActiveCodes, parseDates, promoPanel, promoTextFromSource } from '../src/discord/promo-codes.js';
 import { Store } from '../src/db.js';
 
 const NOW = Date.UTC(2026, 10, 3);
@@ -48,6 +48,73 @@ describe('reading the active promo codes', () => {
       { code: 'OLDPEACE-QQKXJ', reward: 'Nikana', start: '2026-10-07', end: '2027-02-04' },
       { code: 'OLDPEACE-UAH6A', reward: 'Nikana', start: '2026-10-07', end: '2027-02-04' },
     ]);
+  });
+
+  it('keeps the rewards of one cell apart when reading the raw wiki source (real rows)', () => {
+    const source = `==Active Codes==
+List of active global codes.<ref>{{Ref|title=Free Promocodes|url=https://forums.warframe.com/}}</ref>
+
+{| class="wikitable sortable"
+|-
+!style="min-width:15%"|Code!!Type!! Context!! Dates Active!!Reward(s)!!References
+|-
+|[https://warframe.com/promocode?code=MISTLETOE2025 MISTLETOE2025]
+|Glyph
+|
+|2025-12-25
+|
+Marie Leroux Mistletoe Community Glyph<br>Lyon Allard Mistletoe Community Glyph<br>Roathe Mistletoe Community Glyph
+|
+|-
+|[https://warframe.com/promocode?code=Parvos Parvos]
+|Decoration
+|
+|
+|Adds Golden Hand decoration
+|
+|-
+|[https://www.warframe.com/en/promocode?code=MOVEMBER2026 MOVEMBER2026]
+|Displays
+|[[Movember]] 2026
+|2026-11-02 to ?
+|
+[[Moframe#Promo_Code|Movember Sirius And Orion Community Display]]<br>
+[[Moframe#Promo_Code|Movember Shopkeep Moustache Display Frame]]
+|
+|-
+|OLDPEACE-QQKXJ<br>OLDPEACE-UAH6A
+|
+|[[The Old Peace]] promo
+|2026-10-07 to 2027-02-04
+|[[Nikana]], [[Nikana Dax Skin]], Dax Portait
+|
+|-
+|LONGONE
+|Glyph
+|
+|
+|${'Long Glyph<br>'.repeat(30)}End
+|
+|}
+
+== Inactive Codes ==
+|-
+|Conquer||Cosmetics||Quest to Conquer Cancer 2020||2020-11-02 to 2021-01-11||Conquera Glyph and Sigil||`;
+    const codes = parseActiveCodes(promoTextFromSource(source), NOW);
+    assert.deepEqual(codes.slice(0, 5), [
+      {
+        code: 'MISTLETOE2025',
+        reward: 'Marie Leroux Mistletoe Community Glyph, Lyon Allard Mistletoe Community Glyph, Roathe Mistletoe Community Glyph',
+        start: '2025-12-25',
+      },
+      { code: 'Parvos', reward: 'Golden Hand decoration' },
+      { code: 'MOVEMBER2026', reward: 'Movember Sirius And Orion Community Display, Movember Shopkeep Moustache Display Frame', start: '2026-11-02' },
+      { code: 'OLDPEACE-QQKXJ', reward: 'Nikana, Nikana Dax Skin, Dax Portait', start: '2026-10-07', end: '2027-02-04' },
+      { code: 'OLDPEACE-UAH6A', reward: 'Nikana, Nikana Dax Skin, Dax Portait', start: '2026-10-07', end: '2027-02-04' },
+    ]);
+    assert.equal(codes[5]!.code, 'LONGONE');
+    assert.equal(codes[5]!.reward.length, 200, 'the 200-character cut stays');
+    assert.equal(codes.length, 6, 'nothing from Inactive Codes');
   });
 
   it('finds nothing on a page without the section', () => {

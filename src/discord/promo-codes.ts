@@ -1,13 +1,15 @@
 import { EmbedBuilder, type MessageCreateOptions } from 'discord.js';
 import type { AppContext } from '../context.js';
-import { readWikiPage } from '../warframe/wiki.js';
+import { readWikiPage, readWikiSource } from '../warframe/wiki.js';
+import { cleanWikitext } from '../wiki/clean.js';
 import { COLORS } from './embeds.js';
 import { brandIcon } from './identity.js';
 import { editLive, postLive, readLive } from './live-message.js';
 
 /**
  * The promo codes channel (/setup promos): one message listing the codes the wiki's "Promo Codes" page has under Active Codes, refreshed
- * once a day from the local wiki copy (no request of its own). bot_meta: `promo_panel` is the message, `promo_updated` the day and channel
+ * once a day from the page's raw wikitext (one cached wiki request, which keeps the rewards of one cell apart), else from the local wiki
+ * copy. bot_meta: `promo_panel` is the message, `promo_updated` the day and channel
  * of the last update, `promo_try` the last failed try. A page that can't be read or parsed leaves the message as it is, so a changed page
  * layout never blanks the channel. Table `promo_codes_seen`: when Ordis first read each code (the added date of a row with no start date).
  */
@@ -20,7 +22,7 @@ const TRY_META = 'promo_try';
 const RETRY_MS = 3_600_000;
 const REDEEM_URL = 'https://warframe.com/promocode';
 /** Part of the daily stamp: bump it when the message's wording or layout changes, so the live message is updated at once. */
-const PANEL_VERSION = 3;
+const PANEL_VERSION = 4;
 const DESCRIPTION_MAX = 4000;
 
 export interface PromoCode {
@@ -85,15 +87,17 @@ export function datePromoCodes(codes: PromoCode[], firstSeen: ReadonlyMap<string
 
 /** The codes under "Active Codes" in the cleaned page text, whose rows are cells joined with " · " (empty cells are left out). Pure. */
 export function parseActiveCodes(text: string, now = Date.now()): PromoCode[] {
-  const start = text.indexOf('== Active Codes ==');
-  if (start < 0) return [];
-  const end = text.indexOf('\n== ', start + 1);
+  const heading = /^==\s*Active Codes\s*==[ \t]*$/m.exec(text);
+  if (!heading) return [];
+  const body = text.slice(heading.index + heading[0].length);
+  const next = /\n==[^=]/.exec(body);
   const today = new Date(now).toISOString().slice(0, 10);
   const out: PromoCode[] = [];
-  for (const line of text.slice(start, end < 0 ? undefined : end).split('\n').slice(1)) {
-    const cells = line.split(' · ').map((c) => c.trim()).filter(Boolean);
+  for (const line of body.slice(0, next ? next.index : undefined).split('\n')) {
+    // From the raw source a cell's items are joined with ", " (see promoTextFromSource), and one that ended a wiki line keeps its comma.
+    const cells = line.split(' · ').map((c) => c.trim().replace(/^,\s*|\s*,$/g, '').trim()).filter(Boolean);
     if (cells.length < 2 || cells[0] === 'Code') continue;
-    const codes = cells[0]!.split(/\s+/);
+    const codes = cells[0]!.split(/[\s,]+/).filter(Boolean);
     if (!codes.every((c) => CODE.test(c)) || TYPE_WORD.test(cells[0]!)) continue;
     const dated = cells.findIndex((c, i) => i > 0 && DATE.test(c));
     const dates = dated >= 0 ? parseDates(cells[dated]!) : {};
@@ -104,6 +108,14 @@ export function parseActiveCodes(text: string, now = Date.now()): PromoCode[] {
     for (const code of codes) out.push({ code, reward, ...dates });
   }
   return out;
+}
+
+/**
+ * The page's raw wikitext as text for parseActiveCodes. The wiki puts several rewards (and codes) in one table cell with `<br>` between
+ * them, which the wiki index's cleaner turns into a plain space; here each `<br>` becomes ", " first, so the items stay apart. Pure.
+ */
+export function promoTextFromSource(source: string): string {
+  return cleanWikitext(source.replace(/<br\s*\/?>/gi, ', '));
 }
 
 const stamp = (ms: number, style: 'D' | 'R'): string => `<t:${Math.floor(ms / 1000)}:${style}>`;
@@ -143,8 +155,13 @@ export async function updatePromoCodes(ctx: AppContext, now = Date.now()): Promi
   if (!channelId) return;
   const done = `${new Date(now).toISOString().slice(0, 10)}:${channelId}:v${PANEL_VERSION}`;
   if (ctx.store.getMeta(DONE_META) === done || now - (Number(ctx.store.getMeta(TRY_META)) || 0) < RETRY_MS) return;
-  const page = await readWikiPage(PAGE).catch(() => null);
-  const codes = page ? parseActiveCodes(page.extract, now) : [];
+  // The raw source first (it keeps the items of one cell apart), the local wiki copy when that fails.
+  const source = await readWikiSource(PAGE).catch(() => null);
+  let codes = source ? parseActiveCodes(promoTextFromSource(source), now) : [];
+  if (!codes.length) {
+    const page = await readWikiPage(PAGE).catch(() => null);
+    codes = page ? parseActiveCodes(page.extract, now) : [];
+  }
   if (!codes.length) {
     ctx.store.setMeta(TRY_META, String(now));
     console.warn('[promo] no active codes read from the wiki page; the message stays as it is');
