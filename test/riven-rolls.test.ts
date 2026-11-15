@@ -67,7 +67,8 @@ describe('grading every stat of a riven', () => {
   });
 
   it('turns a deviation into a letter', () => {
-    assert.deepEqual([10, 9.159, 7.395, 4.042, 2, 0, -1, -3, -5, -7, -9.109, -9.9].map(letterFor), ['A+', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'C-', 'D']);
+    assert.deepEqual([10, 9.159, 7.395, 4.042, 2, 0, -1, -4, -5, -7, -9.109, -9.9].map(letterFor), ['A+', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'C-', 'D']);
+    assert.equal(letterFor(-3.442), 'B-', 'a Mewan Hexaata curse the overlay graded B-');
     assert.equal(letterFor(7.63), 'A+', 'a third-party overlay gave +7.630% (Tenet Diplos) an A+');
   });
 

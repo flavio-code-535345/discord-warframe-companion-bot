@@ -55,7 +55,7 @@ export type RollBasis =
 
 /** The letter for a deviation (percent, + is better). */
 export function letterFor(deviation: number): string {
-  const bands: [number, string][] = [[7.5, 'A+'], [6, 'A'], [3.5, 'A-'], [1.5, 'B+'], [-0.5, 'B'], [-2.5, 'B-'], [-4.5, 'C+'], [-6.5, 'C'], [-9.5, 'C-']];
+  const bands: [number, string][] = [[7.5, 'A+'], [6, 'A'], [3.5, 'A-'], [1.5, 'B+'], [-0.5, 'B'], [-3.5, 'B-'], [-4.5, 'C+'], [-6.5, 'C'], [-9.5, 'C-']];
   return bands.find(([min]) => deviation >= min)?.[1] ?? 'D';
 }
 
