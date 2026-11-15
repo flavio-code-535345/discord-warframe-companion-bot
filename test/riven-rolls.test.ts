@@ -6,7 +6,7 @@ import { PNG } from 'pngjs';
 import { woffToSfnt } from '../src/imaging/font.js';
 import { cardCrop, rivenPicture } from '../src/rivens/picture.js';
 import { categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
-import { MIN_SAMPLES, fitsTable, gradeRolls, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
+import { MIN_SAMPLES, fitsTable, outOfRange, gradeRolls, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
 import type { RivenListing } from '../src/rivens/types.js';
 
 const listing = (id: string, stats: [string, number, boolean][]): RivenListing => ({ id, weapon: 'arca_scisco', price: 500, polarity: 'madurai', rerolls: 3, stats: stats.map(([slug, value, positive]) => ({ slug, value, positive })) });
@@ -157,6 +157,18 @@ describe('grading from the game ranges', () => {
     assert.equal(categoryOf('zaw'), 'melee');
     assert.equal(categoryOf('archgun'), 'archgun');
     assert.equal(categoryOf(undefined), null);
+  });
+});
+
+describe('values that fit no range', () => {
+  const nukor = { type: 'pistol', disposition: 1.45 };
+  const bonuses = (status: number) => [{ slug: 'damage', value: 228.3 }, { slug: 'multishot', value: 138.6 }, { slug: 'status_damage', value: status }];
+  const curse = { slug: 'zoom', value: 71.6 };
+  it('flags a roll outside every range, and nothing that fits or cannot be checked', () => {
+    assert.equal(outOfRange(bonuses(95.2), curse, nukor), false);
+    assert.equal(outOfRange(bonuses(150), curse, nukor), true);
+    assert.equal(outOfRange([{ slug: 'no_such_stat', value: 999 }, { slug: 'multishot', value: 138.6 }], null, nukor), false, 'a stat with no range is not flagged');
+    assert.equal(outOfRange([{ slug: 'damage', value: null }, { slug: 'multishot', value: null }], null, nukor), false, 'no values, nothing to check');
   });
 });
 

@@ -54,6 +54,40 @@ export function decodeImage(bytes: Uint8Array, mime: string): Pixels | null {
   return null;
 }
 
+/** Longest side a small card is enlarged to for the second OCR look (tesseract misses the small text of a tiny card). */
+export const SECOND_LOOK_SIDE = 1200;
+
+/** The picture enlarged (bilinear) so its longest side is `side`, as a PNG; null when it is already that big. */
+export function enlargeTo(img: Pixels, side: number = SECOND_LOOK_SIDE): { png: Uint8Array; scale: number } | null {
+  const longest = Math.max(img.width, img.height);
+  if (!longest || longest >= side * 0.9) return null;
+  const scale = side / longest;
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const out = new PNG({ width: w, height: h });
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(img.height - 1, Math.max(0, (y + 0.5) / scale - 0.5));
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(img.height - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(img.width - 1, Math.max(0, (x + 0.5) / scale - 0.5));
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(img.width - 1, x0 + 1);
+      const fx = sx - x0;
+      const o = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const at = (xx: number, yy: number) => img.data[(yy * img.width + xx) * 4 + c]!;
+        const top = at(x0, y0) * (1 - fx) + at(x1, y0) * fx;
+        const bottom = at(x0, y1) * (1 - fx) + at(x1, y1) * fx;
+        out.data[o + c] = Math.round(top * (1 - fy) + bottom * fy);
+      }
+      out.data[o + 3] = 255;
+    }
+  }
+  return { png: PNG.sync.write(out), scale };
+}
+
 const px = (img: Pixels, x: number, y: number) => {
   const i = (y * img.width + x) * 4;
   return [img.data[i]!, img.data[i + 1]!, img.data[i + 2]!] as const;

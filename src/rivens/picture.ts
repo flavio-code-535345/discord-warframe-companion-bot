@@ -4,7 +4,7 @@ import { encodePng } from '../imaging/png.js';
 import { decodeImage } from '../ssroles/emblem.js';
 import type { Box } from './pointer.js';
 import { statKey } from './ranges.js';
-import type { RollBasis, RollGrade } from './rolls.js';
+import { type RollBasis, type RollGrade, OUT_OF_RANGE_TEXT } from './rolls.js';
 import type { ScanResult } from './scan.js';
 import { formatStatValue } from './stats.js';
 
@@ -176,8 +176,9 @@ export async function rivenPicture(r: ScanResult, opts: { label?: string } = {})
   const wanted = wantedLines(probe, r);
   const sale = saleText(r);
   const basis = basisText(r.report.basis);
-  const footerH = wanted.length || sale || basis
-    ? 14 + (wanted.length ? LABEL_H + wanted.length * LINE_H + 8 : 0) + (sale ? LABEL_H + LINE_H + 8 : 0) + (basis ? 24 : 0)
+  const warn = r.report.outOfRange ? OUT_OF_RANGE_TEXT : null;
+  const footerH = wanted.length || sale || basis || warn
+    ? 14 + (wanted.length ? LABEL_H + wanted.length * LINE_H + 8 : 0) + (sale ? LABEL_H + LINE_H + 8 : 0) + (basis ? 24 : 0) + (warn ? 26 : 0)
     : 0;
   const panelH = PAD + HEAD_H + lines.length * ROW_H + footerH + PAD / 2;
   const crop = cardCrop(decoded.width, decoded.height, r.box);
@@ -269,6 +270,12 @@ export async function rivenPicture(r: ScanResult, opts: { label?: string } = {})
       ctx.fillStyle = MUTED;
       fit(ctx, basis, FONT, 16, 12, TEXT_W);
       ctx.fillText(basis, x, y + 16);
+      y += 24;
+    }
+    if (warn) {
+      ctx.fillStyle = '#e8993a';
+      fit(ctx, warn, FONT, 16, 11, TEXT_W);
+      ctx.fillText(warn, x, y + 16);
     }
   }
 

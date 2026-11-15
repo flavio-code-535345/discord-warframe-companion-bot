@@ -4,11 +4,12 @@ import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { Store } from '../src/db.js';
-import { findWeapon, interpretUnknown, parseRivenCard } from '../src/rivens/card.js';
+import { findWeapon, interpretUnknown, parseRivenCard, splitStats } from '../src/rivens/card.js';
 import { erasePointer } from '../src/rivens/pointer.js';
 import { resetRivenFilter, resetRivenLists } from '../src/rivens/market.js';
-import { prepareForOcr, scaleFor } from '../src/rivens/prepare.js';
+import { prepareForOcr, prepareMask, scaleFor } from '../src/rivens/prepare.js';
 import { scanCard } from '../src/rivens/scan.js';
+import { rivenCompactEmbed, scanSummary } from '../src/discord/riven-embeds.js';
 import type { RivenAttribute, RivenWeapon } from '../src/rivens/types.js';
 import type { OcrLine } from '../src/ssroles/parse.js';
 import { api } from '../src/warframe/fetch.js';
@@ -434,6 +435,59 @@ describe('scanning a riven', () => {
       }),
       /could not read that picture/,
     );
+  });
+
+  it('a second look whose values fit wins over a first one that fits no range', async () => {
+    let n = 0;
+    const r = await scanCard(ctx(), picture, 'image/png', async () => {
+      n++;
+      return n === 1
+        ? card('Kuva Bramma Crita-lexitis', '+368.7% Critical Chance', '+135% Critical Damage', '+101.3% Multishot', '-54% Zoom')
+        : card('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance', '+135% Critical Damage', '+101.3% Multishot', '-54% Zoom');
+    });
+    assert.equal(n, 2);
+    assert.equal(r.reading.positives.find((p) => p.slug === 'critical_chance')!.value, 168.7);
+    assert.equal(r.report!.outOfRange, false);
+  });
+
+  it('a reading with no weapon name borrows it from the other look', async () => {
+    let n = 0;
+    const r = await scanCard(ctx(), picture, 'image/png', async () => {
+      n++;
+      return n === 1 ? card('Kuva Bramma Crita-lexitis', '+168.7% Critical Chance') : card('+168.7% Critical Chance', '+135% Critical Damage', '+101.3% Multishot', '-54% Zoom');
+    });
+    assert.equal(r.reading.weapon!.slug, 'kuva_bramma');
+    assert.equal(r.reading.positives.length, 3);
+    assert.ok(r.report);
+  });
+
+  it('flags values that fit no range on the card instead of grading them silently', async () => {
+    const r = await scanCard(ctx(), picture, 'image/png', async () => card('Kuva Bramma Crita-lexitis', '+900% Critical Chance', '+135% Critical Damage', '+101.3% Multishot', '-54% Zoom'));
+    assert.ok(r.report);
+    assert.equal(r.report.outOfRange, true);
+    const s = scanSummary(r);
+    assert.ok(s.warning);
+    assert.match(rivenCompactEmbed(r).data.description!, /⚠️/);
+  });
+});
+
+describe('two stats on one line', () => {
+  it('splits a line holding two signed values and leaves a single stat alone', () => {
+    const [joined] = card('+90.2% Heat -40% Zoom');
+    const split = splitStats([joined!]);
+    assert.deepEqual(split.map((l) => l.text.trim()), ['+90.2% Heat', '-40% Zoom']);
+    assert.equal(splitStats(card('+90.2% Heat')).length, 1);
+  });
+});
+
+describe('the lavender mask', () => {
+  it('gives a PNG for a picture and null for bytes that are no picture', () => {
+    const p = new PNG({ width: 40, height: 40 });
+    p.data.fill(255);
+    const mask = prepareMask(PNG.sync.write(p), 'image/png', 2);
+    assert.ok(mask);
+    assert.equal(PNG.sync.read(Buffer.from(mask)).width, 80);
+    assert.equal(prepareMask(new Uint8Array([1, 2, 3]), 'image/png', 2), null);
   });
 });
 

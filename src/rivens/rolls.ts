@@ -126,6 +126,26 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
 /** Whether every value on the card falls inside its range for some kind of weapon (the table can grade it). */
 export const fitsTable = (positives: StatInput[], negative: StatInput | null, weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null): boolean => gradeByTable(positives, negative, weapon) !== null;
 
+/**
+ * The values were most likely misread: every stat has a range for some kind of weapon (so the table knows them all), yet no kind and
+ * multiplier holds every value. A stat no kind has a range for (`noRange`) is not a misread and is not flagged. Graded anyway (from the
+ * listings), but the answer says so instead of grading wrong numbers with no warning.
+ */
+/** Shown when outOfRange is true: most likely a misread or a typo. */
+export const OUT_OF_RANGE_TEXT = "These values don't fit this weapon's ranges: check them (a misread or mistyped value?)";
+
+/**
+ * True when every stat has a range for some kind of weapon, yet no kind and multiplier fits all of them: the values are probably misread
+ * or mistyped. A stat with no range at all never raises it (nothing to compare with).
+ */
+export function outOfRange(positives: StatInput[], negative: StatInput | null, weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null): boolean {
+  const stats = [...positives.map((s) => ({ s, curse: false })), ...(negative ? [{ s: negative, curse: true }] : [])];
+  if (!stats.some(({ s }) => s.value !== null && s.value !== undefined)) return false;
+  const w = (curse: boolean) => weightOf(positives.length, negative !== null, curse);
+  const known = CATEGORIES.some((kind) => stats.every(({ s, curse }) => baseOf(kind, s.slug) !== null && w(curse)));
+  return known && !fitsTable(positives, negative, weapon);
+}
+
 /** A number with each one of its digits left out in turn: "195.2" gives 95.2, 15.2, 19.2 and 195. */
 function withoutOneDigit(value: number): number[] {
   const text = String(value);

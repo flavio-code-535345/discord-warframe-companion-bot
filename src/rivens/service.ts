@@ -4,7 +4,7 @@ import { ApiBlockedError, api } from '../warframe/fetch.js';
 import { searchItems } from '../warframe/market.js';
 import { type Grade, type MarketComparable, type StatInput, type TopRolls, gradeRiven, topRolls } from './grade.js';
 import { RIVEN_SCOPE, fetchComparable, fetchListings, getRivenAttributes, getRivenWeapons } from './market.js';
-import { type RollBasis, type RollGrade, gradeRollsWithBasis } from './rolls.js';
+import { type RollBasis, type RollGrade, gradeRollsWithBasis, outOfRange } from './rolls.js';
 import { parseStatList, resolveStat } from './stats.js';
 import type { RivenAttribute, RivenListing, RivenWeapon } from './types.js';
 
@@ -100,6 +100,8 @@ export interface GradeReport {
   rolls: RollGrade[];
   /** What the rolls were measured against (the kind of weapon and its multiplier, or the listed rolls). */
   basis: RollBasis;
+  /** The values fit none of the weapon's ranges (most likely misread or mistyped): the answer warns about it (rolls.ts, outOfRange). */
+  outOfRange: boolean;
   listings: number;
   fetchedAt: number | null;
   stale: boolean;
@@ -139,6 +141,7 @@ export async function gradeResolved(ctx: AppContext, weapon: RivenWeapon, attrs:
     names: attributeNames(attrs),
     rolls,
     basis,
+    outOfRange: outOfRange(positives, negative, weapon),
     grade: gradeRiven(loaded.listings, { positives, negative }, ctx.config.RIVEN_HIGH_PRICE, market),
     listings: loaded.listings.length,
     fetchedAt: loaded.fetchedAt,

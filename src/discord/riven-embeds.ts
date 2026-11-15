@@ -4,6 +4,7 @@ import { type FoundRivens, type RivenFilter, describeFilter } from '../rivens/fi
 import type { Letter } from '../rivens/grade.js';
 import { MIN_LISTINGS } from '../rivens/grade.js';
 import { auctionUrl } from '../rivens/market.js';
+import { OUT_OF_RANGE_TEXT } from '../rivens/rolls.js';
 import type { ScanResult } from '../rivens/scan.js';
 import type { GradeReport, RivenStatus, TopReport } from '../rivens/service.js';
 import { formatStatValue } from '../rivens/stats.js';
@@ -36,13 +37,17 @@ function bracketNote(b: { high: number; total: number; threshold: number; adapti
 
 const FOOTER = 'Asking prices on warframe.market, not sales';
 
+/** Shown when the values fit none of the weapon's ranges (GradeReport.outOfRange): most likely a misread or a typo. */
+const OUT_OF_RANGE = OUT_OF_RANGE_TEXT;
+
 export function rivenGradeEmbed(r: GradeReport): EmbedBuilder {
   const name = (slug: string) => r.names[slug] ?? slug;
   const embed = new EmbedBuilder().setTitle(`🎲 Riven: ${r.weapon.name}`);
+  const warning = r.outOfRange ? `⚠️ ${OUT_OF_RANGE}\n` : '';
   if (!r.grade) {
     return embed
       .setColor(COLORS.brand)
-      .setDescription(`I can't grade this one: warframe.market lists only **${r.listings}** rivens for ${r.weapon.name} (I need at least ${MIN_LISTINGS} to compare with). Try \`/riven top\` on a more popular weapon.`)
+      .setDescription(`${warning}I can't grade this one: warframe.market lists only **${r.listings}** rivens for ${r.weapon.name} (I need at least ${MIN_LISTINGS} to compare with). Try \`/riven top\` on a more popular weapon.`)
       .setFooter({ text: `${FOOTER} · read ${ago(r.fetchedAt)}` });
   }
   const g = r.grade;
@@ -60,7 +65,7 @@ export function rivenGradeEmbed(r: GradeReport): EmbedBuilder {
   }
   embed
     .setColor(LETTER_COLOR[g.letter])
-    .setDescription(`## Grade ${g.letter}: ${LETTER_TEXT[g.letter]}\n${lines.join('\n')}`)
+    .setDescription(`${warning}## Grade ${g.letter}: ${LETTER_TEXT[g.letter]}\n${lines.join('\n')}`)
     .addFields({
       name: 'Expensive rivens with exactly these bonuses',
       value: g.exact ? `${g.exact} of ${g.bracket.high}` : `none of the ${g.bracket.high}`,
@@ -126,7 +131,8 @@ export function rivenCompactEmbed(r: ScanResult): EmbedBuilder {
   const embed = new EmbedBuilder();
   if (s.weapon) embed.setTitle(`🎲 ${s.weapon}`);
   if (s.error) return embed.setColor(0xe74c3c).setDescription(`❌ ${s.error}`);
-  return embed.setColor(s.letter ? LETTER_COLOR[s.letter] : COLORS.brand).setDescription(s.letter ? `# ${s.letter}\n${s.stats}${s.price ? `\n💰 ${s.price}` : ''}` : `${s.stats}\nNot enough listings to grade.`);
+  const warning = s.warning ? `\n⚠️ ${s.warning}` : '';
+  return embed.setColor(s.letter ? LETTER_COLOR[s.letter] : COLORS.brand).setDescription(s.letter ? `# ${s.letter}\n${s.stats}${s.price ? `\n💰 ${s.price}` : ''}${warning}` : `${s.stats}\nNot enough listings to grade.${warning}`);
 }
 
 export interface ScanSummary {
@@ -138,6 +144,8 @@ export interface ScanSummary {
   price: string | null;
   /** One short sentence when nothing could be graded because the picture was not readable. */
   error: string | null;
+  /** Set when the values fit none of the weapon's ranges (probably misread): graded, but check them. */
+  warning: string | null;
 }
 
 /** The short facts of a scan, for the compact embed and the admin page. */
@@ -148,7 +156,7 @@ export function scanSummary(r: ScanResult): ScanSummary {
   // A stat that was worked out from a smudged line (not read) carries a "?".
   const mark = (slug: string) => (rd.guessed.includes(name(slug)) ? '?' : '');
   const stats = [...rd.positives.map((p) => `+${name(p.slug)}${val(p.value)}${mark(p.slug)}`), ...(rd.negative ? [`−${name(rd.negative.slug)}${val(rd.negative.value)}${mark(rd.negative.slug)}`] : [])].join(' · ');
-  const out = (error: string | null, letter: Letter | null = null, price: string | null = null): ScanSummary => ({ weapon: rd.weapon?.name ?? null, stats, letter, price, error });
+  const out = (error: string | null, letter: Letter | null = null, price: string | null = null): ScanSummary => ({ weapon: rd.weapon?.name ?? null, stats, letter, price, error, warning: !error && r.report?.outOfRange ? OUT_OF_RANGE : null });
   if (!rd.weapon) return out("Couldn't find the weapon name. Crop the picture to the riven card.");
   if (rd.unknown.length) return out("Couldn't read every stat line (is the mouse over the card?). Try another screenshot.");
   if (rd.positives.length < 2) return out("Couldn't read the stats. Crop the picture to the riven card.");

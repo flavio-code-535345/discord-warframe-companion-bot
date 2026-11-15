@@ -35,6 +35,26 @@ const MINUS = /[-−–—‒]/;
 // of it). One flat class, not a group of symbols followed by optional spaces: that nesting backtracks exponentially on a long run of symbols.
 const STAT_LINE = /([+\-−–—‒]?)\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(%|s\b|m\b)?[^A-Za-z0-9+\-−–—‒]*([A-Za-z][A-Za-z '/\-]{2,})/;
 
+/** A signed percentage, the start of a stat ("+95.2%"). */
+const SIGNED_VALUE = /[+\-−–—‒]\s*\d{1,4}(?:[.,]\d{1,2})?\s*%/g;
+
+/**
+ * One stat per line: OCR sometimes runs two stat lines together ("+95.2% Heat +40.1% Multishot"), and the parser takes one stat per
+ * line. A line with two or more signed percentages is cut before each of them; the pieces keep the line's box (x0 moved roughly) and
+ * are ordered by a tiny y step, so they stay in reading order.
+ */
+export function splitStats(lines: OcrLine[]): OcrLine[] {
+  return lines.flatMap((l) => {
+    const starts = [...l.text.matchAll(SIGNED_VALUE)].map((m) => m.index!);
+    if (starts.length < 2) return [l];
+    const width = (l.x1 - l.x0) / Math.max(1, l.text.length);
+    return starts.map((s, i): OcrLine => {
+      const { words: _words, ...rest } = l;
+      return { ...rest, text: l.text.slice(s, starts[i + 1] ?? l.text.length).replace(/[|()[\]{}]+\s*$/g, '').trim(), x0: l.x0 + s * width, y0: l.y0 + i * 0.001 };
+    });
+  });
+}
+
 /** "x0.75 Damage to Infested": a faction multiplier, with a stray letter or two around it. */
 const MULTIPLIER_LINE = /(?:^|[^A-Za-z0-9])[xX]\s*(\d(?:[.,]\d{1,2})?)\s+([A-Za-z][A-Za-z '/\-]{2,})/;
 

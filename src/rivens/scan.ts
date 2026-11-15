@@ -5,16 +5,16 @@ import { webpToPng } from '../imaging/webp.js';
 import { UserError } from '../errors.js';
 import type { OcrLine } from '../ssroles/parse.js';
 import { ocr } from '../ssroles/ocr.js';
-import { type CardReading, interpretUnknown, parseRivenCard } from './card.js';
+import { type CardReading, interpretUnknown, parseRivenCard, splitStats } from './card.js';
 import { getRivenAttributes, getRivenWeapons } from './market.js';
 import { type Box, erasePointer } from './pointer.js';
-import { prepareForOcr } from './prepare.js';
+import { prepareForOcr, prepareMask } from './prepare.js';
 import { fitsTable, repairValues } from './rolls.js';
 import { type GradeReport, attributeNames, gradeResolved } from './service.js';
 
 /**
- * Grades a riven from a screenshot: OCR the picture (enlarged and cleaned first; the unmodified picture is tried too when that finds
- * nothing), find the weapon and the stat lines, and hand them to the same grader as /riven grade. Nothing is stored, and the picture only
+ * Grades a riven from a screenshot: OCR the picture (enlarged and cleaned first; a second look at only the lavender card text when that
+ * is incomplete or its values fit no range), find the weapon and the stat lines, and hand them to the same grader as /riven grade. Nothing is stored, and the picture only
  * lives in memory. What was read is always returned with the grade, because the person has to be able to check it.
  */
 
@@ -42,6 +42,9 @@ const tidy = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
 const enough = (r: CardReading): boolean => r.weapon !== null && r.positives.length >= 2;
 const richness = (r: CardReading): number => (r.weapon ? 2 : 0) + r.positives.length + (r.negative ? 1 : 0);
+/** How many of the stats read have no value. */
+const missing = (r: CardReading): number => r.positives.filter((p) => p.value == null).length + (r.negative && r.negative.value == null ? 1 : 0);
+const complete = (r: CardReading): boolean => missing(r) === 0;
 
 export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime: string, recognize: Recognize = (b) => ocr.recognize(b)): Promise<ScanResult> {
   const t0 = Date.now();
@@ -76,7 +79,8 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   const read = async (image: Uint8Array, sourceScale: number) => {
     try {
       const t = Date.now();
-      const lines = await recognize(image);
+      // Two stats OCR ran together on one line ("+90.2% Heat -40% Zoom") are split before parsing.
+      const lines = splitStats(await recognize(image));
       console.log(`[riven] OCR ${Date.now() - t} ms, ${lines.length} lines (picture ${prepared.width}x${prepared.height}, from ${Math.round(picture.length / 1024)} KB ${pictureMime})`);
       variants.push(lines);
       const reading = parseRivenCard(lines, attrs, weapons);
@@ -88,17 +92,45 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
     }
   };
   let best = await read(prepared.png, prepared.sourceScale);
-  let readOriginal = false;
-  // (not for a huge picture: reading it unshrunk takes minutes)
-  // (also when a stat line is missing its value: the enlarged copy can lose a small "x0.72" that the original shows plainly)
-  if ((!enough(best.reading) || best.reading.unknown.length) && !prepared.shrunk) {
-    const original = await read(bytes, 1);
-    readOriginal = true;
-    if (richness(original.reading) > richness(best.reading) || original.reading.unknown.length < best.reading.unknown.length) best = original;
+  // The second look reads only the card's lavender text (no pointer, no artwork), at the first look's scale so positions map back the
+  // same way. Not for a huge picture: reading it unshrunk takes minutes.
+  let secondDone = prepared.shrunk;
+  const second = async () => {
+    secondDone = true;
+    const mask = prepareMask(bytes, mime, prepared.sourceScale);
+    return mask ? read(mask, prepared.sourceScale) : null;
+  };
+  if (!enough(best.reading) || best.reading.unknown.length || !complete(best.reading)) {
+    const other = await second();
+    if (other) {
+      const o = other.reading, b = best.reading;
+      const better = richness(o) > richness(b) || o.unknown.length < b.unknown.length || (richness(o) === richness(b) && o.unknown.length === b.unknown.length && missing(o) < missing(b));
+      if (better) best = other;
+    }
   }
-  // A value that fits no range was probably misread ("d 195.2%" for "+95.2%"): the picture as it came is a second opinion on every value.
-  const r = best.reading;
-  if (!readOriginal && !prepared.shrunk && r.weapon && r.positives.length >= 2 && !fitsTable(r.positives, r.negative, r.weapon)) await read(bytes, 1);
+  // A value that fits no range was probably misread ("d 195.2%" for "+95.2%"): the reading whose values all fit wins.
+  const fits = (x: CardReading): boolean => enough(x) && !x.unknown.length && complete(x) && fitsTable(x.positives, x.negative, x.weapon!);
+  if (!fits(best.reading)) {
+    const b = best.reading;
+    if (!secondDone && b.weapon && b.positives.length >= 2 && complete(b)) {
+      const other = await second();
+      if (other && fits(other.reading)) best = other;
+    } else {
+      const f = readings.find(fits);
+      if (f) best = { ...best, reading: f };
+    }
+  }
+  // A reading with no weapon name takes it from another look at the picture (the mask can lose a name drawn over the artwork).
+  if (!best.reading.weapon) {
+    let w = readings.find((x) => x.weapon)?.weapon ?? null;
+    if (!w && !prepared.shrunk) w = (await read(bytes, 1)).reading.weapon;
+    if (w) {
+      const withWeapon = { ...best.reading, weapon: w };
+      const at = readings.indexOf(best.reading);
+      if (at >= 0) readings[at] = withWeapon;
+      best = { ...best, reading: withWeapon };
+    }
+  }
   // Something unreadable on a stat line is usually the mouse pointer: paint it out of the picture and read again.
   if (best.reading.weapon && best.reading.unknown.length && !prepared.shrunk) {
     const first = best.reading.unknown[0]!;
@@ -117,7 +149,7 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   for (const other of readings.filter((o) => o !== best.reading)) {
     for (const s of [...other.positives, ...(other.negative ? [other.negative] : [])]) if (s.value != null) others.set(s.slug, [...(others.get(s.slug) ?? []), s.value]);
   }
-  const repaired = interpreted.weapon && interpreted.positives.length >= 2 ? repairValues(interpreted.positives, interpreted.negative, interpreted.weapon, others) : null;
+  const repaired = interpreted.weapon && interpreted.positives.length >= 2 && complete(interpreted) ?repairValues(interpreted.positives, interpreted.negative, interpreted.weapon, others) : null;
   const reading = repaired ? { ...interpreted, ...repaired } : interpreted;
   const names = attributeNames(attrs);
   const found = best.reading.box;

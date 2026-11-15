@@ -137,3 +137,11 @@ test('the clan line box ignores a stray word far to its left, so the emblem is l
   const plain = parseCard([line('2,637,138', 708), line('The Rats Den 69#043', 1015, 90, 840, 1134), line('GHOST CLAN RANK 10', 1050)]);
   assert.deepEqual([plain.clanLine!.x0, plain.clanLine!.x1], [840, 1134]);
 });
+
+test('without a MASTERY RANK heading, the accolades end at the rank title, the points or the NEXT RANK line', () => {
+  const p = parseCard(CARD.filter((l) => !/MASTERY/.test(l.text)));
+  assert.deepEqual(p.reading.accolades, ['Ten Year Supporter']);
+  assert.equal(p.reading.mastery_rank_title, 'Legendary 3');
+  const noTitle = parseCard(CARD.filter((l) => !/MASTERY|^LEGENDARY 3$/.test(l.text)));
+  assert.ok(!noTitle.reading.accolades.some((a) => /\d{5}|NEXT RANK/i.test(a)), 'the points and NEXT RANK never count as accolades');
+});

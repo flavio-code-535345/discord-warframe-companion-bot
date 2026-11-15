@@ -113,7 +113,8 @@ backups, and takes about 50 MB. Set `WIKI_INDEX=false` to turn it off. Wiki text
 Post a riven screenshot in the `/setup rivens` channel, or use `/riven scan`, and Ordis answers with a picture: the card,
 and next to it a grade for every roll (where the value sits in its 90–110% range, from the wiki's riven tables), the
 weapon's most wanted stats among its expensive listings on warframe.market, and what rivens with the same bonuses are
-listed for. Two or three screenshots of one weapon's rivens in one message are compared, to say which one to keep.
+listed for. When a value read from the picture fits none of the weapon's ranges, the answer carries a ⚠️ asking you to
+check the values (it was probably misread), instead of grading it silently. Two or three screenshots of one weapon's rivens in one message are compared, to say which one to keep.
 `/riven find` lists the cheapest matching rivens for sale and `/riven watch` DMs you when one is listed below your price.
 Screenshots are read with OCR only and never stored; the market's riven listings are read slowly in the background (one
 weapon every 45 seconds).

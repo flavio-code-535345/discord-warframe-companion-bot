@@ -118,10 +118,15 @@ export function parseCard(lines: OcrLine[]): ParsedCard {
   // Accolades: the mixed-case titles between the ACCOLADES and MASTERY RANK headers (the all-caps line is a category).
   const accIdx = rows.findIndex((l) => /accolades/i.test(l.text));
   const masIdx = rows.findIndex((l, i) => i > accIdx && /mastery.?rank/i.test(l.text));
+  // When OCR misses the MASTERY RANK heading, the accolades end at the rank title, the points or the NEXT RANK line, whichever comes first.
+  const titleIdx = titleLine ? rows.indexOf(titleLine) : -1;
+  const nextIdx = rows.findIndex((l) => /next rank/i.test(l.text));
+  const ends = [titleIdx, pointsIdx, nextIdx].filter((i) => i > accIdx);
+  const endIdx = masIdx > accIdx ? masIdx : ends.length ? Math.min(...ends) : -1;
   const accolades =
-    accIdx >= 0 && masIdx > accIdx
+    accIdx >= 0 && endIdx > accIdx
       ? rows
-          .slice(accIdx + 1, masIdx)
+          .slice(accIdx + 1, endIdx)
           .filter((l) => l.confidence >= 80 && alpha(l.text) >= 4 && !HEADER.test(l.text) && l.text !== l.text.toUpperCase() && /^[A-Za-z0-9 '’:&\-]+$/.test(l.text))
           .map((l) => l.text)
       : [];

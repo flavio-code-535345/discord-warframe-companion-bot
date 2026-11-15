@@ -7,7 +7,7 @@ import { DANGEROUS } from '../discord/permissions.js';
 import { modLog } from '../moderation/service.js';
 import { normalizeImage } from '../imaging/sniff.js';
 import { UserError, assertChannelFree, getSendableChannel } from '../services/clan.js';
-import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, findEmblem, fingerprint } from './emblem.js';
+import { FINGERPRINT_BYTES, MATCH_THRESHOLD, bestSimilarity, decodeImage, enlargeTo, findEmblem, fingerprint } from './emblem.js';
 import { ocr } from './ocr.js';
 import { type RankRow, parseCard, parseRankRow, parseRankRows, rankFromTitle } from './parse.js';
 import { type CardReading, type RoleInfo, SELF_SERVE_RANKS, checkClan, clanRankRoleName, earnedNames, masteryRank, norm, planClanRank, planRoles } from './roles.js';
@@ -96,11 +96,24 @@ export async function readWithOcr(bytes: Uint8Array, mime: string, reference: Re
   if (!pixels) return out(null, 'OCR reads PNG and JPEG only; this image type goes straight to the vision models.');
   const size = `${pixels.width}x${pixels.height}`;
   try {
-    const found = await ocr.recognize(bytes);
-    const lines = found.map((l) => l.text.trim()).filter(Boolean);
-    const parsed = parseCard(found);
+    let found = await ocr.recognize(bytes);
+    let parsed = parseCard(found);
     const rankRows = parsed.complete ? [] : parseRankRows(found);
-    if (rankRows.length) return out({ reading: parsed.reading, reader: 'ocr', emblem: null, rankRows }, `Read ${rankRows.length} row(s) of the clan member list.`, { size, lines });
+    if (rankRows.length) return out({ reading: parsed.reading, reader: 'ocr', emblem: null, rankRows }, `Read ${rankRows.length} row(s) of the clan member list.`, { size, lines: found.map((l) => l.text.trim()).filter(Boolean) });
+    // A second look at a small card, enlarged to about 1200 px: about a second, against 25-50 s for the vision model.
+    if (!parsed.complete || !parsed.clanLine) {
+      const big = enlargeTo(pixels);
+      if (big) {
+        const again = await ocr.recognize(big.png);
+        const second = parseCard(again);
+        if (second.complete && second.clanLine) {
+          const s = big.scale, c = second.clanLine;
+          found = again;
+          parsed = { ...second, clanLine: { ...c, x0: c.x0 / s, y0: c.y0 / s, x1: c.x1 / s, y1: c.y1 / s } };
+        }
+      }
+    }
+    const lines = found.map((l) => l.text.trim()).filter(Boolean);
     if (!parsed.complete || !parsed.clanLine) {
       const r = parsed.reading;
       console.log(`[ssroles] OCR incomplete (${size}, ${found.length} lines): card=${r.is_profile_card} rank=${r.mastery_rank_title} points=${r.mastery_points} clan=${r.clan_name} | text: ${lines.join(' / ').slice(0, 300)}`);

@@ -108,3 +108,49 @@ export function prepareForOcr(bytes: Uint8Array, mime: string): Prepared | null 
   }
   return { png: PNG.sync.write(out), width: w, height: h, inverted, scale, shrunk, sourceScale: shrunk ? scale / k : scale };
 }
+
+/** The lavender of a riven card's text (name, stats, MR line). */
+const CARD_TEXT: readonly [number, number, number] = [176, 130, 208];
+
+/**
+ * The second look at a riven card: only the lavender card text, as dark text on white, enlarged by `scale` (the first look's, so a
+ * line's position maps back the same way). A pixel that is some fraction k of the text colour keeps k (a letter's soft edge); any
+ * other colour (the white mouse pointer, the artwork, the element icons) goes to white. Not for a shrunk picture.
+ */
+export function prepareMask(bytes: Uint8Array, mime: string, scale: number): Uint8Array | null {
+  const img = decodeImage(bytes, mime);
+  if (!img || scale <= 0) return null;
+  const { width, height, data } = img;
+  const w = Math.round(width * scale);
+  const h = Math.round(height * scale);
+  if (!w || !h || w * h > MAX_PIXELS) return null;
+  const plane = new Float32Array(width * height);
+  for (let i = 0; i < plane.length; i++) {
+    const r = data[i * 4]! / CARD_TEXT[0], g = data[i * 4 + 1]! / CARD_TEXT[1], b = data[i * 4 + 2]! / CARD_TEXT[2];
+    const lo = Math.min(r, g, b), hi = Math.max(r, g, b);
+    const k = hi - lo <= 0.22 * Math.max(hi, 0.35) ? Math.min(1, (lo + hi) / 2) : 0;
+    plane[i] = 255 - 255 * k;
+  }
+  const out = new PNG({ width: w, height: h });
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(height - 1, Math.max(0, (y + 0.5) / scale - 0.5));
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(height - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(width - 1, Math.max(0, (x + 0.5) / scale - 0.5));
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(width - 1, x0 + 1);
+      const fx = sx - x0;
+      const top = plane[y0 * width + x0]! * (1 - fx) + plane[y0 * width + x1]! * fx;
+      const bottom = plane[y1 * width + x0]! * (1 - fx) + plane[y1 * width + x1]! * fx;
+      const v = Math.round(top * (1 - fy) + bottom * fy);
+      const o = (y * w + x) * 4;
+      out.data[o] = v;
+      out.data[o + 1] = v;
+      out.data[o + 2] = v;
+      out.data[o + 3] = 255;
+    }
+  }
+  return PNG.sync.write(out);
+}
