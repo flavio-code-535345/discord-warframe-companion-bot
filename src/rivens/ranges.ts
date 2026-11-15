@@ -147,6 +147,9 @@ export function statKey(name: string): string | null {
   if (/faction|^damage (vs|to) |(vs|to) (grineer|corpus|infested|corrupted)/.test(n)) return 'faction';
   // The market's slug for Heavy Attack Efficiency is channeling_efficiency.
   if (n === 'channeling efficiency') return 'heavy_attack_efficiency';
+  // The market's channeling_damage is the wiki's Melee Damage on Heavy Attack; chance_to_gain_extra_combo_count is Additional Combo Count Chance.
+  if (n === 'channeling damage') return 'heavy_damage';
+  if (n === 'chance to gain extra combo count') return 'extra_combo';
   if (/^critical chance (on|for) slide/.test(n)) return 'crit_slide';
   if (/^critical chance/.test(n)) return 'crit_chance';
   if (n === 'critical damage') return 'crit_damage';

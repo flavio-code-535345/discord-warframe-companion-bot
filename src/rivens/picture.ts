@@ -259,7 +259,7 @@ export async function rivenPicture(r: ScanResult, opts: { label?: string } = {})
     } else {
       ctx.fillStyle = MUTED;
       ctx.font = `25px ${FONT}`;
-      ctx.fillText('Grade:  not enough data', leftW + PAD, y + 46);
+      ctx.fillText('Grade:  no range known', leftW + PAD, y + 46);
     }
     y += ROW_H;
   }

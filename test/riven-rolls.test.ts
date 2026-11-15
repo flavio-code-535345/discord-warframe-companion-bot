@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { woffToSfnt } from '../src/imaging/font.js';
 import { cardCrop, rivenPicture, warningLines, wrapText } from '../src/rivens/picture.js';
-import { categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
+import { baseOf, categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
 import { MIN_SAMPLES, OUT_OF_RANGE_TEXT, fitsTable, outOfRange, gradeRolls, gradeRollsWithBasis, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
 import type { RivenListing } from '../src/rivens/types.js';
 
@@ -78,6 +78,11 @@ describe('grading every stat of a riven', () => {
     assert.deepEqual(r.rolls.map((x) => x.letter), ['B-', 'B', 'C-']);
   });
 
+  it('knows the market slugs channeling_damage and chance_to_gain_extra_combo_count', () => {
+    assert.equal(baseOf('melee', 'channeling_damage'), baseOf('melee', 'Melee Damage on Heavy Attack'));
+    assert.equal(baseOf('melee', 'chance_to_gain_extra_combo_count'), baseOf('melee', 'Additional Combo Count Chance'));
+    assert.ok(baseOf('melee', 'channeling_damage'));
+  });
   it("grades a card whose curse is the market's channeling_efficiency (Sepfahn Argides)", () => {
     const r = gradeRollsWithBasis([], [{ slug: 'status_duration', value: 137.6 }, { slug: 'damage_vs_grineer', value: 1.73 }], { slug: 'channeling_efficiency', value: -43.1 }, { type: 'melee', disposition: 1 });
     assert.equal(r.basis.source, 'table');
