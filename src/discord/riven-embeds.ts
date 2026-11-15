@@ -37,13 +37,10 @@ function bracketNote(b: { high: number; total: number; threshold: number; adapti
 
 const FOOTER = 'Asking prices on warframe.market, not sales';
 
-/** Shown when the values fit none of the weapon's ranges (GradeReport.outOfRange): most likely a misread or a typo. */
-const OUT_OF_RANGE = OUT_OF_RANGE_TEXT;
-
 export function rivenGradeEmbed(r: GradeReport): EmbedBuilder {
   const name = (slug: string) => r.names[slug] ?? slug;
   const embed = new EmbedBuilder().setTitle(`🎲 Riven: ${r.weapon.name}`);
-  const warning = r.outOfRange ? `⚠️ ${OUT_OF_RANGE}\n` : '';
+  const warning = r.outOfRange ? `⚠️ ${OUT_OF_RANGE_TEXT}\n` : '';
   if (!r.grade) {
     return embed
       .setColor(COLORS.brand)
@@ -156,7 +153,7 @@ export function scanSummary(r: ScanResult): ScanSummary {
   // A stat that was worked out from a smudged line (not read) carries a "?".
   const mark = (slug: string) => (rd.guessed.includes(name(slug)) ? '?' : '');
   const stats = [...rd.positives.map((p) => `+${name(p.slug)}${val(p.value)}${mark(p.slug)}`), ...(rd.negative ? [`−${name(rd.negative.slug)}${val(rd.negative.value)}${mark(rd.negative.slug)}`] : [])].join(' · ');
-  const out = (error: string | null, letter: Letter | null = null, price: string | null = null): ScanSummary => ({ weapon: rd.weapon?.name ?? null, stats, letter, price, error, warning: !error && r.report?.outOfRange ? OUT_OF_RANGE : null });
+  const out = (error: string | null, letter: Letter | null = null, price: string | null = null): ScanSummary => ({ weapon: rd.weapon?.name ?? null, stats, letter, price, error, warning: !error && r.report?.outOfRange ? OUT_OF_RANGE_TEXT : null });
   if (!rd.weapon) return out("Couldn't find the weapon name. Crop the picture to the riven card.");
   if (rd.unknown.length) return out("Couldn't read every stat line (is the mouse over the card?). Try another screenshot.");
   if (rd.positives.length < 2) return out("Couldn't read the stats. Crop the picture to the riven card.");

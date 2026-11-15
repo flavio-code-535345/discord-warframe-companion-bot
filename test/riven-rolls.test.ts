@@ -4,9 +4,9 @@ import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
 import { PNG } from 'pngjs';
 import { woffToSfnt } from '../src/imaging/font.js';
-import { cardCrop, rivenPicture } from '../src/rivens/picture.js';
+import { cardCrop, rivenPicture, warningLines, wrapText } from '../src/rivens/picture.js';
 import { categoryOf, rawNames, statKey } from '../src/rivens/ranges.js';
-import { MIN_SAMPLES, fitsTable, outOfRange, gradeRolls, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
+import { MIN_SAMPLES, OUT_OF_RANGE_TEXT, fitsTable, outOfRange, gradeRolls, letterFor, repairValues, weightOf } from '../src/rivens/rolls.js';
 import type { RivenListing } from '../src/rivens/types.js';
 
 const listing = (id: string, stats: [string, number, boolean][]): RivenListing => ({ id, weapon: 'arca_scisco', price: 500, polarity: 'madurai', rerolls: 3, stats: stats.map(([slug, value, positive]) => ({ slug, value, positive })) });
@@ -206,6 +206,24 @@ describe('the picture', () => {
     assert.ok(green > 50 && red > 50, `green ${green} red ${red}`);
     assert.equal(await rivenPicture({ ...base, report: null } as never), null);
     assert.equal(await rivenPicture({ ...base, image: null } as never), null);
+
+    // The out-of-range warning adds its wrapped lines to the footer.
+    const warned = PNG.sync.read((await rivenPicture({ ...base, report: { ...base.report, outOfRange: true } } as never))!);
+    assert.ok(warned.height > png.height, `the warning makes the picture taller (${warned.height} vs ${png.height})`);
+  });
+
+  it('wraps the out-of-range warning so no drawn line is wider than the text column', () => {
+    const { lines, widths, maxWidth } = warningLines();
+    assert.equal(lines.join(' '), OUT_OF_RANGE_TEXT, 'every word is drawn, in order');
+    assert.ok(lines.length >= 2, 'the warning does not fit on one line at 16 px');
+    for (const [i, w] of widths.entries()) assert.ok(w <= maxWidth, `line ${i + 1} is ${w} px, wider than ${maxWidth}: "${lines[i]}"`);
+  });
+
+  it('wraps at spaces, and gives a word wider than the column a line of its own', () => {
+    const ctx = { measureText: (t: string) => ({ width: t.length * 10 }) };
+    assert.deepEqual(wrapText(ctx as never, 'aa bb cc dd', 50), ['aa bb', 'cc dd']);
+    assert.deepEqual(wrapText(ctx as never, 'aaaaaaaaaa bb', 50), ['aaaaaaaaaa', 'bb']);
+    assert.deepEqual(wrapText(ctx as never, '', 50), []);
   });
 });
 

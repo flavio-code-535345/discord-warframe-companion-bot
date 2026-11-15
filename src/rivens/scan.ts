@@ -100,7 +100,7 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
     const mask = prepareMask(bytes, mime, prepared.sourceScale);
     return mask ? read(mask, prepared.sourceScale) : null;
   };
-  if (!enough(best.reading) || best.reading.unknown.length || !complete(best.reading)) {
+  if (!secondDone && (!enough(best.reading) || best.reading.unknown.length || !complete(best.reading))) {
     const other = await second();
     if (other) {
       const o = other.reading, b = best.reading;
@@ -149,7 +149,7 @@ export async function scanCard(ctx: AppContext, picture: Uint8Array, pictureMime
   for (const other of readings.filter((o) => o !== best.reading)) {
     for (const s of [...other.positives, ...(other.negative ? [other.negative] : [])]) if (s.value != null) others.set(s.slug, [...(others.get(s.slug) ?? []), s.value]);
   }
-  const repaired = interpreted.weapon && interpreted.positives.length >= 2 && complete(interpreted) ?repairValues(interpreted.positives, interpreted.negative, interpreted.weapon, others) : null;
+  const repaired = interpreted.weapon && interpreted.positives.length >= 2 && complete(interpreted) ? repairValues(interpreted.positives, interpreted.negative, interpreted.weapon, others) : null;
   const reading = repaired ? { ...interpreted, ...repaired } : interpreted;
   const names = attributeNames(attrs);
   const found = best.reading.box;

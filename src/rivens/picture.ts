@@ -161,6 +161,33 @@ function fit(ctx: Ctx, text: string, family: string, max: number, min: number, w
   while (size > min && ctx.measureText(text).width > width) ctx.font = `${--size}px ${family}`;
 }
 
+/** Splits `text` at spaces into lines that each fit `width` at the current font (a single word wider than `width` keeps a line of its own). */
+export function wrapText(ctx: Ctx, text: string, width: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > width) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** The out-of-range warning as the picture draws it: 16 px lines that each fit the text column. */
+export function warningLines(): { lines: string[]; widths: number[]; maxWidth: number } {
+  loadFonts();
+  const ctx = PImage.make(1, 1).getContext('2d');
+  ctx.font = `${WARN_PX}px ${FONT}`;
+  const lines = wrapText(ctx, OUT_OF_RANGE_TEXT, TEXT_W);
+  return { lines, widths: lines.map((l) => ctx.measureText(l).width), maxWidth: TEXT_W };
+}
+
+const WARN_PX = 16;
+const WARN_LINE_H = 20;
+
 /**
  * Draws the picture, or returns null when there is nothing to show next to (no picture, no weapon, no stats). `label` ("#1") is drawn in
  * the top corner when several rivens are compared, so the verdict can name them.
@@ -176,9 +203,10 @@ export async function rivenPicture(r: ScanResult, opts: { label?: string } = {})
   const wanted = wantedLines(probe, r);
   const sale = saleText(r);
   const basis = basisText(r.report.basis);
-  const warn = r.report.outOfRange ? OUT_OF_RANGE_TEXT : null;
-  const footerH = wanted.length || sale || basis || warn
-    ? 14 + (wanted.length ? LABEL_H + wanted.length * LINE_H + 8 : 0) + (sale ? LABEL_H + LINE_H + 8 : 0) + (basis ? 24 : 0) + (warn ? 26 : 0)
+  probe.font = `${WARN_PX}px ${FONT}`;
+  const warn = r.report.outOfRange ? wrapText(probe, OUT_OF_RANGE_TEXT, TEXT_W) : [];
+  const footerH = wanted.length || sale || basis || warn.length
+    ? 14 + (wanted.length ? LABEL_H + wanted.length * LINE_H + 8 : 0) + (sale ? LABEL_H + LINE_H + 8 : 0) + (basis ? 24 : 0) + (warn.length ? warn.length * WARN_LINE_H + 6 : 0)
     : 0;
   const panelH = PAD + HEAD_H + lines.length * ROW_H + footerH + PAD / 2;
   const crop = cardCrop(decoded.width, decoded.height, r.box);
@@ -272,10 +300,13 @@ export async function rivenPicture(r: ScanResult, opts: { label?: string } = {})
       ctx.fillText(basis, x, y + 16);
       y += 24;
     }
-    if (warn) {
+    if (warn.length) {
       ctx.fillStyle = '#e8993a';
-      fit(ctx, warn, FONT, 16, 11, TEXT_W);
-      ctx.fillText(warn, x, y + 16);
+      ctx.font = `${WARN_PX}px ${FONT}`;
+      for (const line of warn) {
+        ctx.fillText(line, x, y + 16);
+        y += WARN_LINE_H;
+      }
     }
   }
 

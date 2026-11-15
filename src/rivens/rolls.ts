@@ -126,11 +126,6 @@ function gradeByTable(positives: StatInput[], negative: StatInput | null, weapon
 /** Whether every value on the card falls inside its range for some kind of weapon (the table can grade it). */
 export const fitsTable = (positives: StatInput[], negative: StatInput | null, weapon?: Pick<RivenWeapon, 'type' | 'disposition'> | null): boolean => gradeByTable(positives, negative, weapon) !== null;
 
-/**
- * The values were most likely misread: every stat has a range for some kind of weapon (so the table knows them all), yet no kind and
- * multiplier holds every value. A stat no kind has a range for (`noRange`) is not a misread and is not flagged. Graded anyway (from the
- * listings), but the answer says so instead of grading wrong numbers with no warning.
- */
 /** Shown when outOfRange is true: most likely a misread or a typo. */
 export const OUT_OF_RANGE_TEXT = "These values don't fit this weapon's ranges: check them (a misread or mistyped value?)";
 
