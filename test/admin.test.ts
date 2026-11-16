@@ -335,7 +335,7 @@ test('the Overview shows the jobs, the boards and where every feature posts', as
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.match(html, /<a class="navlink on" href="\/admin\/">Overview<\/a>/);
-    for (const text of ['Background jobs', 'World State boards', 'Arbitrations', 'Start and stop reports', 'Weekly reset post', 'Squads started from a board', 'Join-to-create voice', 'same as the moderation log', 'Off']) {
+    for (const text of ['Background jobs', 'World State boards', 'Arbitrations', 'Start and stop reports', 'Weeklies', 'Squads started from a board', 'Join-to-create voice', 'same as the moderation log', 'Off']) {
       assert.ok(html.includes(text), text);
     }
     assert.ok(!/ping role|by DM to/i.test(html), 'no setting is a role any more: notifications are DMs members ask for');
@@ -365,7 +365,7 @@ test('the Overview says which feature lost its channel, until it has one again',
     store.setMeta('settings_lost', JSON.stringify([{ key: 'newsChannelId', name: '#game-news', at: Date.now() }, { key: 'weeklyChannelId', name: '#game-news', at: Date.now() }]));
     const two = box.exec(await (await get('/admin/', cookie)).text())?.[0] ?? '';
     assert.match(two, /<b>2 features lost their channel\.<\/b>/);
-    assert.match(two, /the weekly reset post/);
+    assert.match(two, /the Weeklies board/);
 
     store.updateSettings(GUILD, { newsChannelId: '700000000000000030', weeklyChannelId: '700000000000000030' });
     assert.doesNotMatch(await (await get('/admin/', cookie)).text(), box, 'both have a channel again');
@@ -425,14 +425,14 @@ test('the Backups page keeps copies of the database, and only an owner can downl
   }
 });
 
-test('the Settings form sets every channel (no role: nothing pings one), keeps what it did not send and starts the weekly post next Monday', async () => {
+test('the Settings form sets every channel (no role: nothing pings one), and keeps what it did not send', async () => {
   const { cookie } = sessionCookie(OWNER);
   const flash = (r: Response) => decodeURIComponent((r.headers.get('location') ?? '').replace(/[+]/g, ' '));
-  testChannels.set('700000000000000020', { id: '700000000000000020', name: 'weekly', type: ChannelType.GuildText, rawPosition: 5, parent: null });
+  testChannels.set('700000000000000020', { id: '700000000000000020', name: 'promo', type: ChannelType.GuildText, rawPosition: 5, parent: null });
   try {
-    store.updateSettings(GUILD, { newsChannelId: '700000000000000020', weeklyChannelId: null });
+    store.updateSettings(GUILD, { newsChannelId: '700000000000000020', promoChannelId: null });
     const page = await (await get('/admin/settings', cookie)).text();
-    for (const name of ['announcementsChannelId', 'auditLogChannelId', 'statusChannelId', 'birthdayChannelId', 'weeklyChannelId', 'promoChannelId', 'newsChannelId', 'levelChannelId', 'lfgChannelId']) {
+    for (const name of ['announcementsChannelId', 'auditLogChannelId', 'statusChannelId', 'birthdayChannelId', 'promoChannelId', 'newsChannelId', 'levelChannelId', 'lfgChannelId']) {
       assert.ok(page.includes(`name="${name}"`), name);
     }
     assert.match(page, /<option value="">— where the member is talking —<\/option>/);
@@ -441,22 +441,20 @@ test('the Settings form sets every channel (no role: nothing pings one), keeps w
     const gone = await post('/admin/settings', { birthdayChannelId: '799999999999999999', _csrf: 'csrf-token' }, cookie);
     assert.match(flash(gone), /Birthdays: that channel no longer exists/);
 
-    store.setMeta('weekly_posted', '');
-    const saved = await post('/admin/settings', { weeklyChannelId: '700000000000000020', _csrf: 'csrf-token' }, cookie);
+    const saved = await post('/admin/settings', { promoChannelId: '700000000000000020', _csrf: 'csrf-token' }, cookie);
     assert.match(flash(saved), /Settings saved/);
     const s = store.getSettings(GUILD);
-    assert.equal(s.weeklyChannelId, '700000000000000020');
+    assert.equal(s.promoChannelId, '700000000000000020');
     assert.equal(s.newsChannelId, '700000000000000020', 'a field the form did not send is kept');
-    assert.ok(store.getMeta('weekly_posted'), 'this week counts as posted, so the first post is next Monday');
 
-    const again = await post('/admin/settings', { weeklyChannelId: '700000000000000020', _csrf: 'csrf-token' }, cookie);
+    const again = await post('/admin/settings', { promoChannelId: '700000000000000020', _csrf: 'csrf-token' }, cookie);
     assert.match(flash(again), /Nothing changed/);
     const off = await post('/admin/settings', { newsChannelId: '', _csrf: 'csrf-token' }, cookie);
     assert.match(flash(off), /Settings saved/);
     assert.equal(store.getSettings(GUILD).newsChannelId, null);
   } finally {
     testChannels.delete('700000000000000020');
-    store.updateSettings(GUILD, { weeklyChannelId: null, newsChannelId: null });
+    store.updateSettings(GUILD, { promoChannelId: null, newsChannelId: null });
   }
 });
 

@@ -64,7 +64,8 @@ const text = (id: string, name: string) => ({ id, name, guildId: G, isTextBased:
 describe('a channel Ordis uses is deleted', () => {
   it('knows every setting that holds a channel or a category', () => {
     const settings = new Store(':memory:').getSettings(G);
-    const inSettings = Object.keys(settings).filter((k) => /(ChannelId|CategoryId)$/.test(k)).sort();
+    // sortieChannelId is a retired column (the Weeklies board took the sortie board in): nothing uses it any more.
+    const inSettings = Object.keys(settings).filter((k) => /(ChannelId|CategoryId)$/.test(k) && k !== 'sortieChannelId').sort();
     const known = SETTING_USES.map((u) => u.key as string).sort();
     assert.deepEqual(known, inSettings, 'a new channel setting needs a line in SETTING_USES');
     assert.equal(new Set(known).size, known.length);

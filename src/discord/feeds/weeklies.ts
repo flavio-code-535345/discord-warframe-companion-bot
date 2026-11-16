@@ -2,13 +2,18 @@ import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
 import { type WorldState, archimedeaName } from '../../warframe/worldstate.js';
 import { e, emojiUrl, factionTag, shardEmoji, shardEmojiName } from '../emoji.js';
-import { buttonRow, mineButton, notifyButton, notifyRow } from './controls.js';
+import { COLORS } from '../style.js';
+import { nightwaveWeeklyPart } from './alerts.js';
+import { buttonRow, incarnonButton, mineButton, notifyButton, notifyRow } from './controls.js';
+import { circuitPart } from './cycles.js';
 import { DIVIDER, type Part, card, nodeName, planetOf, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
 
 /**
- * 🗡️┃sortie-archon: the daily sortie and the weekly Archon Hunt (with the shard its archon drops) in one message, and the weekly
- * Archimedeas (Deep and Temporal) with the Steel Path honors and the controls in the second.
+ * The Weeklies board (#weeklies): what resets on a schedule longer than the hour, in three messages. The first is the daily sortie and
+ * the weekly Archon Hunt (with the shard its archon drops), the second the weekly Archimedeas (Deep and Temporal) with the Steel Path
+ * honors, the third this week's Duviri Circuit with the "Incarnon weapon" button right under it, the weekly and elite Nightwave
+ * challenges and the controls. The Monday DM (discord/weekly.ts) shares the Archon and honors parts.
  */
 
 const COLOR = { sortie: 0xd97706, weekly: 0xb91c1c } as const;
@@ -41,7 +46,7 @@ function sortiePart(ws: WorldState, now: number): Part[] {
 }
 
 /**
- * The Archon Hunt: the archon, the shard it drops, the planet and the three missions (also in the weekly post, a heading lower). The
+ * The Archon Hunt: the archon, the shard it drops, the planet and the three missions (also in the Monday DM, a heading lower). The
  * thumbnail is the shard this archon drops, the same picture as the heading's emoji (the archon icon only when the shard is not known
  * or has no custom emoji), and the missions share its section, so no gap opens under a short heading beside the picture.
  */
@@ -83,7 +88,7 @@ function archimedeaPart(ws: WorldState, now: number): Part[] {
   });
 }
 
-/** Teshin's Steel Path honor this week and the next one (also the weekly post's). */
+/** Teshin's Steel Path honor this week and the next one (also the Monday DM's). */
 export function honorsPart(ws: WorldState, now: number): Part {
   const sp = ws.steelPath;
   if (!sp?.currentReward || !live(sp.expiry, now)) return null;
@@ -99,11 +104,21 @@ export function honorsPart(ws: WorldState, now: number): Part {
     .join('\n');
 }
 
-export function sortieBoard(input: FeedInput): ContainerBuilder[][] {
+export function weeklyBoard(input: FeedInput): ContainerBuilder[][] {
   const { ws, now } = input;
+  const controls = [
+    DIVIDER,
+    notifyRow('weekly'),
+    buttonRow(notifyButton('weekly'), mineButton()),
+    '-# **Weeklies by DM**: every Monday Ordis DMs you the new week in one message.',
+  ];
   if (!ws) {
     const off = 'The world state is not available right now.';
-    return [[card(COLOR.sortie, [`## ${e('sortie')} Daily sortie`, off])], [card(COLOR.weekly, [`## 🧩 Weekly missions`, off, DIVIDER, notifyRow('sortie'), buttonRow(notifyButton('weekly'), mineButton())])]];
+    return [
+      [card(COLOR.sortie, [`## ${e('sortie')} Daily sortie`, off])],
+      [card(COLOR.weekly, [`## 🧩 Weekly missions`, off])],
+      [card(COLORS.brand, [`## ${e('duviri')} Duviri Circuit and Nightwave`, off, ...controls])],
+    ];
   }
   const archimedeas = archimedeaPart(ws, now);
   return [
@@ -114,11 +129,16 @@ export function sortieBoard(input: FeedInput): ContainerBuilder[][] {
         ...archimedeas.flatMap((p, i) => (i ? [DIVIDER, p] : [p])),
         DIVIDER,
         honorsPart(ws, now),
-        input.stale ? `-# ${STALE_NOTE}` : null,
+      ]),
+    ],
+    [
+      card(COLORS.brand, [
+        circuitPart(ws, now) ?? `### ${e('duviri')} Duviri Circuit\nNot known right now.`,
+        buttonRow(incarnonButton()),
         DIVIDER,
-        notifyRow('sortie'),
-        buttonRow(notifyButton('weekly'), mineButton()),
-        '-# **Weeklies by DM**: every Monday the Circuit, Nightwave, the Archon Hunt and Steel Path in one message.',
+        ...(nightwaveWeeklyPart(ws, now) ?? [`### ${e('nightwave')} Nightwave this week\nNo weekly challenges right now.`]),
+        input.stale ? `-# ${STALE_NOTE}` : null,
+        ...controls,
       ]),
     ],
   ];

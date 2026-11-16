@@ -84,11 +84,11 @@ export const TRACK_OPTIONS: TrackOption[] = [
   fissure('fissure-survival', 'Survival fissures', 'Good for cracking several relics', { mission: 'Survival' }),
   fissure('fissure-disruption', 'Disruption fissures', 'Several relics a run', { mission: 'Disruption' }),
 
-  { value: 'sortie', feeds: ['sortie'], label: 'Daily sortie', description: 'A DM when the new sortie starts', emoji: 'sortie', spec: { kind: 'sortie' } },
-  { value: 'archon', feeds: ['sortie'], label: 'Archon Hunt', description: 'A DM when the weekly hunt resets', emoji: 'archon', spec: { kind: 'archon' } },
-  { value: 'weekly', feeds: ['sortie'], label: 'Weekly reset summary', description: 'Circuit, Nightwave, Archon Hunt and Steel Path every Monday', emoji: 'weekly', spec: { kind: 'weekly' } },
+  { value: 'sortie', feeds: ['weekly'], label: 'Daily sortie', description: 'A DM when the new sortie starts', emoji: 'sortie', spec: { kind: 'sortie' } },
+  { value: 'archon', feeds: ['weekly'], label: 'Archon Hunt', description: 'A DM when the weekly hunt resets', emoji: 'archon', spec: { kind: 'archon' } },
+  { value: 'weekly', feeds: ['weekly'], label: 'Weekly reset summary', description: 'Archon Hunt, Circuit, Nightwave and Steel Path every Monday, by DM', emoji: 'weekly', spec: { kind: 'weekly' } },
   ...['Spy', 'Survival', 'Defense', 'Assassination'].map(
-    (mission): TrackOption => ({ value: `sortie-${mission.toLowerCase()}`, feeds: ['sortie'], label: `Sorties with ${mission}`, description: `Only when a sortie mission is ${mission}`, spec: { kind: 'sortie', mission } }),
+    (mission): TrackOption => ({ value: `sortie-${mission.toLowerCase()}`, feeds: ['weekly'], label: `Sorties with ${mission}`, description: `Only when a sortie mission is ${mission}`, spec: { kind: 'sortie', mission } }),
   ),
 
   ...CYCLE_CHOICES.map(
@@ -146,7 +146,7 @@ export const mineButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('
 
 /**
  * The notifications that are a plain on/off, with nothing to choose: one tap on `notify:<key>` switches the member's DM on or off
- * (discord/subscriptions.ts). The weekly one sits under the weekly post and on the sortie board; all three are on the roles panel.
+ * (discord/subscriptions.ts). The weekly one sits on the Weeklies board; all three are on the roles panel.
  */
 export const TOGGLES = {
   weekly: {

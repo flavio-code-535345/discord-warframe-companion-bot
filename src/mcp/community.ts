@@ -56,9 +56,9 @@ export function registerCommunityTools(server: McpServer, ctx: AppContext): void
   server.registerTool(
     'send_weekly_now',
     {
-      title: 'Send the weekly reset post now',
+      title: 'Send the weekly DM now',
       description:
-        "Sends this week's reset summary right away: posted in the weekly channel (when set) and DM'd to everyone with the Weeklies role or a /track weekly subscription. The Monday post still goes out by itself; this is for a new channel or a test. Visible to the clan: confirm with the user first.",
+        "DMs this week's reset summary right away to everyone with a /track weekly subscription (the \"Weeklies by DM\" button). The Monday DM still goes out by itself; the weeklies channel shows the live Weeklies board instead. Reaches members: confirm with the user first.",
       inputSchema: {},
       annotations: WRITE,
     },

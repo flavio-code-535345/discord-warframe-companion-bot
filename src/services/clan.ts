@@ -46,7 +46,7 @@ const MESSAGE_JOBS = [
   ['alertsChannelId', 'the alerts board'],
   ['arbitrationsChannelId', 'the arbitrations board'],
   ['fissuresChannelId', 'the fissures board'],
-  ['sortieChannelId', 'the sortie and Archon board'],
+  ['weeklyChannelId', 'the Weeklies board'],
   ['cyclesChannelId', 'the cycles board'],
   ['tradersChannelId', 'the traders board'],
   ['invasionsChannelId', 'the invasions board'],

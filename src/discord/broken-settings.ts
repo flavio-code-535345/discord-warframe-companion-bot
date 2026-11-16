@@ -34,7 +34,6 @@ export const SETTING_USES: readonly SettingUse[] = [
   { key: 'alertsChannelId', what: 'the Alerts board', setup: '/setup feed' },
   { key: 'arbitrationsChannelId', what: 'the Arbitrations board', setup: '/setup feed' },
   { key: 'fissuresChannelId', what: 'the Fissures board', setup: '/setup feed' },
-  { key: 'sortieChannelId', what: 'the Sortie and Archon board', setup: '/setup feed' },
   { key: 'cyclesChannelId', what: 'the Cycles board', setup: '/setup feed' },
   { key: 'tradersChannelId', what: 'the Traders board', setup: '/setup feed' },
   { key: 'invasionsChannelId', what: 'the Invasions board', setup: '/setup feed' },
@@ -52,7 +51,7 @@ export const SETTING_USES: readonly SettingUse[] = [
   { key: 'autoVcHubChannelId', what: 'join-to-create voice rooms', setup: '/setup autovc' },
   { key: 'lfgChannelId', what: 'squads started from a board', setup: '/setup lfg' },
   { key: 'birthdayChannelId', what: 'birthday wishes', setup: '/setup birthdays' },
-  { key: 'weeklyChannelId', what: 'the weekly reset post (its DMs still go out)', setup: '/setup weekly' },
+  { key: 'weeklyChannelId', what: 'the Weeklies board (the Monday DMs still go out)', setup: '/setup feed' },
   { key: 'promoChannelId', what: 'the promo codes', setup: '/setup promos' },
   { key: 'newsChannelId', what: 'game news', setup: '/setup news' },
 ];

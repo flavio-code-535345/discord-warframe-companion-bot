@@ -49,7 +49,6 @@ export const CHANNEL_SETTINGS: { title: string; fields: ChannelSetting[] }[] = [
     title: 'Community',
     fields: [
       { key: 'birthdayChannelId', label: 'Birthdays', kind: 'channel' },
-      { key: 'weeklyChannelId', label: 'Weekly reset post', kind: 'channel' },
       { key: 'promoChannelId', label: 'Promo codes', kind: 'channel' },
       { key: 'newsChannelId', label: 'Game news', kind: 'channel' },
       { key: 'levelChannelId', label: 'Level-ups', kind: 'channel', empty: '— where the member is talking —' },

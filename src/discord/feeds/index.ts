@@ -12,9 +12,10 @@ import { cycleBoard } from './cycles.js';
 import { fissureBoard } from './fissures.js';
 import { invasionBoard } from './invasions.js';
 import { messageStats } from './parts.js';
-import { sortieBoard } from './sortie.js';
 import { traderBoard } from './traders.js';
 import type { FeedId, FeedInput } from './types.js';
+import { weeklyBoard } from './weeklies.js';
+import { clearOldWeeklies } from '../weekly.js';
 
 /**
  * The World State channels: one board per channel (discord/board.ts keeps its messages current), drawn from one snapshot of the
@@ -24,7 +25,7 @@ import type { FeedId, FeedInput } from './types.js';
  * Moving a feed to another channel, or switching it off, removes its board from the old one.
  */
 
-type ChannelKey = 'alertsChannelId' | 'arbitrationsChannelId' | 'fissuresChannelId' | 'sortieChannelId' | 'cyclesChannelId' | 'tradersChannelId' | 'invasionsChannelId';
+type ChannelKey = 'alertsChannelId' | 'arbitrationsChannelId' | 'fissuresChannelId' | 'weeklyChannelId' | 'cyclesChannelId' | 'tradersChannelId' | 'invasionsChannelId';
 
 export interface FeedDef {
   id: FeedId;
@@ -39,11 +40,11 @@ export interface FeedDef {
 }
 
 export const FEEDS: readonly FeedDef[] = [
-  { id: 'alerts', label: 'Alerts, events and Nightwave', channel: 'alertsChannelId', version: '2', needsWorldState: true, render: alertBoard },
+  { id: 'alerts', label: 'Alerts, events and Nightwave dailies', channel: 'alertsChannelId', version: '3', needsWorldState: true, render: alertBoard },
   { id: 'arbitrations', label: 'Arbitrations (schedule and tiers)', channel: 'arbitrationsChannelId', version: '4', needsWorldState: false, render: arbitrationBoard },
   { id: 'fissures', label: 'Void fissures', channel: 'fissuresChannelId', version: '2', needsWorldState: true, render: fissureBoard },
-  { id: 'sortie', label: 'Sortie, Archon Hunt and Archimedea', channel: 'sortieChannelId', version: '4', needsWorldState: true, render: sortieBoard },
-  { id: 'cycles', label: 'Open world cycles, Duviri and bounties', channel: 'cyclesChannelId', version: '3', needsWorldState: true, render: cycleBoard },
+  { id: 'weekly', label: 'Weeklies (sortie, Archon Hunt, Archimedea, honors, Circuit, Nightwave)', channel: 'weeklyChannelId', version: '1', needsWorldState: true, render: weeklyBoard },
+  { id: 'cycles', label: 'Open world cycles, Duviri and bounties', channel: 'cyclesChannelId', version: '4', needsWorldState: true, render: cycleBoard },
   { id: 'traders', label: "Baro, Darvo, Varzia and Teshin", channel: 'tradersChannelId', version: '2', needsWorldState: true, render: (i) => traderBoard(i, i.prices ?? null) },
   { id: 'invasions', label: 'Invasions', channel: 'invasionsChannelId', version: '2', needsWorldState: true, render: invasionBoard },
 ];
@@ -112,8 +113,26 @@ async function removeOldSummary(ctx: AppContext, channel: BoardChannel): Promise
   }
 }
 
+/**
+ * The sortie board had its own channel until the Weeklies board took it in: its messages are cleared once from the channel it was
+ * last drawn in (the channel itself stays), and the old setting is emptied.
+ */
+async function retireSortieBoard(ctx: AppContext, input: FeedInput): Promise<void> {
+  const prev = ctx.store.getMeta('feed_channel:sortie');
+  if (prev) {
+    const ch = await getSendableChannel(ctx, prev).catch(() => null);
+    if (ch) {
+      await clearBoard(ctx, ch as unknown as BoardChannel, 'feed:sortie');
+      await removeNote(ctx, ch as unknown as BoardChannel);
+    }
+    ctx.store.setMeta('feed_channel:sortie', '');
+  }
+  if (input.settings.sortieChannelId) ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, { sortieChannelId: null });
+}
+
 /** One round: every board brought up to date. `wsFailed`: the world state could not be read. */
 export async function syncFeeds(ctx: AppContext, input: FeedInput, opts: { wsFailed?: boolean } = {}): Promise<void> {
+  await retireSortieBoard(ctx, input).catch((err) => console.warn('[feeds] could not retire the sortie board:', err instanceof Error ? err.message : err));
   for (const def of FEEDS) {
     const channelId = input.settings[def.channel];
     const h: FeedHealth = { channelId, at: input.now, action: null, error: null, maxText: 0, maxComponents: 0 };
@@ -141,6 +160,11 @@ export async function syncFeeds(ctx: AppContext, input: FeedInput, opts: { wsFai
 
       const channel = (await getSendableChannel(ctx, channelId)) as unknown as BoardChannel;
       if (def.id === 'alerts') await removeOldSummary(ctx, channel);
+      // The Monday posts from before the live Weeklies board: deleted once per channel.
+      if (def.id === 'weekly' && ctx.client.user && !ctx.store.getMeta(`weekly_posts_cleared:${channelId}`)) {
+        await clearOldWeeklies(channel as never, ctx.client.user.id);
+        ctx.store.setMeta(`weekly_posts_cleared:${channelId}`, '1');
+      }
       // The note that pinged a role under the board, from when boards did that: removed once.
       await removeNote(ctx, channel);
 

@@ -53,21 +53,35 @@ function eventBlock(ev: WorldEvent): string {
   return lines.filter(Boolean).join('\n');
 }
 
+type Act = NonNullable<NonNullable<WorldState['nightwave']>['activeChallenges']>[number];
+const actBlock = (title: string, list: Act[]) =>
+  list.length ? `${title}\n${list.map((c) => `**${c.title}** · ${c.desc} · ${num(c.reputation)}${c.isDaily ? ` · ${discordTime(c.expiry, 'R')}` : ''}`).join('\n')}` : null;
+
+/** The daily Nightwave challenges (the weekly and elite ones are on the Weeklies board, `nightwaveWeeklyPart`). */
 function nightwavePart(ws: WorldState, now: number): Part[] {
   const nw = ws.nightwave;
   const acts = (nw?.activeChallenges ?? []).filter((c) => toMs(c.expiry) > now);
   if (!nw || !acts.length) return [`## ${e('nightwave')} Nightwave\nNightwave is not running right now.`];
-  const block = (title: string, list: typeof acts) =>
-    list.length ? `### ${title}\n${list.map((c) => `**${c.title}** · ${c.desc} · ${num(c.reputation)}${c.isDaily ? ` · ${discordTime(c.expiry, 'R')}` : ''}`).join('\n')}` : null;
-  const weekly = acts.filter((c) => !c.isDaily && !c.isElite);
-  const elite = acts.filter((c) => c.isElite);
-  const weeklyEnds = [...weekly, ...elite].map((c) => toMs(c.expiry)).sort((a, b) => a - b)[0];
+  const daily = acts.filter((c) => c.isDaily);
   return [
-    section(`## ${e('nightwave')} Nightwave · season ${nw.season}\n-# Season ends ${discordTime(nw.expiry, 'D')}${weeklyEnds ? ` · weekly acts reset ${discordTime(weeklyEnds, 'R')}` : ''}`, emojiUrl('nightwave')),
+    section(`## ${e('nightwave')} Nightwave · season ${nw.season}\n-# Season ends ${discordTime(nw.expiry, 'D')} · the weekly challenges are in the weeklies channel`, emojiUrl('nightwave')),
     DIVIDER,
-    block('Daily', acts.filter((c) => c.isDaily)),
-    block('Weekly', weekly),
-    block('Elite weekly', elite),
+    actBlock('### Daily', daily) ?? 'No daily challenges right now.',
+  ];
+}
+
+/** This week's Nightwave challenges, the weekly and the elite ones (the Weeklies board's); null when there are none. */
+export function nightwaveWeeklyPart(ws: WorldState, now: number): Part[] | null {
+  const nw = ws.nightwave;
+  const acts = (nw?.activeChallenges ?? []).filter((c) => toMs(c.expiry) > now && !c.isDaily);
+  if (!nw || !acts.length) return null;
+  const weekly = acts.filter((c) => !c.isElite);
+  const elite = acts.filter((c) => c.isElite);
+  const ends = acts.map((c) => toMs(c.expiry)).sort((x, y) => x - y)[0]!;
+  return [
+    `### ${e('nightwave')} Nightwave this week · season ${nw.season}\n-# The weekly challenges reset ${discordTime(ends, 'R')}`,
+    actBlock('**Weekly**', weekly),
+    actBlock(`**${e('star')} Elite weekly**`, elite),
   ];
 }
 

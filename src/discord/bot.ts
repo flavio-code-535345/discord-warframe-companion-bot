@@ -24,7 +24,6 @@ import { handleRivenMessage } from '../rivens/channel.js';
 import { handleSsMessage } from '../ssroles/service.js';
 import { stickyKeeper } from '../sticky/service.js';
 import { checkSettings, reportDeletedChannel, reportDeletedRole } from './broken-settings.js';
-import { greyOldWeeklies } from './weekly.js';
 import { isClanMember, isDmInteraction, syncDmCommands } from './dm-commands.js';
 import { handleChatMessage } from './chat.js';
 import { syncChatTopic } from './chat-topic.js';
@@ -112,8 +111,6 @@ export function attachHandlers(ctx: AppContext): void {
     await convertPingRoles(ctx).catch((err) => console.error('[ping-roles] the move to DM notifications failed:', err));
     // What was deleted while Ordis was offline: the settings that pointed at it are cleared and the staff are told.
     await checkSettings(ctx).catch((err) => console.error('[settings] the check for deleted channels failed:', err));
-    // The weekly posts that a newer one replaced turn grey (also the ones from before that was done at posting time).
-    await greyOldWeeklies(ctx).catch((err) => console.error('[weekly] greying the older posts failed:', err));
   });
 
   // A channel, category or role Ordis uses was deleted: say what is off because of it (discord/broken-settings.ts).

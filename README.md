@@ -227,11 +227,11 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 
 | Board | What it shows | DMs its menu offers |
 | --- | --- | --- |
-| Alerts | Alerts with reward, node and levels; events with progress and interim rewards; Nightwave | Anything worth running (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …), or one reward by name |
+| Alerts | Alerts with reward, node and levels; events with progress and interim rewards; the daily Nightwave challenges | Anything worth running (Forma, Catalysts, Reactors, Wraith/Vandal parts, Nitain, 100,000+ Kuva, …), or one reward by name |
 | Arbitrations | The one running now, the next 48 hours and the best of the week, each with its S–F tier; "Plan ahead" lists S/A tier hours two weeks ahead | A tier or better (S, A, B) or a mission type, 10 minutes before the hour starts |
 | Fissures | Normal, Steel Path and Void Storms, by relic tier | Steel Path by tier, Void Storms, Omnia and Requiem, quick missions (Capture, Extermination, …), and "crack now" for your own relics (with AlecaFrame linked) |
-| Sortie and Archon | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors | The daily sortie (or only one with a mission type), the Archon Hunt, the weekly reset summary |
-| Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, the Circuit, bounties | A state starting: Cetus night, a warm Orb Vallis, Fass or Vome, … |
+| Weeklies | The sortie, the Archon Hunt and its shard, Deep/Temporal Archimedea, Steel Path honors, the Duviri Circuit (with the Incarnon weapon button), the weekly and elite Nightwave challenges | The daily sortie (or only one with a mission type), the Archon Hunt, the weekly reset summary by DM |
+| Cycles | Every open world with its next changes (Eidolon nights, warm Orb Vallis), Duviri, bounties | A state starting: Cetus night, a warm Orb Vallis, Fass or Vome, … |
 | Traders | Baro Ki'Teer's whole inventory with ducats and credits and, within minutes of his arrival, what each item sells for on warframe.market (plat per ducat, the best resale); Darvo's deal, Varzia's Prime Resurgence, Teshin | Baro's arrival, Umbra Forma |
 | Invasions | Every invasion with both rewards and its progress | Anything worth running, or one reward by name |
 
@@ -239,7 +239,7 @@ page). Only the messages that changed are edited, so the channels stay quiet:
 typing a command. The Arbitration schedule and tiers come from [browse.wf](https://browse.wf) (the world state itself from
 warframestat.us); Digital Extremes' servers are never called.
 
-A few more channels can be set up the same way: the weekly reset post (`/setup weekly`, also DM'd to whoever asked for it; the older posts turn grey with an "Outdated" note when a new one comes),
+Every Monday the weekly reset summary is DM'd to whoever asked for it ("Weeklies by DM"). A few more channels can be set up the same way:
 game news from the in-game news panel and Warframe's Steam announcements, plus a post whenever prime sets and their relics
 are vaulted, come back or are new (`/setup news`), the active promo codes from the
 wiki, newest first: each code is a link that fills it in on warframe.com, with a short line of what it gives, the date it

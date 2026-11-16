@@ -151,7 +151,6 @@ describe('weekly reset post', () => {
     assert.match(text, /\*\*1\\\. /, 'the mission number escapes its dot');
     assert.match(text, /Umbra Forma Blueprint/);
     assert.doesNotMatch(text, /Weeklies by DM/, 'no button in a DM');
-    assert.match(componentText([weeklyCard(ws(monday), monday, monday + 600_000, true)]), /\[Weeklies by DM\] \[Incarnon weapon\]$/, 'the channel post ends with the button');
   });
 });
 
@@ -230,7 +229,7 @@ describe('weekly reset DMs', () => {
     return { c, store, posted, dms };
   }
 
-  it('DMs everyone who asked for it once, besides the channel post', async () => {
+  it('DMs everyone who asked for it once, and posts nothing in the weekly channel (the live board is there)', async () => {
     const { c, store, posted, dms } = setup();
     store.updateSettings(G, { weeklyChannelId: 'weekly' });
     store.createTracker(G, 'one', JSON.stringify({ kind: 'weekly' }));
@@ -238,13 +237,13 @@ describe('weekly reset DMs', () => {
     store.createTracker(G, 'two', JSON.stringify({ kind: 'baro' }));
     store.createTracker(G, 'other', JSON.stringify({ kind: 'sortie' }));
     await postWeeklyReset(c, ws, monday + 600_000);
-    assert.equal(posted.length, 1);
+    assert.equal(posted.length, 0);
     assert.deepEqual(dms.sort(), ['one', 'two']);
     await postWeeklyReset(c, ws, monday + 3_600_000);
     assert.equal(dms.length, 2, 'once per week');
   });
 
-  it('sends the DMs even without a channel', async () => {
+  it('sends the DMs without a weekly channel', async () => {
     const { c, store, posted, dms } = setup();
     store.createTracker(G, 'subscriber', JSON.stringify({ kind: 'weekly' }));
     await postWeeklyReset(c, ws, monday + 600_000);

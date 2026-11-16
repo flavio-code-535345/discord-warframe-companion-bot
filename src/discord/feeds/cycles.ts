@@ -4,15 +4,15 @@ import { CETUS, DUVIRI_MOODS, DUVIRI_MOOD_MS, VALLIS, projectCycles } from '../.
 import { type WorldState, bountyStanding } from '../../warframe/worldstate.js';
 import { BOUNTY_SYNDICATES } from '../embeds.js';
 import { cycleEmoji, e, emojiFor, emojiUrl } from '../emoji.js';
-import { buttonRow, incarnonButton, mineButton, notifyRow } from './controls.js';
+import { buttonRow, mineButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, cap, card, num, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
 
 /**
  * 🌗┃cycles: the open worlds with their state, when it changes and the next times worth planning around (Eidolon nights, warm Orb
  * Vallis), all worked out from the fixed phase lengths (warframe/cycles.ts), so they are right between world state reads. The second
- * message is this week's Duviri Circuit with the "Incarnon weapon" button right under it, and the bounties of each syndicate, with a
- * menu that shows one syndicate's bounties in full.
+ * message is the bounties of each syndicate, with a menu that shows one syndicate's bounties in full. The weekly Duviri Circuit is on
+ * the Weeklies board (weeklies.ts).
  */
 
 const COLOR = { worlds: 0x0f766e, duviri: 0x7c3aed } as const;
@@ -51,7 +51,8 @@ export function worldLines(ws: WorldState, now: number): string[] {
   return out;
 }
 
-function circuitPart(ws: WorldState, now: number): Part {
+/** This week's Duviri Circuit (shown on the Weeklies board). */
+export function circuitPart(ws: WorldState, now: number): Part {
   const d = ws.duviriCycle as { choices?: { category?: string; choices?: string[] }[] } | undefined;
   const normal = d?.choices?.find((c) => c.category === 'normal')?.choices ?? [];
   const hard = d?.choices?.find((c) => c.category === 'hard')?.choices ?? [];
@@ -97,7 +98,7 @@ export function cycleBoard(input: FeedInput): ContainerBuilder[][] {
   const { ws, now } = input;
   if (!ws) {
     const off = 'The world state is not available right now.';
-    return [[card(COLOR.worlds, [`## ${e('cycle')} Open worlds`, off])], [card(COLOR.duviri, [`## ${e('duviri')} Duviri and bounties`, off, DIVIDER, notifyRow('cycles'), buttonRow(incarnonButton(), mineButton())])]];
+    return [[card(COLOR.worlds, [`## ${e('cycle')} Open worlds`, off])], [card(COLOR.duviri, [`## ${e('duviri')} Duviri and bounties`, off, DIVIDER, notifyRow('cycles'), buttonRow(mineButton())])]];
   }
   let worlds: string[] = [];
   try {
@@ -105,20 +106,15 @@ export function cycleBoard(input: FeedInput): ContainerBuilder[][] {
   } catch (err) {
     console.warn('[feeds] cycles skipped:', (err as Error).message);
   }
-  // The "Incarnon weapon" button sits right under the Circuit's Incarnon line; without a Circuit it waits in the bottom row.
-  const circuit = circuitPart(ws, now);
   return [
     [card(COLOR.worlds, [section(`## ${e('cycle')} Open worlds\n-# Worked out from the fixed cycle lengths, so they stay right between updates.`, emojiUrl('cycle')), DIVIDER, worlds.join('\n') || 'No cycle data right now.'])],
     [
       card(COLOR.duviri, [
-        circuit,
-        circuit ? buttonRow(incarnonButton()) : null,
-        DIVIDER,
         ...bountiesPart(ws),
         input.stale ? `-# ${STALE_NOTE}` : null,
         DIVIDER,
         notifyRow('cycles', '🔔 DM me when it turns…'),
-        circuit ? buttonRow(mineButton()) : buttonRow(incarnonButton(), mineButton()),
+        buttonRow(mineButton()),
       ]),
     ],
   ];

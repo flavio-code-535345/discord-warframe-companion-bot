@@ -9,7 +9,6 @@ import type { Command } from '../command.js';
 import { COLORS } from '../embeds.js';
 import { syncChatTopic } from '../chat-topic.js';
 import { FEEDS, feedDef } from '../feeds/index.js';
-import { skipCurrentWeek } from '../weekly.js';
 
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement] as const;
 
@@ -49,7 +48,6 @@ export function settingsEmbed(s: GuildSettings, flags: Flags): EmbedBuilder {
       { name: 'Birthdays', value: ch(s.birthdayChannelId), inline: true },
       { name: 'Promo codes', value: ch(s.promoChannelId), inline: true },
       { name: 'Game news', value: ch(s.newsChannelId), inline: true },
-      { name: 'Weekly reset post', value: ch(s.weeklyChannelId), inline: true },
       { name: 'Honeypot', value: s.honeypotChannelId ? `${ch(s.honeypotChannelId)} · ${honeypotAction(s.honeypotAction)}` : '*off*' },
       {
         name: 'Ordis chat channel',
@@ -181,12 +179,6 @@ export const setup: Command = {
     )
     .addSubcommand((s) =>
       s
-        .setName('weekly')
-        .setDescription('Where Ordis posts what the Monday reset brought (Archon Hunt, Circuit, Nightwave, Steel Path)')
-        .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
-    )
-    .addSubcommand((s) =>
-      s
         .setName('news')
         .setDescription('Channel for new game news: in-game news (updates, Prime Access, Devstreams) and Steam announcements')
         .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
@@ -222,7 +214,6 @@ export const setup: Command = {
               { name: 'Join-to-create voice', value: 'autovc' },
               { name: 'Squads channel', value: 'lfg' },
               { name: 'Birthdays', value: 'birthdays' },
-              { name: 'Weekly reset post', value: 'weekly' },
               { name: 'Promo codes', value: 'promos' },
               { name: 'Game news', value: 'news' },
             ),
@@ -273,10 +264,6 @@ export const setup: Command = {
         break;
       case 'news':
         settings = ctx.store.updateSettings(guildId, { newsChannelId: channelId() });
-        break;
-      case 'weekly':
-        skipCurrentWeek(ctx);
-        settings = ctx.store.updateSettings(guildId, { weeklyChannelId: channelId() });
         break;
       case 'auditlog':
         settings = ctx.store.updateSettings(guildId, { auditLogChannelId: channelId() });
@@ -367,10 +354,6 @@ export const setup: Command = {
         }
         if (feature === 'promos') {
           settings = ctx.store.updateSettings(guildId, { promoChannelId: null });
-          break;
-        }
-        if (feature === 'weekly') {
-          settings = ctx.store.updateSettings(guildId, { weeklyChannelId: null });
           break;
         }
         if (feature === 'levels') {

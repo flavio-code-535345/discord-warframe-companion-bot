@@ -3,7 +3,7 @@ import type { ArbitrationData, ArbitrationView } from '../../warframe/arbitratio
 import type { WorldState } from '../../warframe/worldstate.js';
 
 /** The World State channels, one board each. */
-export const FEED_IDS = ['alerts', 'arbitrations', 'fissures', 'sortie', 'cycles', 'traders', 'invasions'] as const;
+export const FEED_IDS = ['alerts', 'arbitrations', 'fissures', 'weekly', 'cycles', 'traders', 'invasions'] as const;
 export type FeedId = (typeof FEED_IDS)[number];
 
 /** Plat prices per item name (any case), when the market read has them; the traders board shows plat per ducat with them. */

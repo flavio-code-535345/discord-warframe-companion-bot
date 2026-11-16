@@ -90,7 +90,9 @@ export async function handleFeedButton(interaction: ButtonInteraction, ctx: AppC
 }
 
 export async function handleFeedSelect(interaction: StringSelectMenuInteraction, ctx: AppContext): Promise<void> {
-  const [, action, feed] = interaction.customId.split(':');
+  const [, action, rawFeed] = interaction.customId.split(':');
+  // A menu on an old sortie board message (the Weeklies board took it in) still works.
+  const feed = rawFeed === 'sortie' ? 'weekly' : rawFeed;
   const guildId = ctx.config.DISCORD_GUILD_ID;
   const userId = interaction.user.id;
 

@@ -499,7 +499,7 @@ describe('keeping the boards in their channels', () => {
     const { ctx, store, add } = fakeServer();
     add('c-broken', { failSend: true });
     const cycles = add('c-cycles');
-    store.updateSettings(G, { sortieChannelId: 'c-broken', cyclesChannelId: 'c-cycles' });
+    store.updateSettings(G, { weeklyChannelId: 'c-broken', cyclesChannelId: 'c-cycles' });
     const errors = console.error;
     console.error = () => {};
     try {
@@ -507,7 +507,7 @@ describe('keeping the boards in their channels', () => {
     } finally {
       console.error = errors;
     }
-    assert.match(feedHealth().sortie!.error ?? '', /Missing Permissions/);
+    assert.match(feedHealth().weekly!.error ?? '', /Missing Permissions/);
     assert.equal(cycles.log.filter((l) => l.startsWith('send')).length, 2);
   });
 });
@@ -617,7 +617,7 @@ describe('the boards\' controls', () => {
   });
 });
 
-describe('the sortie and cycles boards', () => {
+describe('the Weeklies and cycles boards', () => {
   before(() => loadEmojis(everyEmoji()));
   after(() => loadEmojis([]));
 
@@ -650,31 +650,33 @@ describe('the sortie and cycles boards', () => {
     return { ...ws, archonHunt: { ...ws.archonHunt, boss } } as unknown as WorldState;
   };
   const archonSection = (ws: WorldState, store: Store) =>
-    (tree(board('sortie', store, { ws })[0]![0]!).components ?? []).find((p) => p.type === 9 && (p.components?.[0]?.content ?? '').includes('Archon Hunt'))!;
+    (tree(board('weekly', store, { ws })[0]![0]!).components ?? []).find((p) => p.type === 9 && (p.components?.[0]?.content ?? '').includes('Archon Hunt'))!;
 
-  it('put the Incarnon weapon button right under the Duviri Circuit, else in the bottom row', () => {
+  it('put the Incarnon weapon button right under the Duviri Circuit on the Weeklies board, with the Nightwave weeklies below', () => {
     const store = new Store(':memory:');
-    const duviri = board('cycles', store)[1]![0]!;
-    const l = layout(duviri);
+    const messages = board('weekly', store);
+    assert.equal(messages.length, 3, 'sortie and Archon, Archimedea and honors, Circuit and Nightwave');
+    const last = messages[2]![0]!;
+    const l = layout(last);
     assert.match(l[0]!, /Duviri Circuit/);
     assert.equal(l[1], 'feeds:incarnon', 'right under the Circuit');
-    assert.equal(l.at(-1), 'feeds:mine', '"My notifications" alone at the bottom');
-    assert.equal(incarnons(duviri), 1);
-    const noCircuit = { ...busyWorld(NOW), duviriCycle: { ...(busyWorld(NOW).duviriCycle as object), choices: [] } } as unknown as WorldState;
-    for (const over of [{ ws: noCircuit }, { ws: null }] as Partial<FeedInput>[]) {
-      const c = board('cycles', store, over)[1]![0]!;
-      assert.equal(layout(c).at(-1), 'feeds:incarnon feeds:mine', 'no Circuit: the bottom row');
-      assert.equal(incarnons(c), 1);
-    }
+    assert.ok(l.includes('notify:weekly feeds:mine'), 'Weeklies by DM and My notifications');
+    assert.ok(texts(last).some((t) => /Nightwave this week/.test(t)), 'the weekly Nightwave challenges');
+    assert.equal(messages.flat().reduce((n, c) => n + incarnons(c), 0), 1, 'one Incarnon button on the board');
+    const off = board('weekly', store, { ws: null });
+    assert.equal(off.length, 3);
+    assert.ok(layout(off[2]![0]!).includes('notify:weekly feeds:mine'), 'the controls stay without a world state');
   });
 
-  it('keep the Incarnon button off the sortie board', () => {
+  it('keep the Circuit and the Incarnon button off the cycles board, and the Nightwave weeklies off the alerts board', () => {
     const store = new Store(':memory:');
     for (const over of [{}, { ws: null }] as Partial<FeedInput>[]) {
-      const messages = board('sortie', store, over);
-      assert.ok(layout(messages[1]![0]!).includes('notify:weekly feeds:mine'));
+      const messages = board('cycles', store, over);
       assert.equal(messages.flat().reduce((n, c) => n + incarnons(c), 0), 0);
+      assert.ok(!messages.flat().some((c) => texts(c).some((t) => /Duviri Circuit/.test(t))));
     }
+    const alerts = board('alerts', store).flat().flatMap((c) => texts(c)).join('\n');
+    assert.doesNotMatch(alerts, /Elite weekly|### Weekly/);
   });
 
   it('show the shard the archon drops as the Archon Hunt picture, with its missions beside it', () => {
@@ -704,7 +706,7 @@ describe('the sortie and cycles boards', () => {
 
   it('escape the dot of numbered mission lines so Discord does not read them as a list', () => {
     const store = new Store(':memory:');
-    const all = board('sortie', store).flat().flatMap((c) => texts(c)).join('\n');
+    const all = board('weekly', store).flat().flatMap((c) => texts(c)).join('\n');
     assert.match(all, /\*\*1\\\. Extermination\*\* · Longnamednode1/);
     assert.ok(all.includes('**1\\. Capture** · Fortified Foes'));
     assert.doesNotMatch(all, /\*\*\d\. /);

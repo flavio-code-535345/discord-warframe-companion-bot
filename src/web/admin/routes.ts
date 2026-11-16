@@ -30,7 +30,6 @@ import {
 } from './auth.js';
 import { syncChatTopic } from '../../discord/chat-topic.js';
 import { FEEDS } from '../../discord/feeds/index.js';
-import { skipCurrentWeek } from '../../discord/weekly.js';
 import { registerMessagesRoutes } from './messages-page.js';
 import { CHANNEL_SETTINGS, registerOverviewRoutes } from './overview-page.js';
 import { registerRivenRoutes } from './riven-page.js';
@@ -270,8 +269,6 @@ ${s.honeypotChannelId ? `<p>${actionButton(p.session, '/admin/settings/honeypot/
         if (v !== before[f.key]) changed.push({ name: f.label, value: v ? (f.kind === 'role' ? `<@&${v}>` : `<#${v}>`) : 'off' });
       }
       if (patch.chatChannelId !== undefined) assertChannelFree(ctx, { chatChannelId: patch.chatChannelId });
-      // A new weekly channel starts with the next Monday, like /setup weekly, instead of posting this week's reset late.
-      if (patch.weeklyChannelId && patch.weeklyChannelId !== before.weeklyChannelId) skipCurrentWeek(ctx);
       store.updateSettings(guildId, patch);
       void syncChatTopic(ctx);
       if (changed.length) await audit(session, 'Changed bot channel settings', changed);

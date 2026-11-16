@@ -25,7 +25,6 @@ import { COLORS } from '../discord/embeds.js';
 import { componentText } from '../discord/feeds/parts.js';
 import { brandIcon } from '../discord/identity.js';
 import { postWelcome } from '../discord/welcome.js';
-import { skipCurrentWeek } from '../discord/weekly.js';
 import { own } from '../own.js';
 import { UserError, assertChannelFree } from '../services/clan.js';
 import { READ_ONLY, snowflake, tool } from './util.js';
@@ -46,7 +45,6 @@ const SETTING_CHANNEL_KINDS: Record<string, { types: ChannelType[]; label: strin
   alerts_channel_id: TEXT_CHANNEL,
   arbitrations_channel_id: TEXT_CHANNEL,
   fissures_channel_id: TEXT_CHANNEL,
-  sortie_channel_id: TEXT_CHANNEL,
   cycles_channel_id: TEXT_CHANNEL,
   traders_channel_id: TEXT_CHANNEL,
   invasions_channel_id: TEXT_CHANNEL,
@@ -779,12 +777,11 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
     {
       title: "Set the bot's channels",
       description:
-        'Points the bot at channels: the seven World State boards (alerts, arbitrations, fissures, sortie, cycles, traders, invasions; one live board per channel, a channel holds one), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the squads channel, the birthday channel, the weekly reset post channel, the promo codes channel and the game news channel. null turns one off. There are no ping roles: every notification is a DM a member asked for.',
+        'Points the bot at channels: the seven World State boards (alerts, arbitrations, fissures, weeklies, cycles, traders, invasions; one live board per channel, a channel holds one), announcements & events, welcome messages, the Ordis chat channel, the moderation log, the audit log, the staff status-report channel, the level-up channel, the honeypot trap channel (+ its action), the riven scanning channel, the squads channel, the birthday channel, the promo codes channel and the game news channel. null turns one off. There are no ping roles: every notification is a DM a member asked for.',
       inputSchema: {
         alerts_channel_id: snowflake.nullable().optional().describe('World State board: alerts, Gifts of the Lotus, events and Nightwave'),
         arbitrations_channel_id: snowflake.nullable().optional().describe('World State board: the Arbitration now, the next 48 hours with tiers and the best of the week'),
         fissures_channel_id: snowflake.nullable().optional().describe('World State board: normal, Steel Path and Void Storm fissures by relic tier'),
-        sortie_channel_id: snowflake.nullable().optional().describe('World State board: sortie, Archon Hunt, Archimedeas and Steel Path honors'),
         cycles_channel_id: snowflake.nullable().optional().describe('World State board: open world cycles with their next changes, the Duviri Circuit and bounties'),
         traders_channel_id: snowflake.nullable().optional().describe("World State board: Baro Ki'Teer, Darvo, Varzia's Prime Resurgence and Teshin"),
         invasions_channel_id: snowflake.nullable().optional().describe('World State board: every invasion with both rewards and its progress'),
@@ -803,7 +800,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
         lfg_channel_id: snowflake.nullable().optional().describe('Where a squad is posted when its activity has no channel of its own; /lfg itself posts where it is used'),
         birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
-        weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
+        weekly_channel_id: snowflake.nullable().optional().describe('World State board: Weeklies (sortie, Archon Hunt, Archimedea, Steel Path honors, Duviri Circuit, Nightwave weeklies); the Monday DM to subscribers goes out regardless'),
         promo_channel_id: snowflake.nullable().optional().describe('Channel with the active promo codes from the wiki, updated once a day; the list appears within a minute'),
         news_channel_id: snowflake.nullable().optional().describe('Channel for new game news: in-game news (updates, Prime Access, Devstreams) and Warframe Steam announcements. The first read only records what exists; new posts follow'),
       },
@@ -826,7 +823,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         alertsChannelId: args.alerts_channel_id,
         arbitrationsChannelId: args.arbitrations_channel_id,
         fissuresChannelId: args.fissures_channel_id,
-        sortieChannelId: args.sortie_channel_id,
+        weeklyChannelId: args.weekly_channel_id,
         cyclesChannelId: args.cycles_channel_id,
         tradersChannelId: args.traders_channel_id,
         invasionsChannelId: args.invasions_channel_id,
@@ -835,7 +832,6 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         ...(args.alerts_channel_id !== undefined ? { alertsChannelId: args.alerts_channel_id } : {}),
         ...(args.arbitrations_channel_id !== undefined ? { arbitrationsChannelId: args.arbitrations_channel_id } : {}),
         ...(args.fissures_channel_id !== undefined ? { fissuresChannelId: args.fissures_channel_id } : {}),
-        ...(args.sortie_channel_id !== undefined ? { sortieChannelId: args.sortie_channel_id } : {}),
         ...(args.cycles_channel_id !== undefined ? { cyclesChannelId: args.cycles_channel_id } : {}),
         ...(args.traders_channel_id !== undefined ? { tradersChannelId: args.traders_channel_id } : {}),
         ...(args.invasions_channel_id !== undefined ? { invasionsChannelId: args.invasions_channel_id } : {}),
@@ -869,7 +865,6 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
       } else if (args.riven_channel_id === null) {
         disableRivenChannel(ctx);
       }
-      if (args.weekly_channel_id) skipCurrentWeek(ctx);
       const saved = ctx.store.updateSettings(ctx.config.DISCORD_GUILD_ID, patch);
       if (args.chat_channel_id) void syncChatTopic(ctx);
       return saved;
