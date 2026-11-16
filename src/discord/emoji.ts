@@ -268,10 +268,15 @@ const SHARDS: Record<string, EmojiName> = {
   emerald: 'shardEmerald',
 };
 
+/** The logical name of an archon shard's emoji by its colour (`shardAmber` for "Amber"), or undefined for a colour it does not know. */
+export function shardEmojiName(colour: string | null | undefined): EmojiName | undefined {
+  const key = Object.keys(SHARDS).find((k) => String(colour ?? '').toLowerCase().includes(k));
+  return key ? SHARDS[key] : undefined;
+}
+
 /** The emoji of an archon shard by its colour, or of the Archon Hunt itself. */
 export function shardEmoji(colour: string | null | undefined): string {
-  const key = Object.keys(SHARDS).find((k) => String(colour ?? '').toLowerCase().includes(k));
-  return e(key ? SHARDS[key]! : 'archon');
+  return e(shardEmojiName(colour) ?? 'archon');
 }
 
 /** Emojis for the rewards Ordis recognises in a reward text ("Forma Blueprint", "3x Orokin Catalyst", "200,000 Kuva"). */

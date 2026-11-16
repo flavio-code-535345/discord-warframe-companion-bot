@@ -13,6 +13,12 @@ export const DM_COMMAND_NAMES: ReadonlySet<string> = new Set(['now', 'wf', 'item
 /** The menus a DM command's reply can carry (`/track` pickers, the wishlist card). */
 const DM_COMPONENT_PREFIXES = ['trackpick:', 'wish:'];
 
+/**
+ * Buttons that old messages in a DM still carry although they are gone, let through so the member is told so instead of seeing
+ * "This interaction failed": `feeds:squad`, the Arbitration "Squad up" on `/now` cards from before 2026-11-16.
+ */
+const DM_RETIRED_BUTTONS: ReadonlySet<string> = new Set(['feeds:squad']);
+
 /** The global commands: the DM-safe ones, for the bot's DM only (the server keeps its own guild-scoped copies, so nothing shows twice). */
 export function dmCommandData(commands: readonly Command[]): Command['data'][] {
   return commands
@@ -56,9 +62,10 @@ export async function isClanMember(ctx: Pick<AppContext, 'client' | 'config'>, u
 /** Forgets what was cached (tests). */
 export const clearMemberCache = (): void => memberCache.clear();
 
-/** Whether a DM interaction is one of the DM commands (or a menu its reply carries). */
+/** Whether a DM interaction is one of the DM commands (or a menu its reply carries, or a retired button an old reply still shows). */
 export function isDmInteraction(interaction: Interaction): boolean {
   if (interaction.isChatInputCommand() || interaction.isAutocomplete()) return DM_COMMAND_NAMES.has(interaction.commandName);
   if (interaction.isStringSelectMenu()) return DM_COMPONENT_PREFIXES.some((p) => interaction.customId.startsWith(p));
+  if (interaction.isButton()) return DM_RETIRED_BUTTONS.has(interaction.customId);
   return false;
 }

@@ -6,7 +6,7 @@ import { projectCycles } from '../warframe/cycles.js';
 import { quickFissures } from '../warframe/fissures.js';
 import { type Fissure, type WorldState, getWorldState, groupAlerts, isBaroHere, isNotableReward, rewardText, worldStateEnabled } from '../warframe/worldstate.js';
 import { cycleEmoji, e, factionTag, rewardEmoji, tierEmoji } from './emoji.js';
-import { squadButton, tierBadge } from './feeds/arbitrations.js';
+import { tierBadge } from './feeds/arbitrations.js';
 import { buttonRow } from './feeds/controls.js';
 import { feedInput } from './feeds/index.js';
 import { CARD_TEXT_BUDGET, DIVIDER, type Part, card, fit, nodeName, planetOf } from './feeds/parts.js';
@@ -163,7 +163,6 @@ export function nowCard(input: FeedInput, opts: { personal?: string[] } = {}): C
     DIVIDER,
     footer,
     buttonRow(
-      settings.lfgChannelId && input.arby.current ? squadButton() : null,
       boardLink(settings.guildId, settings.arbitrationsChannelId, 'Arbitrations'),
       boardLink(settings.guildId, settings.fissuresChannelId, 'Fissures'),
       boardLink(settings.guildId, settings.alertsChannelId, 'Alerts'),

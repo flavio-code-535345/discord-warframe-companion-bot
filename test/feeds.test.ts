@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import {
   ActionRowBuilder,
   ButtonBuilder,
+  type ButtonInteraction,
   ButtonStyle,
   type MessageActionRowComponentBuilder,
   StringSelectMenuBuilder,
@@ -11,11 +12,11 @@ import {
 import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
 import { BOUNTY_SYNDICATES } from '../src/discord/embeds.js';
-import { EMOJI, loadEmojis } from '../src/discord/emoji.js';
+import { EMOJI, emojiUrl, loadEmojis } from '../src/discord/emoji.js';
 import { noteKey } from '../src/discord/board.js';
 import { planMessage } from '../src/discord/feeds/arbitrations.js';
 import { TRACK_OPTIONS, notifyRow, sameSpec } from '../src/discord/feeds/controls.js';
-import { handleFeedSelect } from '../src/discord/feeds/handlers.js';
+import { handleFeedButton, handleFeedSelect } from '../src/discord/feeds/handlers.js';
 import { FEEDS, feedHealth, feedOfChannel, syncFeeds } from '../src/discord/feeds/index.js';
 import { card, compact, componentText, fit, messageStats } from '../src/discord/feeds/parts.js';
 import { FEED_IDS, type FeedInput } from '../src/discord/feeds/types.js';
@@ -600,6 +601,113 @@ describe('the boards\' controls', () => {
     assert.doesNotMatch(sa, /Casta/, 'no B tier node in the S and A list');
     assert.match(JSON.stringify(planMessage(arbyData, NOW, 'b7').toJSON()), /B tier or better/);
     assert.match(JSON.stringify(planMessage(null, NOW).toJSON()), /can not be read right now/);
+  });
+
+  it('offer no Squad up on the Arbitration board, even with a squad channel and an Arbitration running', () => {
+    const store = new Store(':memory:');
+    store.updateSettings(G, { lfgChannelId: 'c-lfg' });
+    const json = JSON.stringify(FEEDS.find((f) => f.id === 'arbitrations')!.render(inputFor(store)).map((m) => m.map((c) => c.toJSON())));
+    assert.ok(!json.includes('feeds:squad') && !json.includes('Squad up'), 'removed at the owner\'s request');
+    assert.ok(json.includes('feeds:plan') && json.includes('feeds:mine'), 'the other controls stay');
+  });
+
+  it('answer a leftover Squad up from before with a pointer to /lfg', async () => {
+    const { ctx } = fakeServer();
+    await assert.rejects(handleFeedButton({} as unknown as ButtonInteraction, ctx, 'squad'), /removed.*\/lfg/);
+  });
+});
+
+describe('the sortie and cycles boards', () => {
+  before(() => loadEmojis(everyEmoji()));
+  after(() => loadEmojis([]));
+
+  type Comp = { type: number; content?: string; custom_id?: string; components?: Comp[]; accessory?: { media?: { url?: string } } };
+  type Built = { toJSON(): unknown };
+  const tree = (c: Built) => c.toJSON() as Comp;
+  /** A card as one line per part: a row as its custom ids, a separator as ---, a text or a section as its first line. */
+  const layout = (c: Built) =>
+    (tree(c).components ?? []).map((p) =>
+      p.type === 1
+        ? (p.components ?? []).map((b) => b.custom_id).join(' ')
+        : p.type === 14
+          ? '---'
+          : (p.type === 9 ? (p.components?.[0]?.content ?? '') : (p.content ?? '')).split('\n')[0]!,
+    );
+  /** Every text of a card, sections included. */
+  const texts = (c: Built) => {
+    const out: string[] = [];
+    const walk = (n: Comp) => {
+      if (n.content) out.push(n.content);
+      n.components?.forEach(walk);
+    };
+    walk(tree(c));
+    return out;
+  };
+  const board = (id: string, store: Store, over: Partial<FeedInput> = {}) => FEEDS.find((f) => f.id === id)!.render(inputFor(store, over));
+  const incarnons = (c: Built) => JSON.stringify(c.toJSON()).split('feeds:incarnon').length - 1;
+  const hunt = (boss: string) => {
+    const ws = busyWorld(NOW);
+    return { ...ws, archonHunt: { ...ws.archonHunt, boss } } as unknown as WorldState;
+  };
+  const archonSection = (ws: WorldState, store: Store) =>
+    (tree(board('sortie', store, { ws })[0]![0]!).components ?? []).find((p) => p.type === 9 && (p.components?.[0]?.content ?? '').includes('Archon Hunt'))!;
+
+  it('put the Incarnon weapon button right under the Duviri Circuit, else in the bottom row', () => {
+    const store = new Store(':memory:');
+    const duviri = board('cycles', store)[1]![0]!;
+    const l = layout(duviri);
+    assert.match(l[0]!, /Duviri Circuit/);
+    assert.equal(l[1], 'feeds:incarnon', 'right under the Circuit');
+    assert.equal(l.at(-1), 'feeds:mine', '"My notifications" alone at the bottom');
+    assert.equal(incarnons(duviri), 1);
+    const noCircuit = { ...busyWorld(NOW), duviriCycle: { ...(busyWorld(NOW).duviriCycle as object), choices: [] } } as unknown as WorldState;
+    for (const over of [{ ws: noCircuit }, { ws: null }] as Partial<FeedInput>[]) {
+      const c = board('cycles', store, over)[1]![0]!;
+      assert.equal(layout(c).at(-1), 'feeds:incarnon feeds:mine', 'no Circuit: the bottom row');
+      assert.equal(incarnons(c), 1);
+    }
+  });
+
+  it('keep the Incarnon button off the sortie board', () => {
+    const store = new Store(':memory:');
+    for (const over of [{}, { ws: null }] as Partial<FeedInput>[]) {
+      const messages = board('sortie', store, over);
+      assert.ok(layout(messages[1]![0]!).includes('notify:weekly feeds:mine'));
+      assert.equal(messages.flat().reduce((n, c) => n + incarnons(c), 0), 0);
+    }
+  });
+
+  it('show the shard the archon drops as the Archon Hunt picture, with its missions beside it', () => {
+    const store = new Store(':memory:');
+    const nira = archonSection(hunt('Archon Nira'), store);
+    const text = nira.components![0]!.content!;
+    assert.equal(nira.accessory?.media?.url, emojiUrl('shardAmber'));
+    assert.notEqual(nira.accessory?.media?.url, emojiUrl('archon'), 'not the archon icon');
+    assert.match(text, /Drops an \*\*Amber Archon Shard\*\*/);
+    assert.ok(text.includes('**1\\. Extermination** · Hydron'), 'the missions are in the same section');
+    assert.ok(text.includes('**3\\. Assassination** · Merrow'));
+    const amar = archonSection(hunt('Archon Amar'), store);
+    assert.match(amar.components![0]!.content!, /Drops a \*\*Crimson Archon Shard\*\*/);
+    assert.equal(amar.accessory?.media?.url, emojiUrl('shardCrimson'));
+    const boreal = archonSection(hunt('Archon Boreal'), store);
+    assert.match(boreal.components![0]!.content!, /Drops an \*\*Azure Archon Shard\*\*/);
+    assert.equal(boreal.accessory?.media?.url, emojiUrl('shardAzure'));
+    try {
+      loadEmojis([{ id: '5', name: EMOJI.archon.names[0]! }]);
+      const url = archonSection(hunt('Archon Nira'), store).accessory?.media?.url;
+      assert.equal(url, emojiUrl('archon'), 'no Amber emoji: the archon icon');
+      assert.ok(url?.includes('/emojis/5.'), url ?? 'no url');
+    } finally {
+      loadEmojis(everyEmoji());
+    }
+  });
+
+  it('escape the dot of numbered mission lines so Discord does not read them as a list', () => {
+    const store = new Store(':memory:');
+    const all = board('sortie', store).flat().flatMap((c) => texts(c)).join('\n');
+    assert.match(all, /\*\*1\\\. Extermination\*\* · Longnamednode1/);
+    assert.ok(all.includes('**1\\. Capture** · Fortified Foes'));
+    assert.doesNotMatch(all, /\*\*\d\. /);
   });
 });
 

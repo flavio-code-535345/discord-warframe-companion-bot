@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { APP_EMOJIS, type EmojiLike, resetEmojiFailures, syncAppEmojis } from '../src/discord/app-emojis.js';
-import { EMOJI, cycleEmoji, cycleEmojiName, e, emojiFor, emojiReport, factionEmoji, loadEmojis, rewardEmoji, shardEmoji, tierEmoji } from '../src/discord/emoji.js';
+import { EMOJI, cycleEmoji, cycleEmojiName, e, emojiFor, emojiReport, factionEmoji, loadEmojis, rewardEmoji, shardEmoji, shardEmojiName, tierEmoji } from '../src/discord/emoji.js';
 
 describe('emoji registry', () => {
   afterEach(() => loadEmojis([]));
@@ -34,6 +34,11 @@ describe('emoji registry', () => {
     assert.equal(tierEmoji('Axi'), '<:T4Fissure:2>');
     assert.equal(tierEmoji('Omnia'), '🌐');
     assert.equal(shardEmoji('Emerald'), '<:tauemerald:3>');
+    assert.equal(shardEmojiName('Amber'), 'shardAmber');
+    assert.equal(shardEmojiName('Crimson Archon Shard'), 'shardCrimson');
+    assert.equal(shardEmojiName('azure'), 'shardAzure');
+    assert.equal(shardEmojiName('Obsidian'), undefined);
+    assert.equal(shardEmojiName(null), undefined);
     assert.equal(rewardEmoji('Forma Blueprint'), '<:wf_forma:4>');
     assert.equal(rewardEmoji('200,000 Kuva'), '<:kuva:5>');
     assert.equal(rewardEmoji('Mutalist Alad V Nav Coordinate'), '');

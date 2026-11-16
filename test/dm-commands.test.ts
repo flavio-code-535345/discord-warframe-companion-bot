@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
+import type { Interaction } from 'discord.js';
 import type { AppContext } from '../src/context.js';
 import { Store } from '../src/db.js';
 import { COMMANDS } from '../src/discord/bot.js';
-import { DM_COMMAND_NAMES, clearMemberCache, dmCommandData, isClanMember, syncDmCommands } from '../src/discord/dm-commands.js';
+import { DM_COMMAND_NAMES, clearMemberCache, dmCommandData, isClanMember, isDmInteraction, syncDmCommands } from '../src/discord/dm-commands.js';
 
 const G = '111111111111111111';
 
@@ -77,5 +78,13 @@ describe('commands in a DM with Ordis', () => {
     const { ctx } = ctxWith([], ['unlucky']);
     await assert.rejects(isClanMember(ctx, 'unlucky'), /Discord is down/);
     await assert.rejects(isClanMember(ctx, 'unlucky'), /Discord is down/, 'asked again, not remembered as "not a member"');
+  });
+
+  it('lets a retired button through, so an old reply is answered, and no other button', () => {
+    const button = (customId: string) =>
+      ({ isChatInputCommand: () => false, isAutocomplete: () => false, isStringSelectMenu: () => false, isButton: () => true, customId }) as unknown as Interaction;
+    assert.equal(isDmInteraction(button('feeds:squad')), true, 'the Arbitration "Squad up" on an old /now card is told it was removed');
+    assert.equal(isDmInteraction(button('feeds:mine')), false);
+    assert.equal(isDmInteraction(button('lfg:1:join')), false);
   });
 });

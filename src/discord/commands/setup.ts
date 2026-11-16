@@ -170,7 +170,7 @@ export const setup: Command = {
     .addSubcommand((s) =>
       s
         .setName('lfg')
-        .setDescription('Channel where squads started from a board (the "Squad up" button) are posted')
+        .setDescription('Channel where squads go when their activity has no channel of its own')
         .addChannelOption((o) => o.setName('channel').setDescription('The squads channel').setRequired(true).addChannelTypes(...TEXT_CHANNELS)),
     )
     .addSubcommand((s) =>

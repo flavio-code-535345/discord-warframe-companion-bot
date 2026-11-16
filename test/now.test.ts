@@ -155,7 +155,7 @@ describe('/now', () => {
     assert.ok(!t.includes('Best resale'), 'nothing is priced yet');
     assert.ok(t.includes('**Darvo:** Braton Prime for 120p (−40%) · 150 left'));
     assert.ok(t.includes(`**Operation: Plague Star** · ends ${rel(NOW + 3 * 24 * HOUR)}`));
-    assert.match(t, /-# .*Sortie \(Vay Hek\) resets <t:\d+:R> · .*Archon Hunt \(Archon Amar\) <t:\d+:R>\n-# As of <t:\d+:t>\. The World State channels keep themselves up to date\.\n\[Squad up\] \[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
+    assert.match(t, /-# .*Sortie \(Vay Hek\) resets <t:\d+:R> · .*Archon Hunt \(Archon Amar\) <t:\d+:R>\n-# As of <t:\d+:t>\. The World State channels keep themselves up to date\.\n\[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
   });
 
   it('names the best resale once Baro is priced', () => {
@@ -180,27 +180,25 @@ describe('/now', () => {
     assert.ok(t.includes('**Arbitration** · Casta, Ceres'));
     assert.ok(!t.includes('fissures**') && !t.includes('Worth running') && !t.includes('Baro') && !t.includes('Sortie'));
     assert.ok(t.includes('-# The live world state is switched off or not answering, so fissures, alerts and the open worlds are missing.'));
-    assert.match(t, /\n\[Squad up\] \[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
+    assert.match(t, /\n\[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
 
     const nothing = text(input({ ws: null, arby: NONE }));
     assert.ok(nothing.includes('Nothing can be read right now'));
     assert.ok(!nothing.includes('switched off or not answering'), 'said once');
-    assert.ok(!nothing.includes('Squad up'), 'no Arbitration, no squad for it');
 
     assert.ok(text(input({ stale: true })).includes('may be outdated'), 'old data is marked');
     const quiet = text(input({ ws: world({ fissures: [{ tier: 'Meso', type: 'Survival', mins: 80 }].map(fissure) }) }));
     assert.ok(quiet.includes('**Fissures** · no quick mission open right now (1 fissures in all)'));
   });
 
-  it('offers the squad button and the boards the clan has', () => {
+  it('links the boards the clan has, and offers no squad button', () => {
     const json = JSON.stringify(nowCard(input()).toJSON());
-    assert.ok(json.includes('"custom_id":"feeds:squad"'));
+    assert.ok(!json.includes('feeds:squad'), 'the Arbitration "Squad up" was removed at the owner\'s request');
     for (const id of ['333333333333333333', '444444444444444444', '555555555555555555', '666666666666666666']) assert.ok(json.includes(`"url":"https://discord.com/channels/${GUILD}/${id}"`), id);
 
-    assert.match(text(input({ settings: settings({ lfgChannelId: null }) })), /\n\[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
-    assert.match(text(input({ settings: settings({ fissuresChannelId: null, tradersChannelId: null }) })), /\n\[Squad up\] \[Arbitrations\] \[Alerts\]$/);
-    const bare = text(input({ settings: settings({ lfgChannelId: null, arbitrationsChannelId: null, fissuresChannelId: null, alertsChannelId: null, tradersChannelId: null }) }));
-    assert.match(bare, /keep themselves up to date\.$/, 'no row at all without a channel');
+    assert.match(text(input({ settings: settings({ fissuresChannelId: null, tradersChannelId: null }) })), /\n\[Arbitrations\] \[Alerts\]$/);
+    const bare = text(input({ settings: settings({ arbitrationsChannelId: null, fissuresChannelId: null, alertsChannelId: null, tradersChannelId: null }) }));
+    assert.match(bare, /keep themselves up to date\.$/, 'no row at all without a board channel, even with a squad channel');
   });
 
   it('shows a member their own lines only when it is given them', () => {
@@ -243,7 +241,7 @@ describe('/now', () => {
         assert.ok(s.text <= 4000, `${s.text} characters of text`);
         assert.ok(s.components <= 40, `${s.components} components`);
         const t = componentText([c]);
-        assert.match(t, /-# As of <t:\d+:t>\. The World State channels keep themselves up to date\.\n\[Squad up\] \[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
+        assert.match(t, /-# As of <t:\d+:t>\. The World State channels keep themselves up to date\.\n\[Arbitrations\] \[Fissures\] \[Alerts\] \[Traders\]$/);
         assert.ok(t.includes('**Arbitration**'));
       }
       assert.match(componentText([nowCard(full, { personal })]), /Sortie \(Vay Hek\) resets .*\n-# .*may be outdated.*\n-# As of /, 'the resets and the note that the data is old are kept too');

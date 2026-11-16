@@ -46,7 +46,7 @@ export interface GuildSettings {
   statusChannelId: string | null;
   /** Riven scanning: members post riven screenshots here and Ordis grades them. */
   rivenChannelId: string | null;
-  /** Where a squad is posted when it isn't started with /lfg in a channel: the "Squad up" button on a board. */
+  /** Where a squad is posted when its activity has no channel of its own and it wasn't asked for in a channel. */
   lfgChannelId: string | null;
   /** Where birthdays are announced. */
   birthdayChannelId: string | null;

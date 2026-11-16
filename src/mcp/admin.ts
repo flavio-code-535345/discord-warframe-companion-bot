@@ -801,7 +801,7 @@ export function registerAdminTools(server: McpServer, ctx: AppContext): void {
         lfg_voice_category_id: snowflake.nullable().optional().describe('Category where every /lfg squad gets its own temporary voice channel; null turns squad voice off'),
         auto_vc_hub_channel_id: snowflake.nullable().optional().describe('Join-to-create lobby: a voice channel that gives whoever joins it their own temporary room next to it; null turns it off'),
         lfg_voice_grace_minutes: z.number().int().min(1).max(60).nullable().optional().describe('Minutes the host may be out of voice before the squad ends (default 5)'),
-        lfg_channel_id: snowflake.nullable().optional().describe('Where a squad started from a board (the "Squad up" button) is posted; /lfg itself posts where it is used'),
+        lfg_channel_id: snowflake.nullable().optional().describe('Where a squad is posted when its activity has no channel of its own; /lfg itself posts where it is used'),
         birthday_channel_id: snowflake.nullable().optional().describe('Where Ordis wishes members a happy birthday (/birthday set)'),
         weekly_channel_id: snowflake.nullable().optional().describe('Where Ordis posts what the Monday reset brought; the first post is the next Monday'),
         promo_channel_id: snowflake.nullable().optional().describe('Channel with the active promo codes from the wiki, updated once a day; the list appears within a minute'),

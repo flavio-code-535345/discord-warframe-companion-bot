@@ -147,7 +147,8 @@ describe('weekly reset post', () => {
     assert.match(text, /Elite One/);
     assert.doesNotMatch(text, /Daily/);
     assert.match(text, /### .* Archon Hunt · Archon Nira/);
-    assert.match(text, /Amber Archon Shard/);
+    assert.match(text, /Drops an \*\*Amber Archon Shard\*\*/);
+    assert.match(text, /\*\*1\\\. /, 'the mission number escapes its dot');
     assert.match(text, /Umbra Forma Blueprint/);
     assert.doesNotMatch(text, /Weeklies by DM/, 'no button in a DM');
     assert.match(componentText([weeklyCard(ws(monday), monday, monday + 600_000, true)]), /\[Weeklies by DM\] \[Incarnon weapon\]$/, 'the channel post ends with the button');

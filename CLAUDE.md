@@ -27,7 +27,7 @@ Tests need no network and no Discord: `new Store(':memory:')` for the database (
 
 - **Never call a Digital Extremes host** (`api.warframe.com` or any other). The world state comes from warframestat.us only: calling DE's API yourself breaches their EULA, a blocked IP can't log in to the game either, and the clan's co-owner asked for it to be removed fully.
 - **No model in the chat answers and no paid AI API.** Answers are exact lookups and wiki quotes (`src/answers/`). The only model is the screenshot roles' vision fallback (self-hosted, then a free tier). Ask before adding a model anywhere.
-- **Removed at the owner's request, do not bring back without asking:** the model answers and everything around them (the list is in `src/answers/CLAUDE.md`), the `/ai` command with its panel page and switches, captcha verification, live code patches, the dojo research board, the starboard, and role pings.
+- **Removed at the owner's request, do not bring back without asking:** the model answers and everything around them (the list is in `src/answers/CLAUDE.md`), the `/ai` command with its panel page and switches, captcha verification, live code patches, the dojo research board, the starboard, the Arbitration Squad up button, and role pings.
 - **Ordis pings no role.** Every notification is a DM a member asked for (a tracker). The client is created with `DEFAULT_MENTIONS` (`parse: ['users']`); the one role ping left is the role staff names by hand in an announcement.
 - **Every outbound Warframe call goes through the one `ApiClient`** (`apiFetch` / `apiJson` in `src/warframe/fetch.ts`): the pacing, cooldowns, cache and User-Agent live there.
 - **A recurring task is a job** in `registerJobs` (`src/jobs.ts`), never a `setInterval`.
@@ -94,7 +94,7 @@ Each folder below has a `CLAUDE.md` with the details of what lives there. It loa
 | `src/mcp/` | the MCP server, the insight tools, the server admin tools |
 | `src/alecaframe/` | AlecaFrame links, the stats chart, the relic planner, a member's relics for other features, "crack now" |
 | `src/wishlist/` | the prime wishlist: missing parts, their relics and prices, the DMs about Varzia and the vault |
-| `src/lfg/` | squads, squad voice, "Squad up" for the Arbitration, activities, join-to-create rooms |
+| `src/lfg/` | squads, squad voice, activities, join-to-create rooms |
 | `src/selfroles/`, `src/activity/`, `src/giveaways/`, `src/birthdays/` | the roles panel, the inactivity report, giveaways, birthdays |
 | `src/reminders/` | `/remindme`: the time parser, limits, DM delivery with a channel fallback, the `reminders` job |
 | `src/moderation/`, `src/backup/`, `src/leveling/`, `src/sticky/`, `src/logging/` | purge, lock and honeypot; server backups and restore, the nightly database copy; XP and level roles; sticky messages; the audit log |

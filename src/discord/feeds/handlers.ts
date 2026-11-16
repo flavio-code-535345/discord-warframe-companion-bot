@@ -9,9 +9,6 @@ import {
 } from 'discord.js';
 import type { AppContext } from '../../context.js';
 import { UserError } from '../../errors.js';
-import { type SquadUp, squadUpForArbitration } from '../../lfg/arbitration-squad.js';
-import { DEFAULT_GRACE_MINUTES } from '../../lfg/lifecycle.js';
-import { discordTime } from '../../time.js';
 import { MAX_TRACKERS_PER_USER, describeTracker, parseSpec } from '../../trackers.js';
 import { lastArbitrations } from '../../warframe/arbitrations.js';
 import { getWorldState } from '../../warframe/worldstate.js';
@@ -28,7 +25,8 @@ import { FEED_IDS } from './types.js';
 /**
  * What the boards' controls do. Custom IDs: `feeds:track:<feed>` (menu: create notifications), `feeds:mine` (button: your list) and
  * `feeds:untrack` (menu under that list: remove some), `feeds:plan` (button and menu: the Arbitration schedule days ahead) and
- * `feeds:bounty` (menu: one syndicate's bounties). Every answer is ephemeral.
+ * `feeds:bounty` (menu: one syndicate's bounties). Every answer is ephemeral. A `feeds:squad` button that an older message still carries
+ * (the Arbitration "Squad up", removed at the owner's request) is told so and pointed to `/lfg`.
  */
 
 const V2_EPHEMERAL = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
@@ -86,25 +84,9 @@ export async function handleFeedButton(interaction: ButtonInteraction, ctx: AppC
     await interaction.reply({ components: [planMessage(lastArbitrations(), Date.now())], flags: V2_EPHEMERAL });
     return;
   }
-  if (action === 'squad') {
-    // A voice channel and a post are made: that can take longer than the three seconds a click may wait.
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const name = interaction.inCachedGuild() ? interaction.member.displayName : interaction.user.username;
-    await interaction.editReply({ content: squadUpReply(ctx, await squadUpForArbitration(ctx, { id: interaction.user.id, name })) });
-    return;
-  }
+  // The Arbitration "Squad up" was removed at the owner's request (2026-11-16); board messages and /now cards from before may still carry it.
+  if (action === 'squad') throw new UserError('The **Squad up** button was removed: start a squad with `/lfg` in the server.');
   throw new UserError('That button is no longer supported.');
-}
-
-/** What the member who tapped "Squad up" is told. */
-export function squadUpReply(ctx: AppContext, r: SquadUp): string {
-  const where = `**${r.slot.name}${r.slot.planet ? `, ${r.slot.planet}` : ''}** (${r.slot.mission})`;
-  const voice = r.post.voiceChannelId ? ` Voice: <#${r.post.voiceChannelId}>.` : '';
-  if (r.kind === 'already') return `You are already in the squad for ${where}: [open the post](${r.url}).${voice}`;
-  if (r.kind === 'joined') return `🐀 You joined <@${r.post.hostId}>'s squad for ${where}: [open the post](${r.url}).${voice}${r.full ? ' The squad is full now.' : ''}`;
-  const grace = ctx.store.getSettings(ctx.config.DISCORD_GUILD_ID).lfgVoiceGraceMinutes ?? DEFAULT_GRACE_MINUTES;
-  const join = r.post.voiceChannelId ? ` Join <#${r.post.voiceChannelId}> within ${grace} minutes or the squad ends.` : '';
-  return `🐀 Squad #${r.post.id} for ${where} is up in <#${r.post.channelId}>: [open the post](${r.url}). The next clanmates who tap **Squad up** join it.${join} It closes when the Arbitration ends ${discordTime(r.slot.end)}.`;
 }
 
 export async function handleFeedSelect(interaction: StringSelectMenuInteraction, ctx: AppContext): Promise<void> {

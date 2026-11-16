@@ -58,9 +58,6 @@ export const isPlanRange = (v: string): v is PlanRange => Object.hasOwn(PLAN_RAN
 
 export const planButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('feeds:plan').setLabel('Plan ahead').setEmoji('📅').setStyle(ButtonStyle.Primary);
 
-/** One tap: a squad for the Arbitration, or a seat in the one that is already open (lfg/arbitration-squad.ts). */
-export const squadButton = (): ButtonBuilder => new ButtonBuilder().setCustomId('feeds:squad').setLabel('Squad up').setEmoji('🐀').setStyle(ButtonStyle.Success);
-
 /** The ephemeral "Plan ahead" answer: the chosen tiers for days ahead, with a menu to switch the range. */
 export function planMessage(data: ArbitrationData | null, now: number, range: PlanRange = 'sa14'): ContainerBuilder {
   const r = PLAN_RANGES[range];
@@ -136,8 +133,7 @@ export function arbitrationBoard(input: FeedInput): ContainerBuilder[][] {
     input.stale || arby.stale ? `-# ${STALE_NOTE}` : null,
     DIVIDER,
     notifyRow('arbitrations', '🔔 DM me before…'),
-    // Squads need a channel to be posted in (`/setup lfg`); without one the button would only ever answer with that.
-    buttonRow(input.settings.lfgChannelId ? squadButton() : null, planButton(), mineButton()),
+    buttonRow(planButton(), mineButton()),
     SOURCES,
   ]);
 

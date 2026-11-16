@@ -1,8 +1,8 @@
 import type { ContainerBuilder } from 'discord.js';
 import { discordTime, toMs } from '../../time.js';
 import { type WorldState, archimedeaName } from '../../warframe/worldstate.js';
-import { e, emojiUrl, factionTag, shardEmoji } from '../emoji.js';
-import { buttonRow, incarnonButton, mineButton, notifyButton, notifyRow } from './controls.js';
+import { e, emojiUrl, factionTag, shardEmoji, shardEmojiName } from '../emoji.js';
+import { buttonRow, mineButton, notifyButton, notifyRow } from './controls.js';
 import { DIVIDER, type Part, card, nodeName, planetOf, section } from './parts.js';
 import { type FeedInput, STALE_NOTE } from './types.js';
 
@@ -23,30 +23,42 @@ export const archonShard = (boss: string | null | undefined): string | null => A
 
 const live = (expiry: unknown, now: number) => toMs(expiry as never) > now;
 
+/** "an" before a vowel (an Amber, an Azure shard), else "a" (a Crimson shard). */
+const article = (word: string) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
+
+/** A mission's number with its dot escaped: Discord reads a line starting `**1. ` as a numbered list and breaks it after the type. */
+const nth = (i: number) => `${i + 1}\\.`;
+
 function sortiePart(ws: WorldState, now: number): Part[] {
   const s = ws.sortie;
   if (!s || !live(s.expiry, now) || !s.variants?.length) return [`## ${e('sortie')} Daily sortie\nNo sortie right now.`];
   const faction = factionTag(s.faction);
   const head = `## ${e('sortie')} Daily sortie${s.boss ? ` · ${s.boss}` : ''}\n${faction ? `${faction}${faction === s.faction ? '' : ` ${s.faction}`} · ` : ''}resets ${discordTime(s.expiry, 'R')}`;
   const missions = s.variants
-    .map((v, i) => `**${i + 1}. ${v.missionType}** · ${nodeName(v.node)}${planetOf(v.node) ? `, ${planetOf(v.node)}` : ''}\n-# ${v.modifier}${v.modifierDescription ? `: ${v.modifierDescription}` : ''}`)
+    .map((v, i) => `**${nth(i)} ${v.missionType}** · ${nodeName(v.node)}${planetOf(v.node) ? `, ${planetOf(v.node)}` : ''}\n-# ${v.modifier}${v.modifierDescription ? `: ${v.modifierDescription}` : ''}`)
     .join('\n');
   return [section(head, emojiUrl('sortie')), missions];
 }
 
-/** The Archon Hunt: the archon, the shard it drops, the planet and the three missions (also in the weekly post, a heading lower). */
+/**
+ * The Archon Hunt: the archon, the shard it drops, the planet and the three missions (also in the weekly post, a heading lower). The
+ * thumbnail is the shard this archon drops, the same picture as the heading's emoji (the archon icon only when the shard is not known
+ * or has no custom emoji), and the missions share its section, so no gap opens under a short heading beside the picture.
+ */
 export function archonPart(ws: WorldState, now: number, heading: '##' | '###' = '##'): Part[] {
   const a = ws.archonHunt;
   if (!a || !live(a.expiry, now) || !a.missions?.length) return [`${heading} ${e('archon')} Archon Hunt\nNo Archon Hunt right now.`];
   const shard = archonShard(a.boss);
+  const shardName = shard ? shardEmojiName(shard) : undefined;
   const planets = new Set(a.missions.map((m) => planetOf(m.node)));
   const planet = planets.size === 1 ? [...planets][0] : null;
   const head = [
     `${heading} ${shard ? shardEmoji(shard) : e('archon')} Archon Hunt${a.boss ? ` · ${a.boss}` : ''}`,
-    `${shard ? `Drops a **${shard} Archon Shard** · ` : ''}${planet ? `on **${planet}** · ` : ''}resets ${discordTime(a.expiry, 'R')}`,
+    `${shard ? `Drops ${article(shard)} **${shard} Archon Shard** · ` : ''}${planet ? `on **${planet}** · ` : ''}resets ${discordTime(a.expiry, 'R')}`,
   ].join('\n');
-  const missions = a.missions.map((m, i) => `**${i + 1}. ${m.type}** · ${planet ? nodeName(m.node) : m.node}`).join('\n');
-  return [section(head, emojiUrl('archon')), missions, '-# Three missions in a row; the archon waits in the last one. Once a week per account.'];
+  const missions = a.missions.map((m, i) => `**${nth(i)} ${m.type}** · ${planet ? nodeName(m.node) : m.node}`).join('\n');
+  const thumb = (shardName ? emojiUrl(shardName) : null) ?? emojiUrl('archon');
+  return [section(`${head}\n${missions}`, thumb), '-# Three missions in a row; the archon waits in the last one. Once a week per account.'];
 }
 
 function archimedeaPart(ws: WorldState, now: number): Part[] {
@@ -56,7 +68,7 @@ function archimedeaPart(ws: WorldState, now: number): Part[] {
     const expiry = (a as { expiry?: unknown }).expiry;
     const missions = (a.missions ?? []).map((m, i) => {
       const risks = (m.risks ?? []).map((r) => (r.isHard ? `**${r.name}**` : r.name)).join(', ');
-      return `**${i + 1}. ${m.missionType}**${m.deviation?.name ? ` · ${m.deviation.name}` : ''}${risks ? `\n-# Risks: ${risks}` : ''}`;
+      return `**${nth(i)} ${m.missionType}**${m.deviation?.name ? ` · ${m.deviation.name}` : ''}${risks ? `\n-# Risks: ${risks}` : ''}`;
     });
     const personal = (a.personalModifiers ?? []).map((p) => p.name).join(', ');
     const faction = a.missions?.[0]?.faction;
@@ -91,7 +103,7 @@ export function sortieBoard(input: FeedInput): ContainerBuilder[][] {
   const { ws, now } = input;
   if (!ws) {
     const off = 'The world state is not available right now.';
-    return [[card(COLOR.sortie, [`## ${e('sortie')} Daily sortie`, off])], [card(COLOR.weekly, [`## 🧩 Weekly missions`, off, DIVIDER, notifyRow('sortie'), buttonRow(notifyButton('weekly'), incarnonButton(), mineButton())])]];
+    return [[card(COLOR.sortie, [`## ${e('sortie')} Daily sortie`, off])], [card(COLOR.weekly, [`## 🧩 Weekly missions`, off, DIVIDER, notifyRow('sortie'), buttonRow(notifyButton('weekly'), mineButton())])]];
   }
   const archimedeas = archimedeaPart(ws, now);
   return [
@@ -105,7 +117,7 @@ export function sortieBoard(input: FeedInput): ContainerBuilder[][] {
         input.stale ? `-# ${STALE_NOTE}` : null,
         DIVIDER,
         notifyRow('sortie'),
-        buttonRow(notifyButton('weekly'), incarnonButton(), mineButton()),
+        buttonRow(notifyButton('weekly'), mineButton()),
         '-# **Weeklies by DM**: every Monday the Circuit, Nightwave, the Archon Hunt and Steel Path in one message.',
       ]),
     ],
